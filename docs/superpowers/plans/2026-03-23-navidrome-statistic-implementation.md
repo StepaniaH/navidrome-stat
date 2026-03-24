@@ -1,132 +1,58 @@
-# Navidrome Statistic Implementation Plan
+# Navidrome Statistic Implementation Plan (Rev 2)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a monitoring and analytics service for Navidrome that polls Subsonic API, stores snapshots in SQLite, and provides a web dashboard.
-
-**Architecture:** An asynchronous Python monolith using FastAPI. A background `asyncio` task polls the Navidrome server every 10 seconds and saves the playback state to a SQLite database.
-
-**Tech Stack:** Python 3.11+, FastAPI, httpx, aiosqlite, Docker.
+**Goal:** Refactor the polling logic to use an in-memory session state machine to count actual "Plays" instead of saving DB snapshots every 10 seconds.
 
 ---
 
-### Task 1: Project Setup & Environment
+### Task 1: Refactor Database Schema
 
 **Files:**
-- Create: `public/navidrome-statistic/.env`
-- Create: `public/navidrome-statistic/.gitignore`
-- Create: `public/navidrome-statistic/requirements.txt`
+- Modify: `public/navidrome-statistic/src/database.py`
 
-- [ ] **Step 1: Create .env template**
-```env
-NAVIDROME_URL=http://localhost:4533
-NAVIDROME_USER=admin
-NAVIDROME_PASS=password
-POLL_INTERVAL=10
-```
+- [ ] **Step 1: Update Table Schema**
+Change `playback_snapshots` to `play_history` with fields: `played_at`, `username`, `client_name`, `track_id`, `title`, `artist`, `album`, `is_transcoding`, `listen_duration_sec`. Add logic to drop the old table or just rely on a clean DB for the rewrite.
 
-- [ ] **Step 2: Create .gitignore**
-```text
-.venv/
-__pycache__/
-*.db
-.env
-```
+- [ ] **Step 2: Refactor `save_snapshot` to `save_play_session`**
+Insert a single record into `play_history` representing one completed listen.
 
-- [ ] **Step 3: Create requirements.txt**
-```text
-fastapi
-uvicorn
-httpx
-aiosqlite
-python-dotenv
-```
-
-- [ ] **Step 4: Initialize virtual environment**
-Run: `python -m venv .venv && source .venv/bin/bin/activate && pip install -r requirements.txt`
+- [ ] **Step 3: Update Analytics Queries**
+Update `get_player_stats`, `get_transcoding_stats`, and `get_playback_history` to query `play_history`. 
 
 ---
 
-### Task 2: Subsonic API Client & Authentication
-
-**Files:**
-- Create: `public/navidrome-statistic/src/client.py`
-- Test: `public/navidrome-statistic/tests/test_client.py`
-
-- [ ] **Step 1: Write failing test for auth token generation**
-```python
-from src.client import generate_auth
-def test_generate_auth():
-    token, salt = generate_auth("password")
-    assert len(token) == 32
-    assert len(salt) == 6
-```
-
-- [ ] **Step 2: Implement `generate_auth` in `src/client.py`**
-```python
-import hashlib
-import secrets
-import string
-
-def generate_auth(password: str):
-    salt = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(6))
-    token = hashlib.md5((password + salt).encode()).hexdigest()
-    return token, salt
-```
-
-- [ ] **Step 3: Implement API client to fetch `getNowPlaying`**
-Implement `NavidromeClient` class with `get_now_playing()` method using `httpx`.
-
----
-
-### Task 3: Database Schema & Connection
-
-**Files:**
-- Create: `public/navidrome-statistic/src/database.py`
-- Test: `public/navidrome-statistic/tests/test_database.py`
-
-- [ ] **Step 1: Define Table Schema and initialization logic**
-Use `aiosqlite` to create `playback_snapshots` table as defined in the spec.
-
-- [ ] **Step 2: Implement `save_snapshot` function**
-Function to insert data into the table.
-
----
-
-### Task 4: Background Poller & FastAPI Integration
-
-**Files:**
-- Create: `public/navidrome-statistic/src/main.py`
-
-- [ ] **Step 1: Setup FastAPI app and lifespan events**
-Initialize database and start the background polling task using `asyncio.create_task`.
-
-- [ ] **Step 2: Implement the polling loop**
-Loop every `POLL_INTERVAL` seconds, fetch data, and save to DB.
-
----
-
-### Task 5: Analytics API Endpoints
+### Task 2: Implement Memory State Machine in Polling Loop
 
 **Files:**
 - Modify: `public/navidrome-statistic/src/main.py`
 
-- [ ] **Step 1: Implement `/api/stats/players`**
-SQL query to count occurrences of `client_name`.
+- [ ] **Step 1: Define Session Data Structure**
+Create a global `active_sessions = {}` dict to store current playback info for each `player_id`.
 
-- [ ] **Step 2: Implement `/api/stats/transcoding`**
-SQL query to calculate `is_transcoding` ratio.
+- [ ] **Step 2: Implement Session Tracking Logic**
+In `polling_loop()`:
+1. Fetch `getNowPlaying`.
+2. Compare playing tracks against `active_sessions`.
+3. If a track is new for a player, save the old session if duration > 30s. Start a new session.
+4. If a track is the same, update `last_seen_at`.
+5. Implement garbage collection: find sessions not updated in the last 30s, save them if valid, and remove them from memory.
 
 ---
 
-### Task 6: Dockerization
+### Task 3: Update Frontend Dashboard
 
 **Files:**
-- Create: `public/navidrome-statistic/Dockerfile`
-- Create: `public/navidrome-statistic/docker-compose.yml`
+- Modify: `public/navidrome-statistic/src/static/index.html`
 
-- [ ] **Step 1: Write Dockerfile**
-Use `python:3.11-slim`.
+- [ ] **Step 1: Revert Table Headers**
+Change "Listen Time" back to "Plays" since the API will now return actual play counts again.
 
-- [ ] **Step 2: Write docker-compose.yml**
-Define service and volume for the SQLite database.
+---
+
+### Task 4: Testing & Verification
+
+- [ ] **Step 1: Fix existing tests**
+Update `test_database.py` and `test_main.py` to reflect the schema and logic changes.
+- [ ] **Step 2: Local validation**
+Start service locally and observe terminal logs to ensure session state machine successfully catches a track change and inserts exactly ONE record.

@@ -24,6 +24,7 @@ class NavidromeClient:
         
         # Strip trailing slash from URL
         self.url = self.url.rstrip("/")
+        self._http_client = httpx.AsyncClient()
 
     def get_auth_params(self):
         token, salt = generate_auth(self.password)
@@ -39,10 +40,12 @@ class NavidromeClient:
     async def get_now_playing(self):
         params = self.get_auth_params()
         endpoint = f"{self.url}/rest/getNowPlaying"
-        async with httpx.AsyncClient() as client:
-            response = await client.get(endpoint, params=params)
-            response.raise_for_status()
-            return response.json()
+        response = await self._http_client.get(endpoint, params=params)
+        response.raise_for_status()
+        return response.json()
+        
+    async def close(self):
+        await self._http_client.aclose()
 
 if __name__ == "__main__":
     import asyncio

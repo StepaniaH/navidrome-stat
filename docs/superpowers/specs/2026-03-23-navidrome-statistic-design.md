@@ -4,64 +4,49 @@ type: "design-spec"
 tags: [navidrome, python, fastapi, sqlite, monitoring]
 ---
 
-# Navidrome Statistic Service Design Spec
+# Navidrome Statistic Service Design Spec (Rev 2: Session-based Play Counting)
 
 ## 1. Project Overview
-A standalone monitoring and analytics dashboard for Navidrome music servers. It polls the Subsonic API to track real-time playback status, persists data into SQLite, and provides statistical insights via a web interface.
+A standalone monitoring and analytics dashboard for Navidrome music servers. It polls the Subsonic API to track real-time playback status, persists completed playback sessions into SQLite, and provides statistical insights via a web interface.
 
-## 2. Core Architecture (Approach A: Async Monolith)
+## 2. Core Architecture
 The service will run as a single Python process using FastAPI.
 - **Web Engine**: FastAPI for REST API and static file serving.
-- **Background Poller**: An `asyncio` task started at application startup to poll Navidrome every 10 seconds.
+- **Background Poller**: An `asyncio` task to poll Navidrome every 10 seconds.
+- **State Machine**: In-memory dictionary tracking active playback sessions to aggregate 10s snapshots into singular "Play" events.
 - **Database**: SQLite with `aiosqlite` for non-blocking I/O.
-- **HTTP Client**: `httpx` for asynchronous Subsonic API requests.
+- **HTTP Client**: `httpx` for asynchronous Subsonic API requests with connection pooling.
 
 ## 3. Data Model (SQLite Schema)
 
-### `playback_snapshots` Table
-Records the instantaneous state of every active player during each poll.
+### `play_history` Table (Refactored from playback_snapshots)
+Records completed play events (one row per song listened).
 - `id`: INTEGER PRIMARY KEY AUTOINCREMENT
-- `timestamp`: DATETIME (Default: CURRENT_TIMESTAMP)
-- `username`: TEXT (Navidrome user)
-- `player_id`: TEXT (Unique ID for the player session)
-- `client_name`: TEXT (e.g., "Feishin", "Strawberry", "Web Player")
-- `track_id`: TEXT (Subsonic ID of the track)
+- `played_at`: DATETIME (When the track finished/changed)
+- `username`: TEXT 
+- `client_name`: TEXT 
+- `track_id`: TEXT 
 - `title`: TEXT
 - `artist`: TEXT
 - `album`: TEXT
-- `is_transcoding`: BOOLEAN (True if `current_bitrate` < `original_bitrate`)
-- `original_bitrate`: INTEGER (kbps)
-- `current_bitrate`: INTEGER (kbps)
-- `position_ms`: INTEGER (Current playback progress)
-- `player_state`: TEXT (playing, paused, buffered)
+- `is_transcoding`: INTEGER (Boolean)
+- `listen_duration_sec`: INTEGER (How long it was listened to)
 
 ## 4. Key Logic & Algorithms
 
 ### 4.1. Polling & Authentication
 - Read `NAVIDROME_URL`, `USER`, `PASS` from `.env`.
-- Generate Subsonic Auth (MD5 salt + token) per request.
 - Endpoint: `getNowPlaying.view?u={user}&t={token}&s={salt}&v=1.16.1&c=navidrome-stat&f=json`.
 
-### 4.2. Transcoding Detection (Heuristic Comparison)
-- Compare `bitRate` (current) from the now-playing entry with the track's metadata `bitRate` (original).
-- If original metadata is missing, fallback to common bitrate thresholds (e.g., > 320kbps is likely original/lossless).
+### 4.2. In-Memory Session Tracking (The Play Counter)
+To avoid spamming the DB and to count actual "Plays" rather than "Seconds":
+- A dictionary `active_sessions` mapping `player_id` -> `SessionData`.
+- On each poll:
+  - If a track is playing: update `last_seen_at` in memory.
+  - If a track changes for a player: finalize the old session. If `duration > 30s`, save it to the DB as 1 play. Start a new session for the new track.
+  - Periodic cleanup: Identify players not seen in the last 30 seconds and finalize their sessions.
 
-### 4.3. Data Deduplication
-- Before inserting a snapshot, check if the `(player_id, track_id, position_ms)` is identical to the last recorded snapshot for that player to prevent redundant writes if the player is paused or the API returns cached data.
-
-### 4.4. Statistical Aggregation (API Endpoints)
-- `/api/stats/players`: Distribution of client usage.
+### 4.3. Statistical Aggregation (API Endpoints)
+- `/api/stats/players`: Distribution of client usage (Count of play events).
 - `/api/stats/transcoding`: Ratio of transcoded vs direct play.
-- `/api/stats/history`: Top tracks and total listening time per user.
-
-## 5. Security & Environment
-- **Environment Variables**: Managed via `.env` (excluded from Git).
-- **Database**: `navidrome_stat.db` (excluded from Git).
-- **Containerization**: Single Docker image with external volume mounts for DB.
-
-## 6. Development Stages
-1. **Stage 1**: API connectivity & Auth testing.
-2. **Stage 2**: SQLite integration & Poller implementation.
-3. **Stage 3**: Analytics logic & REST API development.
-4. **Stage 4**: Frontend UI implementation.
-5. **Stage 5**: Dockerization & final cleanup.
+- `/api/stats/history`: Top tracks, showing play counts.
