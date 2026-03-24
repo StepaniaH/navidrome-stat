@@ -5,6 +5,8 @@ from datetime import datetime
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from src.client import NavidromeClient
 from src.database import (
     init_db, 
@@ -89,6 +91,17 @@ async def lifespan(app: FastAPI):
         logger.info("Background task cancelled.")
 
 app = FastAPI(lifespan=lifespan)
+
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.get("/")
+async def root():
+    index_file = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    return {"message": "Dashboard not found"}
 
 @app.get("/health")
 async def health():

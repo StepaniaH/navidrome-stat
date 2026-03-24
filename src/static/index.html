@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navidrome Statistics Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .chart-container { height: 400px; width: 100%; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-10 text-center">
+            <h1 class="text-4xl font-bold text-indigo-600 mb-2">Navidrome Statistics</h1>
+            <p class="text-gray-500">Real-time playback monitoring and analytics</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <!-- Player Stats -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Client Distribution</h2>
+                <div id="playerChart" class="chart-container"></div>
+            </div>
+
+            <!-- Transcoding Stats -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Transcoding Ratio</h2>
+                <div id="transcodingChart" class="chart-container"></div>
+            </div>
+        </div>
+
+        <!-- History Table -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <h2 class="text-xl font-semibold mb-4 text-gray-700">Top Playback History</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full table-auto">
+                    <thead>
+                        <tr class="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            <th class="px-6 py-3 rounded-tl-lg">User</th>
+                            <th class="px-6 py-3">Track</th>
+                            <th class="px-6 py-3">Artist</th>
+                            <th class="px-6 py-3">Album</th>
+                            <th class="px-6 py-3 rounded-tr-lg">Plays</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTable" class="bg-white divide-y divide-gray-100 text-sm">
+                        <!-- Rows will be injected here by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Init ECharts
+        const playerChart = echarts.init(document.getElementById('playerChart'));
+        const transcodingChart = echarts.init(document.getElementById('transcodingChart'));
+
+        const colorPalette = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#06b6d4'];
+
+        async function fetchStats() {
+            try {
+                // Fetch players
+                const playersRes = await fetch('/api/stats/players');
+                const playersData = await playersRes.json();
+                
+                // Fetch transcoding
+                const transcodingRes = await fetch('/api/stats/transcoding');
+                const transcodingData = await transcodingRes.json();
+                
+                // Fetch history
+                const historyRes = await fetch('/api/stats/history?limit=10');
+                const historyData = await historyRes.json();
+
+                renderPlayerChart(playersData);
+                renderTranscodingChart(transcodingData);
+                renderHistoryTable(historyData);
+                
+            } catch (error) {
+                console.error("Error fetching data:", error);
+            }
+        }
+
+        function renderPlayerChart(data) {
+            const option = {
+                color: colorPalette,
+                tooltip: { trigger: 'item' },
+                legend: { top: 'bottom' },
+                series: [
+                    {
+                        name: 'Clients',
+                        type: 'pie',
+                        radius: ['40%', '70%'],
+                        itemStyle: {
+                            borderRadius: 10,
+                            borderColor: '#fff',
+                            borderWidth: 2
+                        },
+                        data: data.map(item => ({
+                            name: item.client_name || 'Unknown',
+                            value: item.count
+                        }))
+                    }
+                ]
+            };
+            playerChart.setOption(option);
+        }
+
+        function renderTranscodingChart(data) {
+            const transformedData = data.map(item => ({
+                name: item.is_transcoding ? 'Transcoded' : 'Direct Play',
+                value: item.count
+            }));
+
+            const option = {
+                color: ['#10b981', '#f43f5e'], // Green for direct, Red for transcoded
+                tooltip: { trigger: 'item' },
+                legend: { top: 'bottom' },
+                series: [
+                    {
+                        name: 'Playback Type',
+                        type: 'pie',
+                        radius: '70%',
+                        data: transformedData,
+                        emphasis: {
+                            itemStyle: {
+                                shadowBlur: 10,
+                                shadowOffsetX: 0,
+                                shadowColor: 'rgba(0, 0, 0, 0.5)'
+                            }
+                        }
+                    }
+                ]
+            };
+            transcodingChart.setOption(option);
+        }
+
+        function renderHistoryTable(data) {
+            const tbody = document.getElementById('historyTable');
+            tbody.innerHTML = '';
+            
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No playback history available yet.</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50 transition-colors';
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">${item.username || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-gray-700">${item.title || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-gray-500">${item.artist || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-gray-500">${item.album || '-'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap font-semibold text-indigo-600">${item.snapshot_count}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Handle window resize for charts
+        window.addEventListener('resize', () => {
+            playerChart.resize();
+            transcodingChart.resize();
+        });
+
+        // Initial fetch and set interval for auto-refresh
+        fetchStats();
+        setInterval(fetchStats, 10000); // refresh every 10 seconds
+    </script>
+</body>
+</html>
