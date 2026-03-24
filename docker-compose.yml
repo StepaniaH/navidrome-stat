@@ -1,0 +1,11 @@
+services:
+  navidrome-stat:
+    build: .
+    container_name: navidrome-stat
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./navidrome_stats.db:/app/navidrome_stats.db
+    env_file:
+      - .env
+    restart: unless-stopped
