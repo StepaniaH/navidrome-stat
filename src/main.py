@@ -40,7 +40,7 @@ async def finalize_session(player_id: str):
         session["last_seen_at"] = session["last_seen_at"].isoformat()
         try:
             await save_play_session(session)
-            logger.info(f"Recorded play: {session['username']} - {session['title']} (Listened for {int(duration)}s)")
+            logger.debug(f"Recorded play: {session['username']} - {session['title']} (Listened for {int(duration)}s)")
         except Exception as e:
             logger.error(f"Failed to save play session: {e}")
     else:
