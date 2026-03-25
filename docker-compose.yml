@@ -3,7 +3,7 @@ services:
     build: .
     container_name: navidrome-stat
     ports:
-      - "8000:8000"
+      - "39421:39421"
     volumes:
       - ./navidrome_stats.db:/app/navidrome_stats.db
     env_file:

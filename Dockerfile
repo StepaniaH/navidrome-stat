@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the current directory contents into the container at /app
 COPY . .
 
-# Make port 8000 available to the world outside this container
-EXPOSE 8000
+# Make port 39421 available to the world outside this container
+EXPOSE 39421
 
 # Run main.py when the container launches
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "39421"]
