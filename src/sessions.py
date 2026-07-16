@@ -27,12 +27,31 @@ class PlaybackSessionTracker:
             return
 
         session = self.active_sessions.pop(player_id)
+        if session.get("committed"):
+            return
+
         duration = (session["last_seen_at"] - session["first_seen_at"]).total_seconds()
 
         if duration >= self.play_threshold_sec:
-            session["duration_sec"] = int(duration)
-            session["last_seen_at"] = session["last_seen_at"].isoformat()
-            await self._save_session(session)
+            await self._commit_session(session, int(duration))
+
+    async def _commit_session(self, session: dict, duration_sec: int) -> None:
+        payload = {
+            **session,
+            "duration_sec": duration_sec,
+            "last_seen_at": session["last_seen_at"].isoformat(),
+        }
+        await self._save_session(payload)
+
+    async def _maybe_commit_active_session(self, player_id: str) -> None:
+        session = self.active_sessions.get(player_id)
+        if not session or session.get("committed"):
+            return
+
+        duration = (session["last_seen_at"] - session["first_seen_at"]).total_seconds()
+        if duration >= self.play_threshold_sec:
+            session["committed"] = True
+            await self._commit_session(session, int(duration))
 
     async def finalize_all(self) -> None:
         for player_id in list(self.active_sessions.keys()):
@@ -76,6 +95,7 @@ class PlaybackSessionTracker:
             if player_id in self.active_sessions:
                 if self.active_sessions[player_id]["track_id"] == track_id:
                     self.active_sessions[player_id]["last_seen_at"] = current_time
+                    await self._maybe_commit_active_session(player_id)
                 else:
                     await self.finalize_session(player_id)
                     self.active_sessions[player_id] = self._session_from_entry(entry, current_time)
@@ -88,6 +108,13 @@ class PlaybackSessionTracker:
                 time_since_last_seen = (current_time - session["last_seen_at"]).total_seconds()
                 if time_since_last_seen >= self.stale_threshold_sec:
                     stale_players.append(pid)
+                elif session.get("committed"):
+                    # Already counted; drop stale in-memory session once player disappears.
+                    stale_players.append(pid)
 
         for pid in stale_players:
-            await self.finalize_session(pid)
+            if pid in self.active_sessions:
+                if self.active_sessions[pid].get("committed"):
+                    self.active_sessions.pop(pid)
+                else:
+                    await self.finalize_session(pid)

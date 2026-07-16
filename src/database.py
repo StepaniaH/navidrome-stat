@@ -76,7 +76,7 @@ async def get_playback_history(limit: int = 10, db_path: str = DB_PATH):
             SELECT username, title, artist, album, COUNT(*) as play_count
             FROM play_history
             GROUP BY username, track_id
-            ORDER BY play_count DESC
+            ORDER BY MAX(played_at) DESC, play_count DESC
             LIMIT ?
         """, (limit,)) as cursor:
             rows = await cursor.fetchall()

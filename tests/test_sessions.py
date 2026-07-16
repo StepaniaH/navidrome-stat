@@ -52,14 +52,43 @@ async def test_same_track_updates_last_seen(tracker, save_mock):
 
 
 @pytest.mark.asyncio
-async def test_track_change_finalizes_old_session(tracker, save_mock):
+async def test_early_commit_at_threshold_while_still_playing(tracker, save_mock):
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     t1 = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
-    t2 = t1 + timedelta(seconds=1)
+
+    await tracker.process_poll([_entry()], t0)
+    await tracker.process_poll([_entry()], t1)
+
+    save_mock.assert_awaited_once()
+    assert save_mock.await_args.args[0]["duration_sec"] == PLAY_THRESHOLD_SEC
+    assert tracker.active_sessions["p1"]["committed"] is True
+
+
+@pytest.mark.asyncio
+async def test_track_change_after_early_commit_does_not_double_save(tracker, save_mock):
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
+    t2 = t1 + timedelta(seconds=60)
 
     await tracker.process_poll([_entry(track_id="t1")], t0)
     await tracker.process_poll([_entry(track_id="t1")], t1)
     await tracker.process_poll([_entry(track_id="t2", title="Song 2")], t2)
+
+    save_mock.assert_awaited_once()
+    assert tracker.active_sessions["p1"]["track_id"] == "t2"
+
+
+@pytest.mark.asyncio
+async def test_track_change_finalizes_old_session(tracker, save_mock):
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC - 5)
+    t2 = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
+    t3 = t2 + timedelta(seconds=1)
+
+    await tracker.process_poll([_entry(track_id="t1")], t0)
+    await tracker.process_poll([_entry(track_id="t1")], t1)
+    await tracker.process_poll([_entry(track_id="t1")], t2)
+    await tracker.process_poll([_entry(track_id="t2", title="Song 2")], t3)
 
     save_mock.assert_awaited_once()
     saved = save_mock.await_args.args[0]
