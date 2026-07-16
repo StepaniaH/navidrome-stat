@@ -24,7 +24,10 @@ class NavidromeClient:
         
         # Strip trailing slash from URL
         self.url = self.url.rstrip("/")
-        self._http_client = httpx.AsyncClient(trust_env=False)
+        self._http_client = httpx.AsyncClient(
+            trust_env=False,
+            timeout=httpx.Timeout(10.0),
+        )
 
     def get_auth_params(self):
         token, salt = generate_auth(self.password)

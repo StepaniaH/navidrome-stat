@@ -19,6 +19,7 @@ from src.sessions import PlaybackSessionTracker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", 10))

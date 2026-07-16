@@ -2,6 +2,49 @@ import aiosqlite
 import os
 
 DB_PATH = os.getenv("DATABASE_URL", "navidrome_stats.db")
+SCHEMA_VERSION = 1
+
+
+async def _get_schema_version(db: aiosqlite.Connection) -> int:
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS schema_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    async with db.execute(
+        "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row is None:
+        return 0
+    return int(row[0])
+
+
+async def _set_schema_version(db: aiosqlite.Connection, version: int) -> None:
+    await db.execute(
+        """
+        INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (str(version),),
+    )
+
+
+async def _apply_migrations(db: aiosqlite.Connection) -> None:
+    version = await _get_schema_version(db)
+
+    if version < 1:
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_history_user_track
+            ON play_history(username, track_id)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_history_played_at
+            ON play_history(played_at DESC)
+        """)
+        await _set_schema_version(db, 1)
+
 
 async def init_db(db_path: str = DB_PATH):
     """Initializes the database and creates the play_history table."""
@@ -20,7 +63,9 @@ async def init_db(db_path: str = DB_PATH):
                 listen_duration_sec INTEGER
             )
         """)
+        await _apply_migrations(db)
         await db.commit()
+
 
 async def save_play_session(session: dict, db_path: str = DB_PATH):
     """Saves a completed playback session to the database."""
@@ -43,6 +88,7 @@ async def save_play_session(session: dict, db_path: str = DB_PATH):
         ))
         await db.commit()
 
+
 async def get_player_stats(db_path: str = DB_PATH):
     """Returns the distribution of client usage based on play counts."""
     async with aiosqlite.connect(db_path) as db:
@@ -56,6 +102,7 @@ async def get_player_stats(db_path: str = DB_PATH):
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
+
 async def get_transcoding_stats(db_path: str = DB_PATH):
     """Returns the ratio of transcoded vs direct play counts."""
     async with aiosqlite.connect(db_path) as db:
@@ -68,15 +115,20 @@ async def get_transcoding_stats(db_path: str = DB_PATH):
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
+
 async def get_playback_history(limit: int = 10, db_path: str = DB_PATH):
-    """Returns top tracks and play counts."""
+    """Returns recent tracks with aggregated play counts."""
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT username, title, artist, album, COUNT(*) as play_count
-            FROM play_history
-            GROUP BY username, track_id
-            ORDER BY MAX(played_at) DESC, play_count DESC
+            SELECT ph.username, ph.title, ph.artist, ph.album, agg.play_count
+            FROM (
+                SELECT username, track_id, COUNT(*) AS play_count, MAX(id) AS latest_id
+                FROM play_history
+                GROUP BY username, track_id
+            ) agg
+            JOIN play_history ph ON ph.id = agg.latest_id
+            ORDER BY ph.played_at DESC, agg.play_count DESC
             LIMIT ?
         """, (limit,)) as cursor:
             rows = await cursor.fetchall()

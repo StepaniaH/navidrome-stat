@@ -140,23 +140,38 @@
 
         function renderHistoryTable(data) {
             const tbody = document.getElementById('historyTable');
-            tbody.innerHTML = '';
-            
+            tbody.replaceChildren();
+
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No playback history available yet.</td></tr>';
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 5;
+                td.className = 'px-6 py-4 text-center text-gray-500';
+                td.textContent = 'No playback history available yet.';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
                 return;
             }
 
             data.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-gray-50 transition-colors';
-                tr.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">${item.username || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-gray-700">${item.title || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-gray-500">${item.artist || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-gray-500">${item.album || '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap font-semibold text-indigo-600">${item.play_count}</td>
-                `;
+
+                const cells = [
+                    ['px-6 py-4 whitespace-nowrap font-medium text-gray-900', item.username || '-'],
+                    ['px-6 py-4 whitespace-nowrap text-gray-700', item.title || '-'],
+                    ['px-6 py-4 whitespace-nowrap text-gray-500', item.artist || '-'],
+                    ['px-6 py-4 whitespace-nowrap text-gray-500', item.album || '-'],
+                    ['px-6 py-4 whitespace-nowrap font-semibold text-indigo-600', String(item.play_count ?? 0)],
+                ];
+
+                cells.forEach(([className, value]) => {
+                    const td = document.createElement('td');
+                    td.className = className;
+                    td.textContent = value;
+                    tr.appendChild(td);
+                });
+
                 tbody.appendChild(tr);
             });
         }

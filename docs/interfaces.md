@@ -22,7 +22,7 @@
 | `/health` | `{"status":"ok"}` | 受支持但可演进 | 仅表示请求处理成功，不验证依赖 |
 | `/api/stats/players` | JSON 数组，元素为 `client_name`、`count` | 受支持但可演进 | 按播放记录数降序；名称可为 null |
 | `/api/stats/transcoding` | JSON 数组，元素为 `is_transcoding`、`count` | 受支持但可演进 | `is_transcoding` 通常为 0 或 1，也可能因既有数据为 null |
-| `/api/stats/history` | JSON 数组，元素为 `username`、`title`、`artist`、`album`、`play_count` | 受支持但可演进 | 查询参数 `limit` 默认 10，仅做整数解析 |
+| `/api/stats/history` | JSON 数组，元素为 `username`、`title`、`artist`、`album`、`play_count` | 受支持但可演进 | 查询参数 `limit` 默认 10，仅做整数解析；按 `username, track_id` 聚合，`title`/`artist`/`album` 取自最新一条记录（`MAX(id)`），按最近 `played_at` 降序 |
 
 当前 history 调用示例：
 
@@ -66,7 +66,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 
 兼容处理仅包括：单个 `entry` 对象会转换为一元素列表；缺失 `isPlaying` 时默认为真。当前没有对其余字段做 schema 验证，缺失 `playerId` 会被字符串化为 `"None"` 并作为会话键。
 
-`httpx.AsyncClient` 使用 `trust_env=False` 与默认超时和 TLS 行为。服务 URL 会移除末尾 `/`；代码没有限制协议，也没有自定义证书、代理或重试配置。
+`httpx.AsyncClient` 使用 `trust_env=False`、10 秒超时与默认 TLS 行为。服务 URL 会移除末尾 `/`；代码没有限制协议，也没有自定义证书、代理或重试配置。应用将 `httpx` 日志级别设为 WARNING，避免 INFO 请求行泄露认证查询参数。
 
 ## 4. 环境变量
 
@@ -82,7 +82,14 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 
 ## 5. SQLite schema
 
-数据库接口为“内部”。当前没有迁移版本；任何字段、约束或索引变更都必须先建立任务并提供既有数据迁移与回滚方案。
+数据库接口为“内部”。`schema_meta` 表记录 `schema_version`（当前 **1**）；`init_db()` 在启动时向前迁移并创建索引。任何字段、约束或索引变更都必须先建立任务并提供既有数据迁移与回滚方案。
+
+表：`schema_meta`
+
+| 列 | SQLite 声明 | 说明 |
+| --- | --- | --- |
+| `key` | `TEXT PRIMARY KEY` | 元数据键，当前使用 `schema_version` |
+| `value` | `TEXT NOT NULL` | 版本号字符串 |
 
 表：`play_history`
 
@@ -99,7 +106,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 | `is_transcoding` | `INTEGER` | 是否存在 `transcodedContentType` | 使用行为数据 |
 | `listen_duration_sec` | `INTEGER` | 观测时长向下取整 | 使用行为数据 |
 
-除主键外各列没有显式 `NOT NULL`、默认值、检查约束或唯一约束。代码创建的表没有索引。
+除主键外各列没有显式 `NOT NULL`、默认值、检查约束或唯一约束。迁移版本 1 创建索引 `idx_play_history_user_track`、`idx_play_history_played_at`。
 
 ## 6. 内部 Python 接口
 
