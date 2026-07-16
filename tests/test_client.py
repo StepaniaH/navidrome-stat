@@ -46,10 +46,8 @@ async def test_get_now_playing(mock_get):
     assert data["subsonic-response"]["status"] == "ok"
     assert len(data["subsonic-response"]["nowPlaying"]["entry"]) == 1
     assert data["subsonic-response"]["nowPlaying"]["entry"][0]["title"] == "Song Title"
-    
-    # Check if params were passed correctly
+
     args, kwargs = mock_get.call_args
-    # First arg is endpoint, second is params if using positional args, but NavidromeClient uses params=params
     params = kwargs.get("params")
     assert params["u"] == "testuser"
     assert params["v"] == "1.16.1"
@@ -57,3 +55,5 @@ async def test_get_now_playing(mock_get):
     assert params["f"] == "json"
     assert "t" in params
     assert "s" in params
+
+    await client.close()

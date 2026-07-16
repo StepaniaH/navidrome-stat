@@ -66,7 +66,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 
 兼容处理仅包括：单个 `entry` 对象会转换为一元素列表；缺失 `isPlaying` 时默认为真。当前没有对其余字段做 schema 验证，缺失 `playerId` 会被字符串化为 `"None"` 并作为会话键。
 
-`httpx.AsyncClient` 使用默认超时和 TLS 行为。服务 URL 会移除末尾 `/`；代码没有限制协议，也没有自定义证书、代理或重试配置。
+`httpx.AsyncClient` 使用 `trust_env=False` 与默认超时和 TLS 行为。服务 URL 会移除末尾 `/`；代码没有限制协议，也没有自定义证书、代理或重试配置。
 
 ## 4. 环境变量
 
@@ -112,7 +112,8 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - `src.database.get_player_stats(db_path=...)`
 - `src.database.get_transcoding_stats(db_path=...)`
 - `src.database.get_playback_history(limit=..., db_path=...)`
-- `src.main.finalize_session(player_id)`、`polling_loop()`
+- `src.sessions.PlaybackSessionTracker(...)`、`process_poll(...)`、`finalize_session(...)`、`finalize_all()`
+- `src.main.finalize_session(player_id)`、`polling_loop(client)`
 
 ## 7. 变更流程
 

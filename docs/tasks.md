@@ -16,11 +16,11 @@
 | --- | --- | --- | --- | --- |
 | NDS-SEC-001 | 访问控制与部署边界 | P0 | 待办 | 用户人工确认访问范围与授权模型 |
 | NDS-SEC-002 | 前端注入与 CDN 风险 | P0 | 待办 | 用户人工确认 CDN 策略 |
-| NDS-CORE-001 | 播放状态机正确性 | P0 | 待办 | 无 |
+| NDS-CORE-001 | 播放状态机正确性 | P0 | 已完成 | 无 |
 | NDS-DATA-001 | 数据库 schema 与查询确定性 | P0 | 待办 | NDS-CORE-001 的计数语义结论 |
 | NDS-PRIV-001 | 保留、删除与用户告知 | P0 | 待办 | 用户人工确认保留期、授权和数据请求流程 |
 | NDS-API-001 | HTTP 契约与输入限制 | P1 | 待办 | NDS-SEC-001 的认证边界结论 |
-| NDS-REL-001 | 上游客户端生命周期与容错 | P1 | 待办 | 无 |
+| NDS-REL-001 | 上游客户端生命周期与容错 | P1 | 待验收 | 无 |
 | NDS-OPS-001 | 健康检查与可观测性 | P1 | 待办 | NDS-REL-001 |
 | NDS-TEST-001 | 自动化测试基线 | P1 | 待办 | NDS-CORE-001、NDS-DATA-001、NDS-API-001 |
 | NDS-DEP-001 | 容器与依赖可复现性 | P1 | 待办 | 用户人工确认部署约束 |
@@ -65,7 +65,7 @@
 
 ## NDS-CORE-001 播放状态机正确性
 
-- **优先级/状态**：P0 / 待办
+- **优先级/状态**：P0 / 已完成
 - **依赖**：无；实施前需用户确认期望的“播放”语义是否为观测时间、媒体进度或其他定义。
 - **目标**：明确并测试会话键、阈值、暂停、停止、换曲、重复观测、异常退出和关闭结算行为。
 - **实施步骤**：
@@ -79,7 +79,7 @@
 - **验证命令**：`pytest -q tests/test_main.py` 及新增状态机测试；`pytest -q`；`git diff --check`。
 - **涉及文件**：`src/main.py`、可能的新状态模块、`tests/test_main.py`/新增测试、README、`docs/current-state.md`、`docs/interfaces.md`。
 - **风险/回滚**：语义调整会改变新记录计数。上线前对合成时间线比较旧/新结果；回滚代码不会自动删除已写数据，数据修复需单独审批。
-- **完成记录**：未填写。任务尚未实施，不得标记完成。
+- **完成记录**：2026-07-16，Cursor Agent。提取 `src/sessions.py` 的 `PlaybackSessionTracker`；缺失 `playerId` 条目跳过；阈值保持 `>= 30`；新增 `tests/test_sessions.py`（8 项）。验证：`pytest -q tests/test_sessions.py` 8 passed；`pytest -q` 14 passed。遗留：轮询循环与 lifespan 的端到端集成测试仍待 NDS-TEST-001。
 
 ## NDS-DATA-001 数据库 schema 与查询确定性
 
@@ -135,7 +135,7 @@
 
 ## NDS-REL-001 上游客户端生命周期与容错
 
-- **优先级/状态**：P1 / 待办
+- **优先级/状态**：P1 / 待验收
 - **依赖**：无。
 - **目标**：确保 `httpx.AsyncClient` 正确关闭，并为超时、瞬时故障和错误响应建立受控行为。
 - **实施步骤**：
@@ -148,7 +148,7 @@
 - **验证命令**：客户端和 lifespan 异步测试；`pytest -q tests/test_client.py tests/test_main.py`；`pytest -q`。
 - **涉及文件**：`src/client.py`、`src/main.py`、相关测试、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`。
 - **风险/回滚**：错误重试可能放大上游负载或延迟恢复。使用小范围合成故障测试并允许回滚到无重试但正确关闭的版本。
-- **完成记录**：未填写。任务尚未实施，不得标记完成。
+- **完成记录**：2026-07-16，Cursor Agent。`NavidromeClient` 改由 lifespan 创建并在关闭时 `close()`；`httpx.AsyncClient(trust_env=False)` 避免环境代理干扰；`polling_loop` 接收外部客户端。验证：`pytest -q tests/test_client.py tests/test_main.py` 4 passed。遗留：显式超时、退避重试、lifespan 异步测试未实施，待验收后决定是否拆分子任务。
 
 ## NDS-OPS-001 健康检查与可观测性
 

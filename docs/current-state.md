@@ -7,6 +7,7 @@
 | 组件 | 当前职责 | 代码位置 |
 | --- | --- | --- |
 | FastAPI 应用 | 生命周期、后台轮询、静态页面和统计 API | `src/main.py` |
+| 播放会话追踪 | 进程内会话状态机、阈值结算与缺失 ID 过滤 | `src/sessions.py` |
 | Navidrome 客户端 | 生成 Subsonic token/salt，调用 `getNowPlaying` | `src/client.py` |
 | SQLite 层 | 建表、写入播放会话、执行三类聚合查询 | `src/database.py` |
 | Dashboard | 请求统计 API，使用 ECharts 展示图表和表格 | `src/static/index.html` |
@@ -16,7 +17,7 @@
 
 1. FastAPI lifespan 调用 `init_db()`，随后创建 `polling_loop()` 后台任务。
 2. `NavidromeClient` 从构造参数或环境变量读取连接信息，每次请求生成六位 salt 和 MD5 token。
-3. 轮询循环调用上游 `/rest/getNowPlaying`，按 `playerId` 在进程内的 `active_sessions` 字典追踪会话。
+3. 轮询循环调用上游 `/rest/getNowPlaying`，由 `PlaybackSessionTracker` 按 `playerId` 追踪会话；缺失 `playerId` 的条目被跳过。
 4. 同一播放器继续播放同一 `track_id` 时只更新 `last_seen_at`；换曲、停止后超过 30 秒或应用关闭时尝试结算。
 5. 结算以 `last_seen_at - first_seen_at` 计算观测时长。时长大于等于 30 秒才写入一条 `play_history` 记录。
 6. Dashboard 初次加载并每 10 秒请求三个统计 API；API 直接查询 SQLite 并返回 JSON。
@@ -28,9 +29,8 @@
 - 时长是服务观测到同一播放器和曲目的 UTC 墙钟时间差，不读取歌曲进度，也不等于精确播放时长。
 - `isPlaying` 缺失时按正在播放处理；明确为假时该条目被跳过。
 - 消失或暂停的播放器只有在距最后一次观测至少 30 秒后结算；换曲会立即结算旧会话。
-- 活跃会话只存在于单个进程内。异常退出会丢失未结算会话；多 worker 或多副本之间不共享状态。
-- 关闭流程会结算仍在内存中的会话，但只有截至最后一次轮询的观测时长达到阈值时才写入。
-- 上游错误和轮询异常被记录后继续下一轮；当前没有退避、熔断或持久化重试。
+- 活跃会话由 `PlaybackSessionTracker` 维护，只存在于单个进程内。异常退出会丢失未结算会话；多 worker 或多副本之间不共享状态。
+- `NavidromeClient` 在 lifespan 中创建并在关闭时 `close()`；轮询失败时仍继续下一轮，当前没有退避、熔断或持久化重试。
 
 ## 3. 持久化与查询
 
@@ -70,10 +70,11 @@
 - `/health`、播放器统计路由和转码统计路由的基本响应。
 - Subsonic token/salt 的长度及 `getNowPlaying` 请求参数。
 - SQLite 建表后保存一条会话记录。
+- 播放会话状态机：同曲续播、换曲结算、暂停跳过、缺失 `playerId`、30 秒阈值、陈旧会话与关闭批量结算。
 
 当前测试未覆盖：
 
-- 轮询状态机、30 秒边界、暂停、停止、换曲、上游错误和关闭结算。
+- 轮询循环与 lifespan 的集成、上游错误和关闭结算端到端路径。
 - history 路由及三类数据库聚合查询的边界行为。
 - lifespan 启动失败、后台任务存活和 HTTP 客户端关闭。
 - 输入限制、XSS、认证、隐私、并发、多进程和数据库迁移。
