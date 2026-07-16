@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>隐私与数据设置 · Navidrome Statistics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        ink: { 950: '#0a0a0f', 900: '#12121a', 800: '#1a1a26', 700: '#252536' },
+                        accent: { DEFAULT: '#a78bfa', dim: '#7c5fd4', glow: '#c4b5fd' },
+                        mint: { DEFAULT: '#34d399', dim: '#059669' },
+                    },
+                },
+            },
+        };
+    </script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0a0a0f; }
+        .mesh-bg {
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(167, 139, 250, 0.18), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 0%, rgba(52, 211, 153, 0.08), transparent);
+        }
+        input[type=range] { accent-color: #a78bfa; }
+    </style>
+</head>
+<body class="mesh-bg text-slate-100 min-h-screen antialiased">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        <header class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <a href="/" class="text-xs font-mono uppercase tracking-widest text-slate-500 hover:text-accent transition-colors">← 返回统计</a>
+                <h1 class="text-2xl font-bold text-white mt-2">隐私与数据设置</h1>
+                <p class="text-sm text-slate-400 mt-1">你对数据拥有完全控制权：保留、导出、导入与删除。</p>
+            </div>
+        </header>
+
+        <section class="mb-6 rounded-2xl bg-ink-900/80 border border-mint/20 p-5 text-sm text-slate-300 leading-relaxed">
+            <h2 class="text-mint font-semibold mb-2">隐私原则</h2>
+            <ul class="list-disc pl-5 space-y-1 text-slate-400">
+                <li>播放数据默认<strong class="text-slate-200">永久保留</strong>，只有你主动修改保留策略或删除时才会移除。</li>
+                <li>删除与过期清理前会显示<strong class="text-slate-200">影响条数预览</strong>，需你明确确认后才会执行。</li>
+                <li>导出仅包含所选用户的数据；服务不会在日志中记录导出内容。</li>
+                <li>请确保被统计的 Navidrome 用户知悉数据被收集，并由部署方负责告知与合规。</li>
+            </ul>
+        </section>
+
+        <div id="errorBanner" class="hidden mb-6 px-4 py-3 rounded-xl bg-red-950/50 border border-red-500/20 text-red-300 text-sm" role="alert"></div>
+        <div id="successBanner" class="hidden mb-6 px-4 py-3 rounded-xl bg-emerald-950/40 border border-emerald-500/20 text-emerald-300 text-sm" role="status"></div>
+
+        <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6 mb-6" aria-labelledby="retentionTitle">
+            <h2 id="retentionTitle" class="text-lg font-semibold text-white mb-4">数据保留</h2>
+
+            <label class="flex items-center gap-3 mb-4 cursor-pointer">
+                <input id="permanentToggle" type="checkbox" checked class="w-4 h-4 rounded border-white/20 bg-ink-800 text-accent focus:ring-accent/50">
+                <span class="text-sm text-slate-300">永久保留（默认）</span>
+            </label>
+
+            <div id="retentionSliderWrap" class="hidden space-y-3 mb-4">
+                <div class="flex justify-between text-xs text-slate-500 font-mono">
+                    <span>1 天</span>
+                    <span id="retentionValue">90 天</span>
+                    <span>360 天</span>
+                </div>
+                <input id="retentionSlider" type="range" min="1" max="360" value="90" class="w-full">
+            </div>
+
+            <p id="retentionPreview" class="text-sm text-slate-500 mb-4">超出保留期的记录：0 条（预览）</p>
+
+            <div class="flex flex-wrap gap-3">
+                <button id="saveRetentionBtn" type="button" class="px-4 py-2 rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors">保存保留策略</button>
+                <button id="applyRetentionBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">确认清理过期数据</button>
+            </div>
+        </section>
+
+        <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="userDataTitle">
+            <h2 id="userDataTitle" class="text-lg font-semibold text-white mb-4">按用户管理数据</h2>
+
+            <label class="block mb-4">
+                <span class="text-xs text-slate-500 uppercase tracking-wider">选择用户</span>
+                <select id="userSelect" class="mt-2 w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/50">
+                    <option value="">加载中…</option>
+                </select>
+            </label>
+
+            <p id="userPreview" class="text-sm text-slate-500 mb-4">该用户记录数：—</p>
+
+            <div class="flex flex-wrap gap-3 mb-6">
+                <button id="exportBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300">导出 JSON</button>
+                <label class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 cursor-pointer">
+                    导入 JSON
+                    <input id="importFile" type="file" accept="application/json,.json" class="hidden">
+                </label>
+                <button id="deleteUserBtn" type="button" class="px-4 py-2 rounded-lg bg-red-950/60 hover:bg-red-900/60 border border-red-500/30 text-sm text-red-300">删除该用户全部数据</button>
+            </div>
+
+            <label class="flex items-center gap-2 text-sm text-slate-400">
+                <input id="mergeImport" type="checkbox" checked class="w-4 h-4 rounded border-white/20 bg-ink-800 text-accent">
+                导入时合并（不勾选则先清空该用户再导入）
+            </label>
+        </section>
+    </div>
+
+    <div id="loginOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-ink-950/90 backdrop-blur-sm px-4">
+        <form id="loginForm" class="w-full max-w-sm rounded-2xl bg-ink-900 border border-white/10 p-6 space-y-4">
+            <h2 class="text-lg font-semibold text-white">需要访问令牌</h2>
+            <input id="loginToken" type="password" required class="w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2 text-sm text-white" placeholder="STATS_API_TOKEN" />
+            <p id="loginError" class="hidden text-sm text-red-400"></p>
+            <button type="submit" class="w-full rounded-lg bg-accent text-white py-2.5 text-sm">登录</button>
+        </form>
+    </div>
+
+    <script>
+        const fetchOptions = { credentials: 'same-origin' };
+
+        function showError(msg) {
+            const el = document.getElementById('errorBanner');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+            document.getElementById('successBanner').classList.add('hidden');
+        }
+
+        function showSuccess(msg) {
+            const el = document.getElementById('successBanner');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+            document.getElementById('errorBanner').classList.add('hidden');
+        }
+
+        function showLogin() {
+            document.getElementById('loginOverlay').classList.remove('hidden');
+        }
+
+        async function apiFetch(url, options = {}) {
+            const response = await fetch(url, { ...fetchOptions, ...options });
+            if (response.status === 401) {
+                showLogin();
+                throw new Error('unauthorized');
+            }
+            return response;
+        }
+
+        async function submitLogin(token) {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ token }),
+            });
+            if (!response.ok) throw new Error('invalid token');
+            document.getElementById('loginOverlay').classList.add('hidden');
+            await bootstrap();
+        }
+
+        function getRetentionDaysFromUi() {
+            if (document.getElementById('permanentToggle').checked) return null;
+            return Number(document.getElementById('retentionSlider').value);
+        }
+
+        function applyRetentionUi(permanent, days) {
+            document.getElementById('permanentToggle').checked = permanent;
+            document.getElementById('retentionSliderWrap').classList.toggle('hidden', permanent);
+            if (!permanent && days) {
+                document.getElementById('retentionSlider').value = String(days);
+                document.getElementById('retentionValue').textContent = days + ' 天';
+            }
+        }
+
+        async function refreshRetentionPreview() {
+            const days = getRetentionDaysFromUi();
+            const query = days === null ? '' : '?days=' + days;
+            const response = await apiFetch('/api/privacy/retention/preview' + query);
+            const data = await response.json();
+            const label = data.retention_days === null ? '永久保留' : data.retention_days + ' 天';
+            document.getElementById('retentionPreview').textContent =
+                '超出保留期（' + label + '）的记录：' + data.records_to_delete + ' 条（预览，尚未删除）';
+        }
+
+        async function loadSettings() {
+            const response = await apiFetch('/api/privacy/settings');
+            const data = await response.json();
+            applyRetentionUi(data.permanent, data.retention_days || 90);
+            await refreshRetentionPreview();
+        }
+
+        async function loadUsers() {
+            const response = await apiFetch('/api/privacy/users');
+            const users = await response.json();
+            const select = document.getElementById('userSelect');
+            select.textContent = '';
+            if (users.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = '暂无用户数据';
+                select.appendChild(opt);
+                return;
+            }
+            users.forEach((user) => {
+                const opt = document.createElement('option');
+                opt.value = user.username;
+                opt.textContent = user.username + ' (' + user.record_count + ' 条)';
+                select.appendChild(opt);
+            });
+            await refreshUserPreview();
+        }
+
+        async function refreshUserPreview() {
+            const username = document.getElementById('userSelect').value;
+            if (!username) {
+                document.getElementById('userPreview').textContent = '该用户记录数：0';
+                return;
+            }
+            const response = await apiFetch('/api/privacy/users/' + encodeURIComponent(username) + '/delete/preview');
+            const data = await response.json();
+            document.getElementById('userPreview').textContent =
+                '该用户记录数：' + data.records_to_delete + ' 条（删除预览）';
+        }
+
+        document.getElementById('permanentToggle').addEventListener('change', (event) => {
+            document.getElementById('retentionSliderWrap').classList.toggle('hidden', event.target.checked);
+            refreshRetentionPreview().catch(() => {});
+        });
+
+        document.getElementById('retentionSlider').addEventListener('input', (event) => {
+            document.getElementById('retentionValue').textContent = event.target.value + ' 天';
+            refreshRetentionPreview().catch(() => {});
+        });
+
+        document.getElementById('saveRetentionBtn').addEventListener('click', async () => {
+            try {
+                const response = await apiFetch('/api/privacy/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ retention_days: getRetentionDaysFromUi() }),
+                });
+                if (!response.ok) throw new Error('save failed');
+                showSuccess('保留策略已保存。');
+                await refreshRetentionPreview();
+            } catch (error) {
+                if (error.message !== 'unauthorized') showError('保存失败，请重试。');
+            }
+        });
+
+        document.getElementById('applyRetentionBtn').addEventListener('click', async () => {
+            const days = getRetentionDaysFromUi();
+            if (days === null) {
+                showError('当前为永久保留，无需清理。');
+                return;
+            }
+            await refreshRetentionPreview();
+            const previewText = document.getElementById('retentionPreview').textContent;
+            if (!confirm('此操作不可撤销。\n\n' + previewText + '\n\n确定要删除这些过期记录吗？')) return;
+            try {
+                const response = await apiFetch('/api/privacy/retention/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm: true }),
+                });
+                const data = await response.json();
+                showSuccess('已清理 ' + data.deleted + ' 条过期记录。');
+                await loadUsers();
+                await refreshRetentionPreview();
+            } catch (error) {
+                if (error.message !== 'unauthorized') showError('清理失败，请重试。');
+            }
+        });
+
+        document.getElementById('exportBtn').addEventListener('click', async () => {
+            const username = document.getElementById('userSelect').value;
+            if (!username) return showError('请先选择用户。');
+            try {
+                const response = await apiFetch('/api/privacy/users/' + encodeURIComponent(username) + '/export');
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'navidrome-stat-' + username + '.json';
+                link.click();
+                URL.revokeObjectURL(url);
+                showSuccess('已导出用户「' + username + '」的数据。');
+            } catch (error) {
+                if (error.message !== 'unauthorized') showError('导出失败。');
+            }
+        });
+
+        document.getElementById('importFile').addEventListener('change', async (event) => {
+            const username = document.getElementById('userSelect').value;
+            const file = event.target.files[0];
+            event.target.value = '';
+            if (!username || !file) return;
+            try {
+                const text = await file.text();
+                const payload = JSON.parse(text);
+                if (!confirm('确定要为「' + username + '」导入 ' + (payload.records?.length || 0) + ' 条记录吗？')) return;
+                const response = await apiFetch('/api/privacy/users/' + encodeURIComponent(username) + '/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        payload,
+                        merge: document.getElementById('mergeImport').checked,
+                    }),
+                });
+                const data = await response.json();
+                showSuccess('已导入 ' + data.imported + ' 条记录。');
+                await loadUsers();
+            } catch (error) {
+                if (error.message !== 'unauthorized') showError('导入失败，请检查 JSON 格式与用户名是否匹配。');
+            }
+        });
+
+        document.getElementById('deleteUserBtn').addEventListener('click', async () => {
+            const username = document.getElementById('userSelect').value;
+            if (!username) return showError('请先选择用户。');
+            await refreshUserPreview();
+            const preview = document.getElementById('userPreview').textContent;
+            if (!confirm('此操作不可撤销。\n\n' + preview + '\n\n确定删除用户「' + username + '」的全部播放数据吗？')) return;
+            try {
+                const response = await apiFetch('/api/privacy/users/' + encodeURIComponent(username) + '/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm: true }),
+                });
+                const data = await response.json();
+                showSuccess('已删除 ' + data.deleted + ' 条记录。');
+                await loadUsers();
+            } catch (error) {
+                if (error.message !== 'unauthorized') showError('删除失败。');
+            }
+        });
+
+        document.getElementById('userSelect').addEventListener('change', () => {
+            refreshUserPreview().catch(() => {});
+        });
+
+        document.getElementById('loginForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            try {
+                await submitLogin(document.getElementById('loginToken').value);
+            } catch (error) {
+                document.getElementById('loginError').textContent = '令牌无效';
+                document.getElementById('loginError').classList.remove('hidden');
+            }
+        });
+
+        async function bootstrap() {
+            try {
+                const statusRes = await fetch('/api/auth/status', fetchOptions);
+                if (statusRes.ok) {
+                    const status = await statusRes.json();
+                    if (status.auth_required) {
+                        const probe = await fetch('/api/privacy/settings', fetchOptions);
+                        if (probe.status === 401) {
+                            showLogin();
+                            return;
+                        }
+                    }
+                }
+                await loadSettings();
+                await loadUsers();
+            } catch (error) {
+                showError('无法加载设置，请检查服务是否运行。');
+            }
+        }
+
+        bootstrap();
+    </script>
+</body>
+</html>

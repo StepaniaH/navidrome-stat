@@ -8,8 +8,9 @@
 2. [`current-state.md`](current-state.md)：当前架构、运行行为、测试覆盖和已知差异。
 3. [`interfaces.md`](interfaces.md)：HTTP、Subsonic、环境变量和 SQLite 接口登记。
 4. [`privacy.md`](privacy.md)：数据分类、敏感值处理和必须由用户确认的部署事项。
-5. [`tasks.md`](tasks.md)：唯一的后续任务清单；实施工作按任务 ID 领取和验收。
-6. [`../README.md`](../README.md)：面向使用者的项目介绍和快速启动。
+5. [`security.md`](security.md)：威胁模型、访问控制与前端安全策略。
+6. [`tasks.md`](tasks.md)：唯一的后续任务清单；实施工作按任务 ID 领取和验收。
+7. [`../README.md`](../README.md)：面向使用者的项目介绍和快速启动。
 
 ## 文档职责
 
@@ -18,6 +19,7 @@
 | `current-state.md` | 可由代码、配置、测试直接证明的现状和差异 | 尚未实现的目标状态 |
 | `interfaces.md` | 对内外接口字段、稳定性、约束和变更流程 | 真实密码、token、服务器地址或数据库内容 |
 | `privacy.md` | 数据类别、处理路径、风险和人工确认项 | 对未知部署环境的推断 |
+| `security.md` | 威胁模型、认证边界、CSP 与部署回滚 | 真实地址、令牌或代理配置 |
 | `tasks.md` | 可执行步骤、依赖、验收、验证和状态 | 未经验证的“已完成”声明 |
 
 ## 维护规则

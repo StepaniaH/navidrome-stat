@@ -6,8 +6,13 @@ services:
       - "39421:39421"
     volumes:
       - ./navidrome_stats.db:/app/navidrome_stats.db
-    env_file:
-      - .env
+    environment:
+      NAVIDROME_URL: ${NAVIDROME_URL:-http://navidrome.example.invalid:4533}
+      NAVIDROME_USER: ${NAVIDROME_USER:-example_user}
+      NAVIDROME_PASS: ${NAVIDROME_PASS:-placeholder_pass}
+      POLL_INTERVAL: ${POLL_INTERVAL:-10}
+      DATABASE_URL: ${DATABASE_URL:-/app/navidrome_stats.db}
+      STATS_API_TOKEN: ${STATS_API_TOKEN:-}
     restart: unless-stopped
     healthcheck:
       test:

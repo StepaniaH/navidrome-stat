@@ -26,7 +26,7 @@
             },
         };
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" integrity="sha384-o5uz97et3bErHvpKfD4Jz4n0JfhJDWABFuF4NP+iEEDxE1VwMWJ19QGR0lqFZnr6" crossorigin="anonymous"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -82,6 +82,9 @@
                         <span id="statusDot" class="w-2 h-2 rounded-full bg-slate-600"></span>
                         <span id="statusText">连接中…</span>
                     </div>
+                    <a href="/settings" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-xs text-slate-300 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">
+                        隐私设置
+                    </a>
                     <button id="refreshBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-xs text-slate-300 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50" aria-label="手动刷新">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         刷新
@@ -171,6 +174,24 @@
         </footer>
     </div>
 
+    <div id="loginOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-ink-950/90 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+        <form id="loginForm" class="w-full max-w-sm rounded-2xl bg-ink-900 border border-white/10 shadow-card p-6 space-y-4">
+            <div>
+                <h2 id="loginTitle" class="text-lg font-semibold text-white">需要访问令牌</h2>
+                <p class="text-sm text-slate-400 mt-1">输入管理员配置的 STATS_API_TOKEN 以查看统计数据。</p>
+            </div>
+            <label class="block">
+                <span class="text-xs text-slate-500 uppercase tracking-wider">访问令牌</span>
+                <input id="loginToken" type="password" autocomplete="current-password" required
+                    class="mt-2 w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/50" />
+            </label>
+            <p id="loginError" class="hidden text-sm text-red-400" role="alert"></p>
+            <button type="submit" class="w-full rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium py-2.5 transition-colors">
+                登录
+            </button>
+        </form>
+    </div>
+
     <script>
         const REFRESH_MS = 10000;
         const HIDDEN_REFRESH_MS = 30000;
@@ -182,6 +203,41 @@
         let fetchInFlight = false;
         let refreshTimer = null;
         let hasLoadedOnce = false;
+        let authRequired = false;
+
+        const fetchOptions = { credentials: 'same-origin' };
+
+        function showLogin(message) {
+            const overlay = document.getElementById('loginOverlay');
+            const errorEl = document.getElementById('loginError');
+            overlay.classList.remove('hidden');
+            if (message) {
+                errorEl.textContent = message;
+                errorEl.classList.remove('hidden');
+            } else {
+                errorEl.classList.add('hidden');
+            }
+            setStatus('error', '需要登录');
+        }
+
+        function hideLogin() {
+            document.getElementById('loginOverlay').classList.add('hidden');
+            document.getElementById('loginError').classList.add('hidden');
+        }
+
+        async function submitLogin(token) {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ token }),
+            });
+            if (!response.ok) {
+                throw new Error('invalid token');
+            }
+            hideLogin();
+            await fetchStats();
+        }
 
         const chartBase = {
             backgroundColor: 'transparent',
@@ -415,11 +471,16 @@
 
             try {
                 const [summaryRes, playersRes, transcodingRes, historyRes] = await Promise.all([
-                    fetch('/api/stats/summary'),
-                    fetch('/api/stats/players'),
-                    fetch('/api/stats/transcoding'),
-                    fetch('/api/stats/history?limit=10'),
+                    fetch('/api/stats/summary', fetchOptions),
+                    fetch('/api/stats/players', fetchOptions),
+                    fetch('/api/stats/transcoding', fetchOptions),
+                    fetch('/api/stats/history?limit=10', fetchOptions),
                 ]);
+
+                if ([summaryRes, playersRes, transcodingRes, historyRes].some(r => r.status === 401)) {
+                    showLogin('访问令牌无效或已过期，请重新登录。');
+                    return;
+                }
 
                 if (!summaryRes.ok || !playersRes.ok || !transcodingRes.ok || !historyRes.ok) {
                     throw new Error('部分数据请求失败 (' + [summaryRes, playersRes, transcodingRes, historyRes].filter(r => !r.ok).map(r => r.status).join(', ') + ')');
@@ -461,6 +522,17 @@
 
         document.getElementById('refreshBtn').addEventListener('click', fetchStats);
 
+        document.getElementById('loginForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const token = document.getElementById('loginToken').value;
+            try {
+                await submitLogin(token);
+                document.getElementById('loginToken').value = '';
+            } catch (error) {
+                showLogin('令牌无效，请重试。');
+            }
+        });
+
         document.addEventListener('visibilitychange', () => {
             scheduleRefresh();
             if (!document.hidden) fetchStats();
@@ -471,8 +543,30 @@
             transcodingChart.resize();
         });
 
-        fetchStats();
-        scheduleRefresh();
+        async function bootstrap() {
+            try {
+                const statusRes = await fetch('/api/auth/status', fetchOptions);
+                if (statusRes.ok) {
+                    const statusData = await statusRes.json();
+                    authRequired = Boolean(statusData.auth_required);
+                }
+            } catch (error) {
+                console.warn('Unable to read auth status', error);
+            }
+
+            if (authRequired) {
+                const probe = await fetch('/api/stats/summary', fetchOptions);
+                if (probe.status === 401) {
+                    showLogin();
+                    return;
+                }
+            }
+
+            await fetchStats();
+            scheduleRefresh();
+        }
+
+        bootstrap();
     </script>
 </body>
 </html>

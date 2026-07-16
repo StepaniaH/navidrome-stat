@@ -14,11 +14,11 @@
 
 | ID | 领域 | 优先级 | 状态 | 依赖 |
 | --- | --- | --- | --- | --- |
-| NDS-SEC-001 | 访问控制与部署边界 | P0 | 待办 | 用户人工确认访问范围与授权模型 |
+| NDS-SEC-001 | 访问控制与部署边界 | P0 | 待验收 | 用户人工确认访问范围与授权模型 |
 | NDS-SEC-002 | 前端注入与 CDN 风险 | P0 | 待验收 | 用户人工确认 CDN 策略 |
 | NDS-CORE-001 | 播放状态机正确性 | P0 | 已完成 | 无 |
 | NDS-DATA-001 | 数据库 schema 与查询确定性 | P0 | 已完成 | NDS-CORE-001 的计数语义结论 |
-| NDS-PRIV-001 | 保留、删除与用户告知 | P0 | 待办 | 用户人工确认保留期、授权和数据请求流程 |
+| NDS-PRIV-001 | 保留、删除与用户告知 | P0 | 待验收 | 用户人工确认保留期、授权和数据请求流程 |
 | NDS-API-001 | HTTP 契约与输入限制 | P1 | 已完成 | NDS-SEC-001 的认证边界结论 |
 | NDS-REL-001 | 上游客户端生命周期与容错 | P1 | 已完成 | 无 |
 | NDS-OPS-001 | 健康检查与可观测性 | P1 | 已完成 | NDS-REL-001 |
@@ -31,7 +31,7 @@
 
 ## NDS-SEC-001 访问控制与部署边界
 
-- **优先级/状态**：P0 / 待办
+- **优先级/状态**：P0 / 待验收
 - **依赖**：用户人工确认服务部署范围、查看者角色、反向代理/TLS 责任和是否需要按用户隔离。
 - **目标**：防止未授权主体读取用户名和播放历史，并形成可验证的部署边界。
 - **实施步骤**：
@@ -44,7 +44,7 @@
 - **验证命令**：`pytest -q`；使用合成凭据执行 API 测试；`git diff --check`；文档链接检查。
 - **涉及文件**：预计 `src/main.py`、新增认证模块（如需要）、`tests/`、`requirements.txt`、README、`docs/`；代理配置仅在用户确认后新增。
 - **风险/回滚**：可能中断现有 Dashboard 或探针访问。保留原部署配置备份，回滚应用与代理变更；不得通过长期关闭认证解决故障。
-- **完成记录**：未填写。任务尚未实施，不得标记完成。
+- **完成记录**：2026-07-16，Cursor Agent。新增可选 `STATS_API_TOKEN`（Bearer + 会话 Cookie 登录）；`/health` 保持公开；威胁模型见 `docs/security.md`；新增 `tests/test_auth.py`。验证：`pytest -q` 46 passed。遗留：反向代理配置示例、按用户隔离、TLS 由部署方确认；默认匿名模式需用户确认仅用于可信网络。
 
 ## NDS-SEC-002 前端注入与 CDN 风险
 
@@ -61,7 +61,7 @@
 - **验证命令**：`pytest -q`；前端浏览器自动化测试；检查页面网络请求和响应头；`git diff --check`。
 - **涉及文件**：`src/static/index.html`、可能的本地静态资源、`src/main.py`、前端/安全测试、`docs/privacy.md`、`docs/interfaces.md`。
 - **风险/回滚**：CSP 或资源改动可能导致样式/图表失效。保留可验证的前一资产版本，回滚时不得恢复不安全的动态 HTML 渲染。
-- **完成记录**：2026-07-16，Cursor Agent。`index.html` 历史表格改用 `textContent`/`createElement` 渲染，移除用户数据 `innerHTML` 注入路径。验证：`pytest -q` 18 passed。遗留：CDN 自托管、SRI、CSP 与安全响应头待用户确认 CDN 策略后实施。
+- **完成记录**：2026-07-16，Cursor Agent。`index.html` 历史表格改用 `textContent`/`createElement` 渲染。2026-07-16 续：ECharts SRI、CSP 与安全响应头；`tests/test_security.py` 合成恶意元数据；Dashboard 登录流与 `credentials: 'same-origin'`。验证：`pytest -q` 46 passed。遗留：Tailwind 自托管、浏览器自动化测试待用户确认 CDN 策略。
 
 ## NDS-CORE-001 播放状态机正确性
 
@@ -101,7 +101,7 @@
 
 ## NDS-PRIV-001 保留、删除与用户告知
 
-- **优先级/状态**：P0 / 待办
+- **优先级/状态**：P0 / 待验收
 - **依赖**：用户人工确认政策依据、被监控用户告知方式、保留期、导出/删除责任人和备份处理。
 - **目标**：让播放行为数据具有明确生命周期和可审计的数据请求流程。
 - **实施步骤**：
@@ -114,7 +114,7 @@
 - **验证命令**：针对合成数据库的保留/导出/删除测试；迁移测试；`pytest -q`；隐私文档人工验收。
 - **涉及文件**：预计数据库服务/管理脚本、`tests/`、`docs/privacy.md`、部署运行手册；用户告知材料位置由用户决定。
 - **风险/回滚**：删除不可逆且可能与备份冲突。强制 dry-run、事务和执行前备份；不允许 AI 未经授权处理真实数据。
-- **完成记录**：未填写。任务尚未实施，不得标记完成。
+- **完成记录**：2026-07-16，Cursor Agent。用户确认：默认永久保留、1–360 天滑轮、按用户导出/导入、隐私优先（预览+确认）。实现 `src/privacy_ops.py`、`/settings` 页面、`/api/privacy/*` 路由、schema v2 与后台保留清理；新增 `tests/test_privacy_ops.py`、`tests/test_privacy_api.py`。验证：`pytest -q` 55 passed；`python3 scripts/check_md_links.py` 通过。遗留：正式用户告知文案由部署方审批；备份副本中的删除边界需运维手册；用户名变更后的数据关联仍按原 username 处理。
 
 ## NDS-API-001 HTTP 契约与输入限制
 
@@ -182,7 +182,7 @@
 - **验证命令**：`pytest -q`；带覆盖率的测试命令（工具选定后登记）；重复执行两次比较结果。
 - **涉及文件**：`tests/`、测试配置、可能的开发依赖文件、README、`docs/current-state.md`。
 - **风险/回滚**：时间相关测试可能不稳定。使用可控时钟和事件同步，不使用长时间真实 sleep；门槛先基于基线制定。
-- **完成记录**：2026-07-16，Cursor Agent。数据库测试改用 `tmp_path` fixture；拆分 dev 依赖；新增 API limit/503 测试；`pytest -q` 29 passed 连续两次可重复。遗留：覆盖率门槛、lifespan 集成测试、浏览器测试未做。
+- **完成记录**：2026-07-16，Cursor Agent。数据库测试改用 `tmp_path` fixture；拆分 dev 依赖；新增 API limit/503 测试。2026-07-16 续：新增 `tests/test_lifespan.py`；`pytest -q` 36 passed。2026-07-16 续：新增 `tests/test_auth.py`、`tests/test_security.py`；`pytest -q` 46 passed。遗留：覆盖率门槛、浏览器自动化测试未做。
 
 ## NDS-DEP-001 容器与依赖可复现性
 
@@ -200,7 +200,7 @@
 - **验证命令**：`docker compose config`；`docker build`；容器用户/文件清单检查；容器烟雾测试；`pytest -q`；选定的依赖扫描命令。
 - **涉及文件**：`Dockerfile`、`docker-compose.yml`、`requirements.txt`/锁文件、可能的 `.dockerignore`、README、`docs/current-state.md`。
 - **风险/回滚**：非 root 迁移可能导致现有数据库不可写；依赖锁定可能暴露兼容问题。先在卷副本测试权限，保留旧镜像标签和数据库备份。
-- **完成记录**：2026-07-16，Cursor Agent。拆分 `requirements-dev.txt`；新增 `.dockerignore` 排除 `.env`/数据库/测试。2026-07-16 续：固定 `requirements.txt`/`requirements-dev.txt` 版本；新增 `requirements.lock` 与 `scripts/refresh_requirements_lock.sh`；Dockerfile 改用 lock 安装。验证：`pytest -q` 31 passed；`docker compose config` 通过。遗留：非 root 用户、基础镜像 digest、容器烟雾测试待用户确认部署约束。
+- **完成记录**：2026-07-16，Cursor Agent。拆分 `requirements-dev.txt`；新增 `.dockerignore` 排除 `.env`/数据库/测试。2026-07-16 续：固定 `requirements.txt`/`requirements-dev.txt` 版本；新增 `requirements.lock` 与 `scripts/refresh_requirements_lock.sh`；Dockerfile 改用 lock 安装。2026-07-16 续：新增 `scripts/docker_smoke_test.sh`（合成凭据、/health 与 /health/ready 校验）；CI 增加 `docker-smoke` job。验证：`pytest -q` 36 passed；`docker compose config` 通过；本地 Docker 未运行时烟雾测试需在 CI 或启动 Docker 后执行。遗留：非 root 用户、基础镜像 digest 待用户确认部署约束。
 
 ## NDS-UI-001 Dashboard 运行状态与可访问性
 
@@ -268,4 +268,4 @@
 - **验证命令**：本地执行全部 CI 命令；创建临时失败用例验证门禁后撤销；检查 CI 权限和日志脱敏。
 - **涉及文件**：CI 配置、测试/开发依赖、文档链接脚本（如提取）、README、`AGENTS.md`。
 - **风险/回滚**：门禁不稳定会阻塞交付。先以非阻断模式观察，稳定后由管理员启用必需检查；不得通过删除测试长期绕过。
-- **完成记录**：2026-07-16，Cursor Agent。新增 `.github/workflows/ci.yml`（pytest、compose config、Markdown 链接）；`scripts/check_md_links.py` 可本地复现。验证：`pytest -q` 31 passed；`python3 scripts/check_md_links.py`；`docker compose config`。遗留：分支保护、依赖漏洞扫描由仓库管理员启用。
+- **完成记录**：2026-07-16，Cursor Agent。新增 `.github/workflows/ci.yml`（pytest、compose config、Markdown 链接）；`scripts/check_md_links.py` 可本地复现。2026-07-16 续：CI 增加 `docker-smoke` job 执行 `scripts/docker_smoke_test.sh`。验证：`pytest -q` 36 passed；`python3 scripts/check_md_links.py`；`docker compose config`。遗留：分支保护、依赖漏洞扫描由仓库管理员启用。

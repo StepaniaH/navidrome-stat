@@ -59,3 +59,57 @@ class ReadinessResponse(BaseModel):
     status: str
     checks: ReadinessChecks
     metrics: ReadinessMetrics
+
+
+class LoginRequest(BaseModel):
+    token: str
+
+
+class AuthStatusResponse(BaseModel):
+    auth_required: bool
+
+
+class PrivacySettingsResponse(BaseModel):
+    retention_days: Optional[int] = None
+    permanent: bool = True
+
+
+class PrivacySettingsUpdate(BaseModel):
+    retention_days: Optional[int] = None
+
+
+class RetentionPreviewResponse(BaseModel):
+    records_to_delete: int
+    retention_days: Optional[int] = None
+
+
+class RetentionApplyResponse(BaseModel):
+    deleted: int
+    retention_days: Optional[int] = None
+
+
+class UserSummary(BaseModel):
+    username: str
+    record_count: int
+
+
+class UserDeletePreviewResponse(BaseModel):
+    records_to_delete: int
+
+
+class UserDeleteResponse(BaseModel):
+    deleted: int
+
+
+class UserImportRequest(BaseModel):
+    payload: dict
+    merge: bool = True
+
+
+class UserImportResponse(BaseModel):
+    imported: int
+    merge: bool
+
+
+class ConfirmRequest(BaseModel):
+    confirm: bool = False

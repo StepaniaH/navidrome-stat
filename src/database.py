@@ -2,7 +2,11 @@ import aiosqlite
 import os
 
 DB_PATH = os.getenv("DATABASE_URL", "navidrome_stats.db")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+
+def _path(db_path: str | None = None) -> str:
+    return DB_PATH if db_path is None else db_path
 
 
 async def _get_schema_version(db: aiosqlite.Connection) -> int:
@@ -45,10 +49,41 @@ async def _apply_migrations(db: aiosqlite.Connection) -> None:
         """)
         await _set_schema_version(db, 1)
 
+    if version < 2:
+        existing = await _get_meta_value(db, "retention_days")
+        if existing is None:
+            await _set_meta_value(db, "retention_days", "permanent")
+        await _set_schema_version(db, 2)
 
-async def init_db(db_path: str = DB_PATH):
+
+async def _get_meta_value(db: aiosqlite.Connection, key: str):
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS schema_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    async with db.execute(
+        "SELECT value FROM schema_meta WHERE key = ?", (key,)
+    ) as cursor:
+        row = await cursor.fetchone()
+    return row[0] if row else None
+
+
+async def _set_meta_value(db: aiosqlite.Connection, key: str, value: str) -> None:
+    await db.execute(
+        """
+        INSERT INTO schema_meta (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (key, value),
+    )
+
+
+async def init_db(db_path: str | None = None):
     """Initializes the database and creates the play_history table."""
-    async with aiosqlite.connect(db_path) as db:
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS play_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,9 +102,10 @@ async def init_db(db_path: str = DB_PATH):
         await db.commit()
 
 
-async def save_play_session(session: dict, db_path: str = DB_PATH):
+async def save_play_session(session: dict, db_path: str | None = None):
     """Saves a completed playback session to the database."""
-    async with aiosqlite.connect(db_path) as db:
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
         await db.execute("""
             INSERT INTO play_history (
                 played_at, username, client_name, track_id,
@@ -89,9 +125,10 @@ async def save_play_session(session: dict, db_path: str = DB_PATH):
         await db.commit()
 
 
-async def get_player_stats(db_path: str = DB_PATH):
+async def get_player_stats(db_path: str | None = None):
     """Returns the distribution of client usage based on play counts."""
-    async with aiosqlite.connect(db_path) as db:
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT client_name, COUNT(*) as count
@@ -103,9 +140,10 @@ async def get_player_stats(db_path: str = DB_PATH):
             return [dict(row) for row in rows]
 
 
-async def get_transcoding_stats(db_path: str = DB_PATH):
+async def get_transcoding_stats(db_path: str | None = None):
     """Returns the ratio of transcoded vs direct play counts."""
-    async with aiosqlite.connect(db_path) as db:
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT is_transcoding, COUNT(*) as count
@@ -116,10 +154,11 @@ async def get_transcoding_stats(db_path: str = DB_PATH):
             return [dict(row) for row in rows]
 
 
-async def ping_db(db_path: str = DB_PATH) -> bool:
+async def ping_db(db_path: str | None = None) -> bool:
     """Returns True when the SQLite database is reachable."""
+    path = _path(db_path)
     try:
-        async with aiosqlite.connect(db_path) as db:
+        async with aiosqlite.connect(path) as db:
             async with db.execute("SELECT 1") as cursor:
                 await cursor.fetchone()
         return True
@@ -127,9 +166,10 @@ async def ping_db(db_path: str = DB_PATH) -> bool:
         return False
 
 
-async def get_summary(db_path: str = DB_PATH):
+async def get_summary(db_path: str | None = None):
     """Returns aggregate listening statistics."""
-    async with aiosqlite.connect(db_path) as db:
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT
@@ -143,9 +183,10 @@ async def get_summary(db_path: str = DB_PATH):
             return dict(row)
 
 
-async def get_playback_history(limit: int = 10, db_path: str = DB_PATH):
+async def get_playback_history(limit: int = 10, db_path: str | None = None):
     """Returns recent tracks with aggregated play counts."""
-    async with aiosqlite.connect(db_path) as db:
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT

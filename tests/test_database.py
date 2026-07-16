@@ -41,7 +41,9 @@ def test_schema_migration_is_idempotent(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'")
-    assert cursor.fetchone()[0] == "1"
+    assert cursor.fetchone()[0] == "2"
+    cursor.execute("SELECT value FROM schema_meta WHERE key = 'retention_days'")
+    assert cursor.fetchone()[0] == "permanent"
     cursor.execute("PRAGMA index_list(play_history)")
     index_names = {row[1] for row in cursor.fetchall()}
     conn.close()

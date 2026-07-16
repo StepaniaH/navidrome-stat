@@ -13,6 +13,7 @@ It runs as a background service, passively monitoring your Navidrome server's Su
 - **Zero-Friction Tracking**: Polls Navidrome `getNowPlaying` and tracks listening sessions in memory. A song counts as one play once it has been observed for **at least 30 seconds** (`>= 30`); the write happens during playback, not only after a track ends.
 - **Repeat Plays**: Listening to the same track again adds another row and increases aggregated play counts.
 - **Client & Transcoding Stats**: Records which app/client you are using (e.g., Amperfy, Feishin) and whether the stream is being transcoded.
+- **Privacy Controls**: Default **permanent** retention with a settings page (`/settings`) to choose 1–360 days or permanent; per-user JSON export/import and deletion with preview-before-confirm.
 - **Built-in Dashboard**: A responsive single-page dashboard built with TailwindCSS and ECharts (loaded from public CDNs).
 - **Lightweight**: Async Python (FastAPI + SQLite) with a small CPU/RAM footprint.
 
@@ -33,10 +34,17 @@ services:
       - "39421:39421"
     volumes:
       - ./navidrome_stats.db:/app/navidrome_stats.db
-    env_file:
-      - .env
+    environment:
+      NAVIDROME_URL: ${NAVIDROME_URL:-http://navidrome.example.invalid:4533}
+      NAVIDROME_USER: ${NAVIDROME_USER:-example_user}
+      NAVIDROME_PASS: ${NAVIDROME_PASS:-placeholder_pass}
+      POLL_INTERVAL: ${POLL_INTERVAL:-10}
+      DATABASE_URL: ${DATABASE_URL:-/app/navidrome_stats.db}
+      STATS_API_TOKEN: ${STATS_API_TOKEN:-}
     restart: unless-stopped
 ```
+
+Compose reads a local `.env` for `${VAR}` substitution when present; CI validates config without that file.
 
 **.env** (placeholders only):
 
@@ -46,6 +54,8 @@ NAVIDROME_USER=example_user
 NAVIDROME_PASS=<set-in-runtime-environment>
 POLL_INTERVAL=10
 DATABASE_URL=/app/navidrome_stats.db
+# Optional: protect dashboard and stats APIs (recommended if not behind a reverse proxy)
+STATS_API_TOKEN=<set-in-runtime-environment>
 ```
 
 2. Start the service:
@@ -54,7 +64,17 @@ DATABASE_URL=/app/navidrome_stats.db
 docker compose up -d
 ```
 
-3. Visit the dashboard at `http://localhost:39421`.
+3. Visit the dashboard at `http://localhost:39421`. Open **隐私设置** (`/settings`) to manage retention and per-user data.
+
+## Privacy & Data Control
+
+- **Default**: play history is kept **permanently** until you change the policy.
+- **Retention**: use `/settings` to set 1–360 days or switch back to permanent. The UI shows how many records would be removed before you confirm cleanup.
+- **Export / import**: download a user's play history as JSON, or import it back (merge or replace).
+- **Delete**: remove all records for a selected user after preview and confirmation.
+- **Your responsibility**: ensure Navidrome users are informed that listening activity is being collected. Set `STATS_API_TOKEN` if the service is reachable beyond a trusted network.
+
+See [`docs/privacy.md`](docs/privacy.md) and [`docs/security.md`](docs/security.md) for full boundaries.
 
 ## How It Works
 
@@ -69,7 +89,7 @@ This service uses **timed polling** plus an **in-memory session tracker** (not p
 **Caveats**
 
 - Reported listen duration is **observed wall-clock time** between polls, not exact player position.
-- The service has **no built-in authentication**; do not expose it to untrusted networks without a reverse proxy or other access control.
+- The service has **optional authentication** via `STATS_API_TOKEN`. Without it, do not expose the service to untrusted networks; use a reverse proxy or set the token.
 - Playback metadata is stored in plaintext SQLite on disk.
 
 ## Development
@@ -112,6 +132,7 @@ pytest -q
 - [当前实现事实](docs/current-state.md)
 - [稳定接口登记](docs/interfaces.md)
 - [隐私与敏感信息确认](docs/privacy.md)
+- [安全与部署边界](docs/security.md)
 - [后续任务列表](docs/tasks.md)
 
 ## License

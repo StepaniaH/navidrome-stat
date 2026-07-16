@@ -33,3 +33,11 @@ jobs:
 
       - name: Check Markdown links
         run: python3 scripts/check_md_links.py
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker smoke test
+        run: bash scripts/docker_smoke_test.sh
