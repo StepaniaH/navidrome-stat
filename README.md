@@ -10,62 +10,67 @@ It runs as a background service, passively monitoring your Navidrome server's Su
 
 ## Features
 
-- **Zero-Friction Tracking**: Uses an intelligent in-memory state machine to track listening sessions. A song is only counted as a "Play" if you listen to it for more than 30 seconds.
-- **Client & Transcoding Stats**: Automatically records which app/client you are using (e.g., Amperfy, Feishin) and whether the stream is being transcoded.
-- **Built-in Dashboard**: A clean, responsive single-page visual dashboard built with TailwindCSS and ECharts.
-- **Lightweight**: Written in Async Python (FastAPI + SQLite), resulting in minimal CPU/RAM footprint.
+- **Zero-Friction Tracking**: Polls Navidrome `getNowPlaying` and tracks listening sessions in memory. A song counts as one play once it has been observed for **at least 30 seconds** (`>= 30`); the write happens during playback, not only after a track ends.
+- **Repeat Plays**: Listening to the same track again adds another row and increases aggregated play counts.
+- **Client & Transcoding Stats**: Records which app/client you are using (e.g., Amperfy, Feishin) and whether the stream is being transcoded.
+- **Built-in Dashboard**: A responsive single-page dashboard built with TailwindCSS and ECharts (loaded from public CDNs).
+- **Lightweight**: Async Python (FastAPI + SQLite) with a small CPU/RAM footprint.
 
 ## Quick Start (Docker)
 
-The easiest way to run Navidrome Statistic is via Docker Compose.
+The easiest way to run Navidrome Statistic is via Docker Compose. The example below matches this repository's [`docker-compose.yml`](docker-compose.yml) service name (`navidrome-stat`).
 
-1. Create a `docker-compose.yml` and a `.env` file in your desired directory.
+1. Clone the repository and create a `.env` file in the project root (never commit it).
 
-**docker-compose.yml:**
+**docker-compose.yml** (already in the repo):
+
 ```yaml
-version: '3.8'
-
 services:
-  navidrome-statistic:
-    build: . # Or use the docker image once published
-    container_name: navidrome-statistic
-    restart: unless-stopped
+  navidrome-stat:
+    build: .
+    container_name: navidrome-stat
     ports:
       - "39421:39421"
-    env_file:
-      - .env
     volumes:
       - ./navidrome_stats.db:/app/navidrome_stats.db
+    env_file:
+      - .env
+    restart: unless-stopped
 ```
 
-**.env:**
+**.env** (placeholders only):
+
 ```env
-# Your Navidrome Server URL (do not include trailing slash)
-NAVIDROME_URL=http://your-navidrome-server:4533
-# A valid Navidrome username
-NAVIDROME_USER=your_username
-# The password for the Navidrome user
-NAVIDROME_PASS=your_password
-# Polling interval in seconds (Default: 10)
+NAVIDROME_URL=http://navidrome.example.invalid:4533
+NAVIDROME_USER=example_user
+NAVIDROME_PASS=<set-in-runtime-environment>
 POLL_INTERVAL=10
-# The internal database location
 DATABASE_URL=/app/navidrome_stats.db
 ```
 
 2. Start the service:
+
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-3. Visit your dashboard at `http://localhost:39421`.
+3. Visit the dashboard at `http://localhost:39421`.
 
 ## How It Works
 
-Unlike standard Subsonic API `getNowPlaying` polling which can hammer the database and create duplicate entries, this service uses an **Event-Driven State Machine**:
-1. It polls the server every 10 seconds.
-2. When a track starts, it registers a session in memory.
-3. It silently updates the session time without writing to the disk.
-4. When the track changes or stops, it calculates the total duration. If the duration exceeds 30 seconds, it writes exactly **one** record to the SQLite database.
+This service uses **timed polling** plus an **in-memory session tracker** (not push events from Navidrome):
+
+1. On startup it polls `getNowPlaying` every `POLL_INTERVAL` seconds (default **10**).
+2. When a player and track are seen, a session is stored in memory and updated on each poll.
+3. Once the observed listen time reaches **30 seconds or more**, **one** row is written to SQLite for that session. The same session is not written twice.
+4. When the track changes or the player disappears, the in-memory session is cleared. Short listens under 30 seconds are discarded.
+5. The dashboard refreshes every **10 seconds** and reads aggregated stats from the local database.
+
+**Caveats**
+
+- Reported listen duration is **observed wall-clock time** between polls, not exact player position.
+- The service has **no built-in authentication**; do not expose it to untrusted networks without a reverse proxy or other access control.
+- Playback metadata is stored in plaintext SQLite on disk.
 
 ## Development
 

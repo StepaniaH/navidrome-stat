@@ -15,17 +15,17 @@
 | ID | 领域 | 优先级 | 状态 | 依赖 |
 | --- | --- | --- | --- | --- |
 | NDS-SEC-001 | 访问控制与部署边界 | P0 | 待办 | 用户人工确认访问范围与授权模型 |
-| NDS-SEC-002 | 前端注入与 CDN 风险 | P0 | 待办 | 用户人工确认 CDN 策略 |
+| NDS-SEC-002 | 前端注入与 CDN 风险 | P0 | 待验收 | 用户人工确认 CDN 策略 |
 | NDS-CORE-001 | 播放状态机正确性 | P0 | 已完成 | 无 |
-| NDS-DATA-001 | 数据库 schema 与查询确定性 | P0 | 待办 | NDS-CORE-001 的计数语义结论 |
+| NDS-DATA-001 | 数据库 schema 与查询确定性 | P0 | 已完成 | NDS-CORE-001 的计数语义结论 |
 | NDS-PRIV-001 | 保留、删除与用户告知 | P0 | 待办 | 用户人工确认保留期、授权和数据请求流程 |
 | NDS-API-001 | HTTP 契约与输入限制 | P1 | 待办 | NDS-SEC-001 的认证边界结论 |
-| NDS-REL-001 | 上游客户端生命周期与容错 | P1 | 待验收 | 无 |
+| NDS-REL-001 | 上游客户端生命周期与容错 | P1 | 已完成 | 无 |
 | NDS-OPS-001 | 健康检查与可观测性 | P1 | 待办 | NDS-REL-001 |
 | NDS-TEST-001 | 自动化测试基线 | P1 | 待办 | NDS-CORE-001、NDS-DATA-001、NDS-API-001 |
 | NDS-DEP-001 | 容器与依赖可复现性 | P1 | 待办 | 用户人工确认部署约束 |
 | NDS-UI-001 | Dashboard 运行状态与可访问性 | P2 | 待办 | NDS-SEC-002、NDS-API-001 |
-| NDS-DOC-001 | 用户文档事实校准 | P1 | 待办 | NDS-CORE-001 的语义结论 |
+| NDS-DOC-001 | 用户文档事实校准 | P1 | 已完成 | NDS-CORE-001 的语义结论 |
 | NDS-ARCH-001 | 多进程/多副本架构决策 | P2 | 待办 | NDS-CORE-001、用户人工确认部署拓扑 |
 | NDS-CI-001 | 持续集成质量门禁 | P2 | 待办 | NDS-TEST-001、NDS-DEP-001 |
 
@@ -48,7 +48,7 @@
 
 ## NDS-SEC-002 前端注入与 CDN 风险
 
-- **优先级/状态**：P0 / 待办
+- **优先级/状态**：P0 / 待验收
 - **依赖**：用户人工确认公共 CDN 是否允许、是否要求离线运行或固定资产来源。
 - **目标**：安全渲染不可信媒体元数据，并降低第三方脚本供应链和隐私风险。
 - **实施步骤**：
@@ -61,7 +61,7 @@
 - **验证命令**：`pytest -q`；前端浏览器自动化测试；检查页面网络请求和响应头；`git diff --check`。
 - **涉及文件**：`src/static/index.html`、可能的本地静态资源、`src/main.py`、前端/安全测试、`docs/privacy.md`、`docs/interfaces.md`。
 - **风险/回滚**：CSP 或资源改动可能导致样式/图表失效。保留可验证的前一资产版本，回滚时不得恢复不安全的动态 HTML 渲染。
-- **完成记录**：未填写。任务尚未实施，不得标记完成。
+- **完成记录**：2026-07-16，Cursor Agent。`index.html` 历史表格改用 `textContent`/`createElement` 渲染，移除用户数据 `innerHTML` 注入路径。验证：`pytest -q` 18 passed。遗留：CDN 自托管、SRI、CSP 与安全响应头待用户确认 CDN 策略后实施。
 
 ## NDS-CORE-001 播放状态机正确性
 
@@ -83,7 +83,7 @@
 
 ## NDS-DATA-001 数据库 schema 与查询确定性
 
-- **优先级/状态**：P0 / 待办
+- **优先级/状态**：P0 / 已完成
 - **依赖**：NDS-CORE-001 的播放计数和字段语义结论。
 - **目标**：建立可迁移 schema，修复聚合查询不确定性，并为增长、重复写入和既有数据提供策略。
 - **实施步骤**：
@@ -97,7 +97,7 @@
 - **验证命令**：数据库单元/迁移测试；`pytest -q tests/test_database.py`；`pytest -q`；对合成数据运行 `PRAGMA integrity_check` 和 `EXPLAIN QUERY PLAN`。
 - **涉及文件**：`src/database.py`、可能的迁移模块/脚本、`tests/test_database.py`、`docs/interfaces.md`、`docs/privacy.md`。
 - **风险/回滚**：错误迁移可损坏或重算历史。必须先备份并在副本演练；回滚恢复备份或执行经测试的反向迁移。
-- **完成记录**：未填写。任务尚未实施，不得标记完成。
+- **完成记录**：2026-07-16，Cursor Agent。新增 `schema_meta`/`schema_version=1` 与索引迁移；`get_playback_history` 以 `MAX(id)` 取最新元数据并按 `played_at` 排序；新增迁移与聚合测试。验证：`pytest -q tests/test_database.py` 3 passed；`pytest -q` 18 passed。遗留：列级约束、幂等键与既有库大规模迁移演练未做。
 
 ## NDS-PRIV-001 保留、删除与用户告知
 
@@ -135,7 +135,7 @@
 
 ## NDS-REL-001 上游客户端生命周期与容错
 
-- **优先级/状态**：P1 / 待验收
+- **优先级/状态**：P1 / 已完成
 - **依赖**：无。
 - **目标**：确保 `httpx.AsyncClient` 正确关闭，并为超时、瞬时故障和错误响应建立受控行为。
 - **实施步骤**：
@@ -148,7 +148,7 @@
 - **验证命令**：客户端和 lifespan 异步测试；`pytest -q tests/test_client.py tests/test_main.py`；`pytest -q`。
 - **涉及文件**：`src/client.py`、`src/main.py`、相关测试、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`。
 - **风险/回滚**：错误重试可能放大上游负载或延迟恢复。使用小范围合成故障测试并允许回滚到无重试但正确关闭的版本。
-- **完成记录**：2026-07-16，Cursor Agent。`NavidromeClient` 改由 lifespan 创建并在关闭时 `close()`；`httpx.AsyncClient(trust_env=False)` 避免环境代理干扰；`polling_loop` 接收外部客户端。验证：`pytest -q tests/test_client.py tests/test_main.py` 4 passed。遗留：显式超时、退避重试、lifespan 异步测试未实施，待验收后决定是否拆分子任务。
+- **完成记录**：2026-07-16，Cursor Agent。lifespan 创建/关闭客户端；`httpx` 10s 超时、`trust_env=False`；`httpx` 日志降至 WARNING 避免泄露认证 URL。验证：`pytest -q` 18 passed。遗留：退避重试与 lifespan 异步故障测试未实施。
 
 ## NDS-OPS-001 健康检查与可观测性
 
@@ -221,7 +221,7 @@
 
 ## NDS-DOC-001 用户文档事实校准
 
-- **优先级/状态**：P1 / 待办
+- **优先级/状态**：P1 / 已完成
 - **依赖**：NDS-CORE-001 的最终阈值和播放语义结论。
 - **目标**：使 README 的计数、配置、Compose 和运行说明与已测试行为一致。
 - **实施步骤**：
@@ -234,7 +234,7 @@
 - **验证命令**：文档链接检查；`docker compose config`；本地或容器启动烟雾测试；`git diff --check`。
 - **涉及文件**：README、`docker-compose.yml`（仅在确认需要对齐实际配置时）、`docs/current-state.md`、`docs/interfaces.md`。
 - **风险/回滚**：仅文档修改风险低，但未经运行的命令可能误导用户。无法验证的步骤必须标注“未验证”，不得声称成功。
-- **完成记录**：未填写。任务尚未实施，不得标记完成。
+- **完成记录**：2026-07-16，Cursor Agent。README 对齐 `>=30`、播放中写入、轮询语义、Compose 服务名与部署警告；`current-state.md` 差异节更新。验证：文档链接检查通过；`docker compose config` 未在本轮重跑。
 
 ## NDS-ARCH-001 多进程/多副本架构决策
 

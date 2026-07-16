@@ -35,11 +35,11 @@
 ## 3. 持久化与查询
 
 - 默认数据库路径为运行目录下的 `navidrome_stats.db`；`DATABASE_URL` 实际被当作 SQLite 文件路径，不是通用数据库 URL。
-- `init_db()` 只执行 `CREATE TABLE IF NOT EXISTS`，没有 schema 版本表或迁移框架。
+- `init_db()` 创建 `play_history` 与 `schema_meta`，并执行版本迁移（当前 schema 版本 1：聚合索引）。
 - 每次写入或查询都会打开一个新的 aiosqlite 连接。
 - `played_at` 保存结算时 `last_seen_at` 的 ISO 8601 字符串，当前由应用产生时包含 UTC 偏移。
 - 播放器和转码统计按已落库记录数聚合，不按监听秒数聚合。
-- history 接口按 `username, track_id` 聚合；SQL 同时选择未出现在 `GROUP BY` 中的标题、艺人和专辑，SQLite 允许该查询，但这些字段来自组内哪一行并无确定保证。
+- history 接口按 `username, track_id` 聚合；`title`/`artist`/`album` 取自最新插入行（`MAX(id)`），按最近 `played_at` 排序。
 - 表没有唯一约束、外键、索引、保留期清理或重复写入防护。
 
 完整字段和 API 响应见 [`interfaces.md`](interfaces.md)。
@@ -82,10 +82,8 @@
 
 ## 7. 文档与代码差异
 
-- README 写“一首歌播放超过 30 秒”才计数，代码实际包含正好 30 秒。
-- README 将机制称为事件驱动状态机，但当前触发源是定时轮询；“状态机”是进程内状态管理方式。
-- README 的 Compose 示例服务名与仓库 `docker-compose.yml` 不同；复制示例时应以实际部署选择为准。
-- README 描述每 10 秒轮询和刷新；后端轮询可配置，前端刷新固定为 10 秒，两者可能不同。
-- README 的 Docker 示例包含 `version` 字段，仓库 Compose 文件不包含该字段。
+- README 已与当前实现对齐（2026-07-16）：`>= 30` 秒计入、播放中写入、轮询驱动、Compose 服务名与端口。
+- Dashboard 的 Tailwind/ECharts 仍从公共 CDN 加载；自托管与 CSP 决策待 NDS-SEC-002 人工确认。
+- 服务仍无应用层认证；部署边界待 NDS-SEC-001 人工确认。
 
-这些差异当前仅登记，修正工作见 [`tasks.md`](tasks.md)。
+历史差异修正记录见 [`tasks.md`](tasks.md) 中 NDS-DOC-001 完成记录。
