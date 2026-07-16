@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.db
+.env
+.env.*
+.git/
+.gitignore
+.pytest_cache/
+tests/
+docs/
+AGENTS.md
+PRD.md
+.alma-snapshots
+*.md
+.alma-snapshots

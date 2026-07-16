@@ -3,5 +3,3 @@ uvicorn
 httpx
 aiosqlite
 python-dotenv
-pytest
-pytest-asyncio

@@ -82,7 +82,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # Run the server
 uvicorn src.main:app --host 0.0.0.0 --port 39421
