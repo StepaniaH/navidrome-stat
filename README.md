@@ -1,5 +1,7 @@
 # Navidrome Statistic
 
+> 本文档保留项目概览与快速启动说明。项目事实、稳定接口、隐私确认和后续任务请从 [AGENTS.md](AGENTS.md) 与 [docs/README.md](docs/README.md) 进入。
+
 > 🤖 **Built with Vibe Coding**: This entire project, from design specs to backend logic and frontend UI, was generated and orchestrated entirely through AI (Gemini CLI) in an autonomous "Vibe Coding" workflow. 
 
 Navidrome Statistic is a lightweight, standalone monitoring and analytics dashboard designed specifically for [Navidrome](https://www.navidrome.org/) music servers.
@@ -29,11 +31,11 @@ services:
     container_name: navidrome-statistic
     restart: unless-stopped
     ports:
-      - "39421:8000"
+      - "39421:39421"
     env_file:
       - .env
     volumes:
-      - ./data:/app/data
+      - ./navidrome_stats.db:/app/navidrome_stats.db
 ```
 
 **.env:**
@@ -47,7 +49,7 @@ NAVIDROME_PASS=your_password
 # Polling interval in seconds (Default: 10)
 POLL_INTERVAL=10
 # The internal database location
-DATABASE_URL=/app/data/navidrome_stats.db
+DATABASE_URL=/app/navidrome_stats.db
 ```
 
 2. Start the service:
@@ -78,8 +80,17 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Run the server
-uvicorn src.main:app --host 0.0.0.0 --port 8000
+uvicorn src.main:app --host 0.0.0.0 --port 39421
 ```
+
+## Project Documentation
+
+- [Agent 工作入口](AGENTS.md)
+- [文档索引](docs/README.md)
+- [当前实现事实](docs/current-state.md)
+- [稳定接口登记](docs/interfaces.md)
+- [隐私与敏感信息确认](docs/privacy.md)
+- [后续任务列表](docs/tasks.md)
 
 ## License
 
