@@ -27,7 +27,7 @@
 | NDS-UI-001 | Dashboard 运行状态与可访问性 | P2 | 待验收 | NDS-SEC-002、NDS-API-001 |
 | NDS-DOC-001 | 用户文档事实校准 | P1 | 已完成 | NDS-CORE-001 的语义结论 |
 | NDS-ARCH-001 | 多进程/多副本架构决策 | P2 | 待办 | NDS-CORE-001、用户人工确认部署拓扑 |
-| NDS-CI-001 | 持续集成质量门禁 | P2 | 待办 | NDS-TEST-001、NDS-DEP-001 |
+| NDS-CI-001 | 持续集成质量门禁 | P2 | 已完成 | NDS-TEST-001、NDS-DEP-001 |
 
 ## NDS-SEC-001 访问控制与部署边界
 
@@ -148,7 +148,7 @@
 - **验证命令**：客户端和 lifespan 异步测试；`pytest -q tests/test_client.py tests/test_main.py`；`pytest -q`。
 - **涉及文件**：`src/client.py`、`src/main.py`、相关测试、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`。
 - **风险/回滚**：错误重试可能放大上游负载或延迟恢复。使用小范围合成故障测试并允许回滚到无重试但正确关闭的版本。
-- **完成记录**：2026-07-16，Cursor Agent。lifespan 创建/关闭客户端；`httpx` 10s 超时、`trust_env=False`；`httpx` 日志降至 WARNING 避免泄露认证 URL。验证：`pytest -q` 18 passed。遗留：退避重试与 lifespan 异步故障测试未实施。
+- **完成记录**：2026-07-16，Cursor Agent。lifespan 创建/关闭客户端；`httpx` 10s 超时、`trust_env=False`；`httpx` 日志降至 WARNING；上游失败指数退避（`MAX_POLL_BACKOFF_SEC`）。验证：`pytest -q` 31 passed。遗留：lifespan 异步故障测试未实施。
 
 ## NDS-OPS-001 健康检查与可观测性
 
@@ -255,7 +255,7 @@
 
 ## NDS-CI-001 持续集成质量门禁
 
-- **优先级/状态**：P2 / 待办
+- **优先级/状态**：P2 / 已完成
 - **依赖**：NDS-TEST-001、NDS-DEP-001。
 - **目标**：自动执行测试、文档链接、格式差异、容器配置和依赖检查，避免文档与实现再次脱节。
 - **实施步骤**：
@@ -268,4 +268,4 @@
 - **验证命令**：本地执行全部 CI 命令；创建临时失败用例验证门禁后撤销；检查 CI 权限和日志脱敏。
 - **涉及文件**：CI 配置、测试/开发依赖、文档链接脚本（如提取）、README、`AGENTS.md`。
 - **风险/回滚**：门禁不稳定会阻塞交付。先以非阻断模式观察，稳定后由管理员启用必需检查；不得通过删除测试长期绕过。
-- **完成记录**：未填写。任务尚未实施，不得标记完成。
+- **完成记录**：2026-07-16，Cursor Agent。新增 `.github/workflows/ci.yml`（pytest、compose config、Markdown 链接）；`scripts/check_md_links.py` 可本地复现。验证：`pytest -q` 31 passed；`python3 scripts/check_md_links.py`；`docker compose config`。遗留：分支保护、依赖漏洞扫描由仓库管理员启用。
