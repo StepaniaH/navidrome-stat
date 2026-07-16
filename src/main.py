@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from src.client import NavidromeClient
@@ -17,6 +17,16 @@ from src.database import (
     ping_db,
 )
 from src.runtime_state import runtime_state
+from src.schemas import (
+    HISTORY_LIMIT_DEFAULT,
+    HISTORY_LIMIT_MAX,
+    HISTORY_LIMIT_MIN,
+    HealthLiveResponse,
+    HistoryItem,
+    PlayerStat,
+    ReadinessResponse,
+    TranscodingStat,
+)
 from src.sessions import PlaybackSessionTracker
 
 # Configure logging
@@ -124,6 +134,14 @@ async def build_readiness_report() -> dict:
     }
 
 
+async def _query_stats(fetch):
+    try:
+        return await fetch()
+    except Exception:
+        logger.error("Database query failed")
+        raise HTTPException(status_code=503, detail="Stats temporarily unavailable")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
@@ -173,13 +191,13 @@ async def root():
     return {"message": "Dashboard not found"}
 
 
-@app.get("/health")
+@app.get("/health", response_model=HealthLiveResponse)
 async def health():
     """Liveness probe: process is running."""
     return {"status": "ok"}
 
 
-@app.get("/health/ready")
+@app.get("/health/ready", response_model=ReadinessResponse)
 async def health_ready():
     """Readiness probe: database and background collector state."""
     report = await build_readiness_report()
@@ -187,22 +205,28 @@ async def health_ready():
     return JSONResponse(content=report, status_code=status_code)
 
 
-@app.get("/api/stats/players")
+@app.get("/api/stats/players", response_model=list[PlayerStat])
 async def api_player_stats():
     """Endpoint for player usage distribution."""
-    return await get_player_stats()
+    return await _query_stats(get_player_stats)
 
 
-@app.get("/api/stats/transcoding")
+@app.get("/api/stats/transcoding", response_model=list[TranscodingStat])
 async def api_transcoding_stats():
     """Endpoint for transcoding ratio."""
-    return await get_transcoding_stats()
+    return await _query_stats(get_transcoding_stats)
 
 
-@app.get("/api/stats/history")
-async def api_playback_history(limit: int = 10):
-    """Endpoint for top playback history."""
-    return await get_playback_history(limit=limit)
+@app.get("/api/stats/history", response_model=list[HistoryItem])
+async def api_playback_history(
+    limit: int = Query(
+        default=HISTORY_LIMIT_DEFAULT,
+        ge=HISTORY_LIMIT_MIN,
+        le=HISTORY_LIMIT_MAX,
+    ),
+):
+    """Endpoint for recent playback history."""
+    return await _query_stats(lambda: get_playback_history(limit=limit))
 
 
 if __name__ == "__main__":
