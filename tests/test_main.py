@@ -10,6 +10,30 @@ async def test_health_check():
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+
+@pytest.mark.asyncio
+@patch("src.main.ping_db", return_value=True)
+async def test_health_ready_ok_when_database_available(mock_ping):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/health/ready")
+    assert response.status_code in (200, 503)
+    body = response.json()
+    assert body["status"] in ("ready", "degraded", "not_ready")
+    assert body["checks"]["database"] == "ok"
+    assert "metrics" in body
+    assert "poll_success_total" in body["metrics"]
+
+
+@pytest.mark.asyncio
+@patch("src.main.ping_db", return_value=False)
+async def test_health_ready_not_ready_when_database_unavailable(mock_ping):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/health/ready")
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "not_ready"
+    assert body["checks"]["database"] == "error"
+
 @pytest.mark.asyncio
 @patch("src.main.get_player_stats")
 async def test_api_player_stats(mock_get_stats):

@@ -47,7 +47,8 @@
 ## 4. HTTP 与前端
 
 - 应用包含 `/`、`/health` 和三个只读统计路由，未实现应用层认证或授权。
-- `/health` 固定返回 `{"status": "ok"}`，不检查数据库、后台轮询任务或上游可用性。
+- `/health` 返回 `{"status": "ok"}`，作为存活探针。
+- `/health/ready` 返回数据库、轮询任务与上游状态的聚合结果（`ready`/`degraded`/`not_ready`），`not_ready` 时 HTTP 503；指标不含个人数据。
 - FastAPI 自动提供默认 OpenAPI 路由（通常为 `/openapi.json`、`/docs` 和 `/redoc`），代码未显式关闭或定制。
 - history 的 `limit` 使用 FastAPI 整数解析，但没有最小值、最大值或业务校验。
 - Dashboard 的 Tailwind CSS 和 ECharts 从公共 CDN 加载，离线或 CDN 不可达时样式/图表会受影响。
@@ -58,7 +59,7 @@
 - Docker 镜像基于 `python:3.11-slim`，安装 `build-essential`，以默认容器用户运行。
 - Uvicorn 在容器和 `src/main.py` 直接运行路径中绑定 `0.0.0.0:39421`。
 - Compose 将宿主机 `39421` 映射到容器同端口，加载 `.env`，并把单个数据库文件挂载到 `/app/navidrome_stats.db`。
-- Compose 未声明健康检查、只读文件系统、资源限制、日志轮转或容器用户。
+- Compose 声明存活健康检查（`GET /health`），未将上游失败配置为容器重启条件。
 - `requirements.txt` 未固定版本，也未区分运行依赖和测试依赖。
 - 代码没有 TLS 终止、反向代理、访问控制或备份实现；这些只能由实际部署环境提供，当前仓库无法证明。
 

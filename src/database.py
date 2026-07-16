@@ -116,6 +116,17 @@ async def get_transcoding_stats(db_path: str = DB_PATH):
             return [dict(row) for row in rows]
 
 
+async def ping_db(db_path: str = DB_PATH) -> bool:
+    """Returns True when the SQLite database is reachable."""
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute("SELECT 1") as cursor:
+                await cursor.fetchone()
+        return True
+    except Exception:
+        return False
+
+
 async def get_playback_history(limit: int = 10, db_path: str = DB_PATH):
     """Returns recent tracks with aggregated play counts."""
     async with aiosqlite.connect(db_path) as db:

@@ -19,7 +19,8 @@
 | 路径 | 响应 | 稳定性 | 当前约束 |
 | --- | --- | --- | --- |
 | `/` | 存在静态文件时返回 `src/static/index.html`；否则返回 JSON message | 受支持但可演进 | 返回类型取决于文件是否存在 |
-| `/health` | `{"status":"ok"}` | 受支持但可演进 | 仅表示请求处理成功，不验证依赖 |
+| `/health` | `{"status":"ok"}` | 受支持但可演进 | 存活探针；仅表示进程可响应 |
+| `/health/ready` | JSON：`status`、`checks`、`metrics` | 受支持但可演进 | 就绪探针；`not_ready` 时 HTTP 503；不含地址、用户名或曲目信息 |
 | `/api/stats/players` | JSON 数组，元素为 `client_name`、`count` | 受支持但可演进 | 按播放记录数降序；名称可为 null |
 | `/api/stats/transcoding` | JSON 数组，元素为 `is_transcoding`、`count` | 受支持但可演进 | `is_transcoding` 通常为 0 或 1，也可能因既有数据为 null |
 | `/api/stats/history` | JSON 数组，元素为 `username`、`title`、`artist`、`album`、`play_count` | 受支持但可演进 | 查询参数 `limit` 默认 10，仅做整数解析；按 `username, track_id` 聚合，`title`/`artist`/`album` 取自最新一条记录（`MAX(id)`），按最近 `played_at` 降序 |

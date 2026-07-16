@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from src.client import NavidromeClient
 from src.database import (
     init_db,
@@ -14,7 +14,9 @@ from src.database import (
     get_player_stats,
     get_transcoding_stats,
     get_playback_history,
+    ping_db,
 )
+from src.runtime_state import runtime_state
 from src.sessions import PlaybackSessionTracker
 
 # Configure logging
@@ -28,13 +30,13 @@ POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", 10))
 async def _save_play_session_with_logging(session: dict) -> None:
     try:
         await save_play_session(session)
+        runtime_state.record_save_success()
         logger.debug(
-            "Recorded play: %s - %s (Listened for %ss)",
-            session["username"],
-            session["title"],
+            "Recorded play session (duration=%ss)",
             session["duration_sec"],
         )
     except Exception as e:
+        runtime_state.record_save_failure()
         logger.error("Failed to save play session: %s", e)
 
 
@@ -50,22 +52,76 @@ async def polling_loop(client: NavidromeClient):
     logger.info("Starting polling loop with interval: %s seconds", POLL_INTERVAL)
 
     while True:
+        current_time = datetime.now(timezone.utc)
         try:
             data = await client.get_now_playing()
             response = data.get("subsonic-response", {})
             if response.get("status") != "ok":
                 error_info = response.get("error", {})
-                logger.error("Error from Navidrome API: %s", error_info)
+                error_code = error_info.get("code") if isinstance(error_info, dict) else None
+                runtime_state.record_poll_upstream_error(current_time, error_code)
+                logger.error("Error from Navidrome API (code=%s)", error_code)
             else:
                 now_playing = response.get("nowPlaying", {})
                 entries = now_playing.get("entry", [])
-                current_time = datetime.now(timezone.utc)
                 await session_tracker.process_poll(entries, current_time)
+                runtime_state.record_poll_success(current_time)
 
         except Exception as e:
+            runtime_state.record_poll_exception(current_time)
             logger.error("Error in polling loop: %s", e)
 
         await asyncio.sleep(POLL_INTERVAL)
+
+
+async def build_readiness_report() -> dict:
+    db_ok = await ping_db()
+    polling_running = runtime_state.polling_task_alive()
+
+    if runtime_state.client_initialized:
+        polling_status = "running" if polling_running else "stopped"
+    else:
+        polling_status = "not_started"
+
+    if runtime_state.last_poll_ok is True:
+        upstream_status = "ok"
+    elif runtime_state.last_poll_ok is False:
+        upstream_status = "error"
+    else:
+        upstream_status = "unknown"
+
+    if not db_ok:
+        overall = "not_ready"
+    elif runtime_state.client_initialized and not polling_running:
+        overall = "not_ready"
+    elif upstream_status == "error" or not runtime_state.client_initialized:
+        overall = "degraded"
+    else:
+        overall = "ready"
+
+    seconds_since_poll = None
+    if runtime_state.last_poll_at is not None:
+        seconds_since_poll = int(
+            (datetime.now(timezone.utc) - runtime_state.last_poll_at).total_seconds()
+        )
+
+    return {
+        "status": overall,
+        "checks": {
+            "database": "ok" if db_ok else "error",
+            "polling_task": polling_status,
+            "upstream": upstream_status,
+        },
+        "metrics": {
+            "poll_success_total": runtime_state.poll_success_count,
+            "poll_failure_total": runtime_state.poll_failure_count,
+            "save_success_total": runtime_state.save_success_count,
+            "save_failure_total": runtime_state.save_failure_count,
+            "active_sessions": len(session_tracker.active_sessions),
+            "seconds_since_last_poll": seconds_since_poll,
+            "last_upstream_error_code": runtime_state.last_upstream_error_code,
+        },
+    }
 
 
 @asynccontextmanager
@@ -77,9 +133,12 @@ async def lifespan(app: FastAPI):
     task = None
     try:
         client = NavidromeClient()
+        runtime_state.client_initialized = True
         logger.info("Starting background polling task...")
         task = asyncio.create_task(polling_loop(client))
+        runtime_state.polling_task = task
     except Exception as e:
+        runtime_state.client_initialized = False
         logger.error("Failed to initialize NavidromeClient: %s", e)
 
     yield
@@ -96,6 +155,7 @@ async def lifespan(app: FastAPI):
             logger.info("Background task cancelled.")
     if client is not None:
         await client.close()
+    runtime_state.polling_task = None
 
 
 app = FastAPI(lifespan=lifespan)
@@ -115,7 +175,16 @@ async def root():
 
 @app.get("/health")
 async def health():
+    """Liveness probe: process is running."""
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness probe: database and background collector state."""
+    report = await build_readiness_report()
+    status_code = 200 if report["status"] != "not_ready" else 503
+    return JSONResponse(content=report, status_code=status_code)
 
 
 @app.get("/api/stats/players")

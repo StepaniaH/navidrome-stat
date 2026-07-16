@@ -21,7 +21,7 @@
 | NDS-PRIV-001 | 保留、删除与用户告知 | P0 | 待办 | 用户人工确认保留期、授权和数据请求流程 |
 | NDS-API-001 | HTTP 契约与输入限制 | P1 | 待办 | NDS-SEC-001 的认证边界结论 |
 | NDS-REL-001 | 上游客户端生命周期与容错 | P1 | 已完成 | 无 |
-| NDS-OPS-001 | 健康检查与可观测性 | P1 | 待办 | NDS-REL-001 |
+| NDS-OPS-001 | 健康检查与可观测性 | P1 | 已完成 | NDS-REL-001 |
 | NDS-TEST-001 | 自动化测试基线 | P1 | 待办 | NDS-CORE-001、NDS-DATA-001、NDS-API-001 |
 | NDS-DEP-001 | 容器与依赖可复现性 | P1 | 待办 | 用户人工确认部署约束 |
 | NDS-UI-001 | Dashboard 运行状态与可访问性 | P2 | 待验收 | NDS-SEC-002、NDS-API-001 |
@@ -152,7 +152,7 @@
 
 ## NDS-OPS-001 健康检查与可观测性
 
-- **优先级/状态**：P1 / 待办
+- **优先级/状态**：P1 / 已完成
 - **依赖**：NDS-REL-001。
 - **目标**：区分进程存活、服务就绪和上游采集状态，同时限制日志中的个人数据。
 - **实施步骤**：
@@ -165,7 +165,7 @@
 - **验证命令**：探针和后台任务测试；`docker compose config`；容器烟雾测试；`pytest -q`。
 - **涉及文件**：`src/main.py`、可能的状态/指标模块、`docker-compose.yml`、测试、`docs/interfaces.md`、`docs/privacy.md`。
 - **风险/回滚**：过严 readiness 会引发重启或流量抖动。先记录指标再启用编排动作，保留阈值回滚方案。
-- **完成记录**：未填写。任务尚未实施，不得标记完成。
+- **完成记录**：2026-07-16，Cursor Agent。新增 `/health/ready`（503 when not_ready）、`runtime_state` 指标、`ping_db`；Compose 存活探针指向 `/health`；保存/轮询 debug 日志去除曲目标题。验证：`pytest -q` 21 passed；`docker compose config` 通过。遗留：就绪探针未接入 Compose 重启策略（避免上游抖动误杀）。
 
 ## NDS-TEST-001 自动化测试基线
 

@@ -2,7 +2,7 @@ import asyncio
 import os
 import sqlite3
 import pytest
-from src.database import init_db, save_play_session, get_playback_history
+from src.database import init_db, save_play_session, get_playback_history, ping_db
 
 DB_FILE = "test.db"
 
@@ -108,3 +108,11 @@ def test_get_playback_history_aggregates_and_uses_latest_metadata():
     assert len(history) == 1
     assert history[0]["play_count"] == 2
     assert history[0]["title"] == "New Title"
+
+
+def test_ping_db_returns_true_for_initialized_database():
+    if os.path.exists(DB_FILE):
+        os.remove(DB_FILE)
+
+    asyncio.run(init_db(DB_FILE))
+    assert asyncio.run(ping_db(DB_FILE)) is True
