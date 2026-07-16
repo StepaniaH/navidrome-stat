@@ -6,11 +6,12 @@ from src.main import app
 
 
 @pytest.mark.asyncio
-async def test_stats_open_when_auth_not_configured():
+@patch("src.main.get_player_stats", new_callable=AsyncMock)
+async def test_stats_open_when_auth_not_configured(mock_get_stats):
+    mock_get_stats.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        with patch.dict("os.environ", {}, clear=False):
-            with patch("src.auth.get_stats_api_token", return_value=None):
-                response = await ac.get("/api/stats/players")
+        with patch("src.auth.get_stats_api_token", return_value=None):
+            response = await ac.get("/api/stats/players")
     assert response.status_code == 200
 
 
