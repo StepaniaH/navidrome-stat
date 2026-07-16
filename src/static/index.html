@@ -1,141 +1,299 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Navidrome Statistics Dashboard</title>
+    <title>Navidrome Statistics</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        ink: { 950: '#0a0a0f', 900: '#12121a', 800: '#1a1a26', 700: '#252536' },
+                        accent: { DEFAULT: '#a78bfa', dim: '#7c5fd4', glow: '#c4b5fd' },
+                        mint: { DEFAULT: '#34d399', dim: '#059669' },
+                    },
+                    fontFamily: {
+                        display: ['"SF Pro Display"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                        mono: ['"SF Mono"', 'ui-monospace', 'monospace'],
+                    },
+                    boxShadow: {
+                        card: '0 4px 24px -4px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)',
+                        glow: '0 0 40px -10px rgba(167,139,250,0.35)',
+                    },
+                },
+            },
+        };
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        .chart-container { height: 400px; width: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0a0a0f;
+        }
+        .mesh-bg {
+            background-image:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(167, 139, 250, 0.18), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 0%, rgba(52, 211, 153, 0.08), transparent),
+                radial-gradient(ellipse 50% 30% at 0% 100%, rgba(99, 102, 241, 0.1), transparent);
+        }
+        .chart-container { height: 280px; width: 100%; }
+        @media (min-width: 768px) { .chart-container { height: 320px; } }
+        .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.85); }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, #1a1a26 25%, #252536 50%, #1a1a26 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s ease-in-out infinite;
+            border-radius: 0.5rem;
+        }
+        .truncate-cell { max-width: 12rem; }
+        @media (min-width: 768px) { .truncate-cell { max-width: 16rem; } }
+        .stat-value { font-variant-numeric: tabular-nums; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800">
-    <div class="container mx-auto px-4 py-8">
-        <header class="mb-10 text-center">
-            <h1 class="text-4xl font-bold text-indigo-600 mb-2">Navidrome Statistics</h1>
-            <p class="text-gray-500">Real-time playback monitoring and analytics</p>
+<body class="mesh-bg text-slate-100 min-h-screen antialiased">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <!-- Header -->
+        <header class="mb-8 sm:mb-10">
+            <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-accent to-indigo-600 flex items-center justify-center shadow-glow" aria-hidden="true">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                            </svg>
+                        </div>
+                        <span class="text-xs font-mono uppercase tracking-widest text-slate-500">Navidrome Stat</span>
+                    </div>
+                    <h1 class="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">播放统计</h1>
+                    <p class="text-slate-400 text-sm mt-1">实时监听与收听习惯分析</p>
+                </div>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <div id="statusBadge" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-ink-800 border border-white/5 text-xs text-slate-400" role="status" aria-live="polite">
+                        <span id="statusDot" class="w-2 h-2 rounded-full bg-slate-600"></span>
+                        <span id="statusText">连接中…</span>
+                    </div>
+                    <button id="refreshBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-xs text-slate-300 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50" aria-label="手动刷新">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        刷新
+                    </button>
+                </div>
+            </div>
+            <p id="lastUpdated" class="text-xs text-slate-600 mt-3 font-mono" aria-live="polite"></p>
         </header>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-            <!-- Player Stats -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <h2 class="text-xl font-semibold mb-4 text-gray-700">Client Distribution</h2>
-                <div id="playerChart" class="chart-container"></div>
-            </div>
-
-            <!-- Transcoding Stats -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <h2 class="text-xl font-semibold mb-4 text-gray-700">Transcoding Ratio</h2>
-                <div id="transcodingChart" class="chart-container"></div>
-            </div>
+        <!-- Error banner -->
+        <div id="errorBanner" class="hidden mb-6 px-4 py-3 rounded-xl bg-red-950/50 border border-red-500/20 text-red-300 text-sm flex items-start gap-3" role="alert">
+            <svg class="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span id="errorText"></span>
         </div>
 
-        <!-- History Table -->
-        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <h2 class="text-xl font-semibold mb-4 text-gray-700">Top Playback History</h2>
+        <!-- Summary cards -->
+        <section class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" aria-label="概览统计">
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">总播放次数</p>
+                <p id="statTotalPlays" class="stat-value text-3xl font-bold text-white">—</p>
+            </div>
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">活跃客户端</p>
+                <p id="statClients" class="stat-value text-3xl font-bold text-accent-glow">—</p>
+            </div>
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">转码占比</p>
+                <p id="statTranscode" class="stat-value text-3xl font-bold text-mint">—</p>
+            </div>
+        </section>
+
+        <!-- Charts -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label="图表">
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                <h2 class="text-sm font-semibold text-slate-300 mb-1">客户端分布</h2>
+                <p class="text-xs text-slate-600 mb-4">按播放次数统计</p>
+                <div id="playerChartWrap" class="relative">
+                    <div id="playerChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                    <div id="playerChart" class="chart-container" role="img" aria-label="客户端分布饼图"></div>
+                    <div id="playerChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
+                        <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
+                        暂无客户端数据
+                    </div>
+                </div>
+            </div>
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                <h2 class="text-sm font-semibold text-slate-300 mb-1">转码比例</h2>
+                <p class="text-xs text-slate-600 mb-4">Direct Play vs Transcoded</p>
+                <div id="transcodingChartWrap" class="relative">
+                    <div id="transcodingChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                    <div id="transcodingChart" class="chart-container" role="img" aria-label="转码比例饼图"></div>
+                    <div id="transcodingChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
+                        <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+                        暂无转码数据
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- History -->
+        <section class="rounded-2xl bg-ink-900/80 shadow-card border border-white/5 overflow-hidden" aria-label="播放历史">
+            <div class="px-5 sm:px-6 py-5 border-b border-white/5">
+                <h2 class="text-sm font-semibold text-slate-300">最近播放</h2>
+                <p class="text-xs text-slate-600 mt-0.5">按最近播放时间排序，重复收听会累加 Plays</p>
+            </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full table-auto">
+                <table class="min-w-full text-sm">
+                    <caption class="sr-only">播放历史记录表</caption>
                     <thead>
-                        <tr class="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                            <th class="px-6 py-3 rounded-tl-lg">User</th>
-                            <th class="px-6 py-3">Track</th>
-                            <th class="px-6 py-3">Artist</th>
-                            <th class="px-6 py-3">Album</th>
-                            <th class="px-6 py-3 rounded-tr-lg">Plays</th>
+                        <tr class="text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-ink-800/50">
+                            <th scope="col" class="px-5 sm:px-6 py-3">用户</th>
+                            <th scope="col" class="px-5 sm:px-6 py-3">曲目</th>
+                            <th scope="col" class="px-5 sm:px-6 py-3 hidden sm:table-cell">艺人</th>
+                            <th scope="col" class="px-5 sm:px-6 py-3 hidden md:table-cell">专辑</th>
+                            <th scope="col" class="px-5 sm:px-6 py-3 text-right">Plays</th>
                         </tr>
                     </thead>
-                    <tbody id="historyTable" class="bg-white divide-y divide-gray-100 text-sm">
-                        <!-- Rows will be injected here by JS -->
+                    <tbody id="historyTable" class="divide-y divide-white/5">
                     </tbody>
                 </table>
             </div>
-        </div>
+        </section>
+
+        <footer class="mt-8 text-center text-xs text-slate-600 font-mono">
+            每 10 秒自动刷新 · 播放满 30 秒计入一次
+        </footer>
     </div>
 
     <script>
-        // Init ECharts
-        const playerChart = echarts.init(document.getElementById('playerChart'));
-        const transcodingChart = echarts.init(document.getElementById('transcodingChart'));
+        const REFRESH_MS = 10000;
+        const HIDDEN_REFRESH_MS = 30000;
+        const colorPalette = ['#a78bfa', '#818cf8', '#34d399', '#f472b6', '#fb923c', '#facc15', '#22d3ee', '#f87171'];
 
-        const colorPalette = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#06b6d4'];
+        const playerChart = echarts.init(document.getElementById('playerChart'), null, { renderer: 'canvas' });
+        const transcodingChart = echarts.init(document.getElementById('transcodingChart'), null, { renderer: 'canvas' });
 
-        async function fetchStats() {
-            try {
-                // Fetch players
-                const playersRes = await fetch('/api/stats/players');
-                const playersData = await playersRes.json();
-                
-                // Fetch transcoding
-                const transcodingRes = await fetch('/api/stats/transcoding');
-                const transcodingData = await transcodingRes.json();
-                
-                // Fetch history
-                const historyRes = await fetch('/api/stats/history?limit=10');
-                const historyData = await historyRes.json();
+        let fetchInFlight = false;
+        let refreshTimer = null;
+        let hasLoadedOnce = false;
 
-                renderPlayerChart(playersData);
-                renderTranscodingChart(transcodingData);
-                renderHistoryTable(historyData);
-                
-            } catch (error) {
-                console.error("Error fetching data:", error);
+        const chartBase = {
+            backgroundColor: 'transparent',
+            textStyle: { color: '#94a3b8', fontFamily: 'system-ui, sans-serif' },
+            tooltip: {
+                backgroundColor: '#1a1a26',
+                borderColor: 'rgba(255,255,255,0.08)',
+                textStyle: { color: '#e2e8f0', fontSize: 12 },
+            },
+        };
+
+        function setStatus(state, text) {
+            const dot = document.getElementById('statusDot');
+            const label = document.getElementById('statusText');
+            label.textContent = text;
+            dot.className = 'w-2 h-2 rounded-full ';
+            if (state === 'ok') dot.className += 'bg-mint pulse-dot';
+            else if (state === 'error') dot.className += 'bg-red-400';
+            else if (state === 'loading') dot.className += 'bg-accent animate-pulse';
+            else dot.className += 'bg-slate-600';
+        }
+
+        function showError(msg) {
+            const banner = document.getElementById('errorBanner');
+            document.getElementById('errorText').textContent = msg;
+            banner.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('errorBanner').classList.add('hidden');
+        }
+
+        function setLoading(loading) {
+            ['playerChartSkeleton', 'transcodingChartSkeleton'].forEach(id => {
+                document.getElementById(id).classList.toggle('hidden', !loading || hasLoadedOnce);
+            });
+            if (loading && !hasLoadedOnce) {
+                document.getElementById('playerChart').style.visibility = 'hidden';
+                document.getElementById('transcodingChart').style.visibility = 'hidden';
+            } else {
+                document.getElementById('playerChart').style.visibility = 'visible';
+                document.getElementById('transcodingChart').style.visibility = 'visible';
             }
         }
 
+        function updateSummary(players, transcoding, history) {
+            const totalPlays = history.reduce((sum, row) => sum + (row.play_count || 0), 0);
+            document.getElementById('statTotalPlays').textContent = totalPlays.toLocaleString();
+
+            const clientCount = players.filter(p => p.client_name).length;
+            document.getElementById('statClients').textContent = clientCount > 0 ? clientCount : (players.length > 0 ? players.length : '0');
+
+            const direct = transcoding.find(t => !t.is_transcoding)?.count || 0;
+            const trans = transcoding.find(t => t.is_transcoding)?.count || 0;
+            const total = direct + trans;
+            document.getElementById('statTranscode').textContent = total > 0
+                ? Math.round((trans / total) * 100) + '%'
+                : '—';
+        }
+
+        function toggleChartEmpty(chartId, emptyId, hasData) {
+            document.getElementById(chartId).classList.toggle('invisible', !hasData);
+            document.getElementById(emptyId).classList.toggle('hidden', hasData);
+        }
+
         function renderPlayerChart(data) {
-            const option = {
+            const hasData = data.length > 0 && data.some(d => d.count > 0);
+            toggleChartEmpty('playerChart', 'playerChartEmpty', hasData);
+            if (!hasData) return;
+
+            playerChart.setOption({
+                ...chartBase,
                 color: colorPalette,
-                tooltip: { trigger: 'item' },
-                legend: { top: 'bottom' },
-                series: [
-                    {
-                        name: 'Clients',
-                        type: 'pie',
-                        radius: ['40%', '70%'],
-                        itemStyle: {
-                            borderRadius: 10,
-                            borderColor: '#fff',
-                            borderWidth: 2
-                        },
-                        data: data.map(item => ({
-                            name: item.client_name || 'Unknown',
-                            value: item.count
-                        }))
-                    }
-                ]
-            };
-            playerChart.setOption(option);
+                legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+                series: [{
+                    name: 'Clients',
+                    type: 'pie',
+                    radius: ['42%', '68%'],
+                    center: ['50%', '45%'],
+                    itemStyle: { borderRadius: 6, borderColor: '#12121a', borderWidth: 2 },
+                    label: { color: '#94a3b8', fontSize: 11 },
+                    data: data.map(item => ({
+                        name: item.client_name || 'Unknown',
+                        value: item.count,
+                    })),
+                }],
+            }, true);
         }
 
         function renderTranscodingChart(data) {
-            const transformedData = data.map(item => ({
+            const hasData = data.length > 0 && data.some(d => d.count > 0);
+            toggleChartEmpty('transcodingChart', 'transcodingChartEmpty', hasData);
+            if (!hasData) return;
+
+            const transformed = data.map(item => ({
                 name: item.is_transcoding ? 'Transcoded' : 'Direct Play',
-                value: item.count
+                value: item.count,
             }));
 
-            const option = {
-                color: ['#10b981', '#f43f5e'], // Green for direct, Red for transcoded
-                tooltip: { trigger: 'item' },
-                legend: { top: 'bottom' },
-                series: [
-                    {
-                        name: 'Playback Type',
-                        type: 'pie',
-                        radius: '70%',
-                        data: transformedData,
-                        emphasis: {
-                            itemStyle: {
-                                shadowBlur: 10,
-                                shadowOffsetX: 0,
-                                shadowColor: 'rgba(0, 0, 0, 0.5)'
-                            }
-                        }
-                    }
-                ]
-            };
-            transcodingChart.setOption(option);
+            transcodingChart.setOption({
+                ...chartBase,
+                color: ['#34d399', '#f472b6'],
+                legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 } },
+                series: [{
+                    name: 'Playback',
+                    type: 'pie',
+                    radius: '62%',
+                    center: ['50%', '45%'],
+                    itemStyle: { borderRadius: 4, borderColor: '#12121a', borderWidth: 2 },
+                    label: { color: '#94a3b8', fontSize: 11 },
+                    data: transformed,
+                }],
+            }, true);
         }
 
         function renderHistoryTable(data) {
@@ -146,45 +304,144 @@
                 const tr = document.createElement('tr');
                 const td = document.createElement('td');
                 td.colSpan = 5;
-                td.className = 'px-6 py-4 text-center text-gray-500';
-                td.textContent = 'No playback history available yet.';
+                td.className = 'px-5 sm:px-6 py-12 text-center';
+                const wrap = document.createElement('div');
+                wrap.className = 'flex flex-col items-center text-slate-600';
+                wrap.innerHTML = '<svg class="w-10 h-10 mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>';
+                const p = document.createElement('p');
+                p.textContent = '暂无播放记录';
+                const hint = document.createElement('p');
+                hint.className = 'text-xs text-slate-700 mt-1';
+                hint.textContent = '开始播放音乐，满 30 秒后会计入';
+                wrap.appendChild(p);
+                wrap.appendChild(hint);
+                td.appendChild(wrap);
                 tr.appendChild(td);
                 tbody.appendChild(tr);
                 return;
             }
 
-            data.forEach(item => {
+            data.forEach((item, idx) => {
                 const tr = document.createElement('tr');
-                tr.className = 'hover:bg-gray-50 transition-colors';
+                tr.className = 'hover:bg-white/[0.02] transition-colors';
 
-                const cells = [
-                    ['px-6 py-4 whitespace-nowrap font-medium text-gray-900', item.username || '-'],
-                    ['px-6 py-4 whitespace-nowrap text-gray-700', item.title || '-'],
-                    ['px-6 py-4 whitespace-nowrap text-gray-500', item.artist || '-'],
-                    ['px-6 py-4 whitespace-nowrap text-gray-500', item.album || '-'],
-                    ['px-6 py-4 whitespace-nowrap font-semibold text-indigo-600', String(item.play_count ?? 0)],
-                ];
+                const userTd = document.createElement('td');
+                userTd.className = 'px-5 sm:px-6 py-3.5 whitespace-nowrap';
+                const userSpan = document.createElement('span');
+                userSpan.className = 'inline-flex items-center gap-2 text-slate-300 font-medium';
+                const avatar = document.createElement('span');
+                avatar.className = 'w-6 h-6 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-mono shrink-0';
+                avatar.textContent = String(item.username || '?').charAt(0).toUpperCase();
+                avatar.setAttribute('aria-hidden', 'true');
+                const userLabel = document.createElement('span');
+                userLabel.className = 'truncate max-w-[6rem] sm:max-w-none';
+                userLabel.textContent = item.username || '-';
+                userSpan.appendChild(avatar);
+                userSpan.appendChild(userLabel);
+                userTd.appendChild(userSpan);
 
-                cells.forEach(([className, value]) => {
-                    const td = document.createElement('td');
-                    td.className = className;
-                    td.textContent = value;
-                    tr.appendChild(td);
-                });
+                const titleTd = document.createElement('td');
+                titleTd.className = 'px-5 sm:px-6 py-3.5';
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'truncate-cell truncate text-white font-medium';
+                titleDiv.textContent = item.title || '-';
+                titleDiv.title = item.title || '';
+                titleTd.appendChild(titleDiv);
+                const artistMobile = document.createElement('div');
+                artistMobile.className = 'text-xs text-slate-500 sm:hidden truncate';
+                artistMobile.textContent = item.artist || '';
+                titleTd.appendChild(artistMobile);
 
+                const artistTd = document.createElement('td');
+                artistTd.className = 'px-5 sm:px-6 py-3.5 hidden sm:table-cell text-slate-400 truncate-cell truncate';
+                artistTd.textContent = item.artist || '-';
+                artistTd.title = item.artist || '';
+
+                const albumTd = document.createElement('td');
+                albumTd.className = 'px-5 sm:px-6 py-3.5 hidden md:table-cell text-slate-500 truncate-cell truncate';
+                albumTd.textContent = item.album || '-';
+                albumTd.title = item.album || '';
+
+                const countTd = document.createElement('td');
+                countTd.className = 'px-5 sm:px-6 py-3.5 text-right';
+                const badge = document.createElement('span');
+                badge.className = 'inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-md bg-accent/15 text-accent-glow font-semibold text-sm stat-value';
+                badge.textContent = String(item.play_count ?? 0);
+                countTd.appendChild(badge);
+
+                tr.appendChild(userTd);
+                tr.appendChild(titleTd);
+                tr.appendChild(artistTd);
+                tr.appendChild(albumTd);
+                tr.appendChild(countTd);
                 tbody.appendChild(tr);
             });
         }
 
-        // Handle window resize for charts
+        async function fetchStats() {
+            if (fetchInFlight) return;
+            fetchInFlight = true;
+            setLoading(true);
+            setStatus('loading', '同步中…');
+
+            try {
+                const [playersRes, transcodingRes, historyRes] = await Promise.all([
+                    fetch('/api/stats/players'),
+                    fetch('/api/stats/transcoding'),
+                    fetch('/api/stats/history?limit=10'),
+                ]);
+
+                if (!playersRes.ok || !transcodingRes.ok || !historyRes.ok) {
+                    throw new Error('部分数据请求失败 (' + [playersRes, transcodingRes, historyRes].filter(r => !r.ok).map(r => r.status).join(', ') + ')');
+                }
+
+                const [playersData, transcodingData, historyData] = await Promise.all([
+                    playersRes.json(),
+                    transcodingRes.json(),
+                    historyRes.json(),
+                ]);
+
+                updateSummary(playersData, transcodingData, historyData);
+                renderPlayerChart(playersData);
+                renderTranscodingChart(transcodingData);
+                renderHistoryTable(historyData);
+
+                hasLoadedOnce = true;
+                hideError();
+                setStatus('ok', '实时监听中');
+                const now = new Date();
+                document.getElementById('lastUpdated').textContent =
+                    '上次更新 ' + now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            } catch (error) {
+                setStatus('error', '连接异常');
+                showError('无法获取统计数据，请检查服务是否运行。' + (hasLoadedOnce ? ' 显示的是上次成功加载的数据。' : ''));
+                console.error('Error fetching data:', error);
+            } finally {
+                setLoading(false);
+                fetchInFlight = false;
+            }
+        }
+
+        function scheduleRefresh() {
+            if (refreshTimer) clearInterval(refreshTimer);
+            const ms = document.hidden ? HIDDEN_REFRESH_MS : REFRESH_MS;
+            refreshTimer = setInterval(fetchStats, ms);
+        }
+
+        document.getElementById('refreshBtn').addEventListener('click', fetchStats);
+
+        document.addEventListener('visibilitychange', () => {
+            scheduleRefresh();
+            if (!document.hidden) fetchStats();
+        });
+
         window.addEventListener('resize', () => {
             playerChart.resize();
             transcodingChart.resize();
         });
 
-        // Initial fetch and set interval for auto-refresh
         fetchStats();
-        setInterval(fetchStats, 10000); // refresh every 10 seconds
+        scheduleRefresh();
     </script>
 </body>
 </html>

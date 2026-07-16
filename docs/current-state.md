@@ -20,7 +20,7 @@
 3. 轮询循环调用上游 `/rest/getNowPlaying`，由 `PlaybackSessionTracker` 按 `playerId` 追踪会话；缺失 `playerId` 的条目被跳过。
 4. 同一播放器继续播放同一 `track_id` 时只更新 `last_seen_at`；换曲、停止后超过 30 秒或应用关闭时尝试结算。
 5. 结算以 `last_seen_at - first_seen_at` 计算观测时长。时长大于等于 30 秒才写入一条 `play_history` 记录。
-6. Dashboard 初次加载并每 10 秒请求三个统计 API；API 直接查询 SQLite 并返回 JSON。
+6. Dashboard 初次加载并每 10 秒请求三个统计 API（标签页隐藏时降为 30 秒）；含概览卡片、加载/空/错误状态与深色响应式布局。
 
 ## 2. 播放计数语义
 
@@ -51,8 +51,7 @@
 - FastAPI 自动提供默认 OpenAPI 路由（通常为 `/openapi.json`、`/docs` 和 `/redoc`），代码未显式关闭或定制。
 - history 的 `limit` 使用 FastAPI 整数解析，但没有最小值、最大值或业务校验。
 - Dashboard 的 Tailwind CSS 和 ECharts 从公共 CDN 加载，离线或 CDN 不可达时样式/图表会受影响。
-- 页面把 API 返回的用户名和媒体元数据插入 `innerHTML`，没有转义或 Content Security Policy。
-- Dashboard 只在浏览器控制台记录请求错误，没有可见错误状态、重试提示或加载状态。
+- 页面提供可见的错误横幅、手动刷新按钮和上次更新时间；历史表格用户数据用 `textContent` 渲染。
 
 ## 5. 部署与配置
 
@@ -78,7 +77,7 @@
 - history 路由及三类数据库聚合查询的边界行为。
 - lifespan 启动失败、后台任务存活和 HTTP 客户端关闭。
 - 输入限制、XSS、认证、隐私、并发、多进程和数据库迁移。
-- Dashboard 浏览器行为、CDN 失败和容器启动验证。
+- 容器启动验证与 CDN 失败场景。
 
 ## 7. 文档与代码差异
 
