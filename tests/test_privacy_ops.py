@@ -35,7 +35,20 @@ async def test_retention_defaults_to_permanent(db_path):
 
 
 @pytest.mark.asyncio
-async def test_retention_preview_and_purge(db_path):
+async def test_get_storage_stats_reports_file_size(db_path):
+    await init_db(db_path)
+    await save_play_session(_session("alice", "2025-01-01T00:00:00+00:00"), db_path=db_path)
+
+    from src.privacy_ops import get_storage_stats
+
+    stats = await get_storage_stats(db_path)
+    assert stats["total_records"] == 1
+    assert stats["database_bytes"] > 0
+    assert stats["estimated_data_bytes"] > 0
+
+
+@pytest.mark.asyncio
+async def test_retention_preview_includes_size_estimates(db_path):
     await init_db(db_path)
     old_at = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat()
     recent_at = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
@@ -45,6 +58,8 @@ async def test_retention_preview_and_purge(db_path):
     await set_retention_days(30, db_path)
     preview = await preview_retention_purge(db_path=db_path)
     assert preview["records_to_delete"] == 1
+    assert preview["bytes_to_delete"] > 0
+    assert preview["estimated_database_bytes_after"] <= preview["database_bytes"]
 
     result = await apply_retention_purge(db_path=db_path)
     assert result["deleted"] == 1

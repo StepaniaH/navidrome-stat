@@ -39,7 +39,10 @@ async def test_privacy_retention_update_and_preview(isolated_db):
         put = await ac.put("/api/privacy/settings", json={"retention_days": 90})
         assert put.status_code == 200
         preview = await ac.get("/api/privacy/retention/preview")
-        assert preview.json()["records_to_delete"] == 1
+        body = preview.json()
+        assert body["records_to_delete"] == 1
+        assert body["database_bytes"] > 0
+        assert "estimated_database_bytes_after" in body
         denied = await ac.post("/api/privacy/retention/apply", json={"confirm": False})
         assert denied.status_code == 400
         applied = await ac.post("/api/privacy/retention/apply", json={"confirm": True})

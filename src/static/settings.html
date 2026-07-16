@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>隐私与数据设置 · Navidrome Statistics</title>
+    <title>设置 · Navidrome Statistics</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -26,82 +26,119 @@
                 radial-gradient(ellipse 60% 40% at 100% 0%, rgba(52, 211, 153, 0.08), transparent);
         }
         input[type=range] { accent-color: #a78bfa; }
+        .tab-btn[aria-selected="true"] {
+            background: rgba(167, 139, 250, 0.15);
+            color: #e9d5ff;
+            border-color: rgba(167, 139, 250, 0.35);
+        }
     </style>
 </head>
 <body class="mesh-bg text-slate-100 min-h-screen antialiased">
     <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        <header class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-                <a href="/" class="text-xs font-mono uppercase tracking-widest text-slate-500 hover:text-accent transition-colors">← 返回统计</a>
-                <h1 class="text-2xl font-bold text-white mt-2">隐私与数据设置</h1>
-                <p class="text-sm text-slate-400 mt-1">你对数据拥有完全控制权：保留、导出、导入与删除。</p>
-            </div>
+        <header class="mb-6">
+            <a href="/" class="text-xs font-mono uppercase tracking-widest text-slate-500 hover:text-accent transition-colors">← 返回统计</a>
+            <h1 class="text-2xl font-bold text-white mt-2">设置</h1>
+            <p class="text-sm text-slate-400 mt-1">管理服务配置与数据隐私选项。</p>
         </header>
 
-        <section class="mb-6 rounded-2xl bg-ink-900/80 border border-mint/20 p-5 text-sm text-slate-300 leading-relaxed">
-            <h2 class="text-mint font-semibold mb-2">隐私原则</h2>
-            <ul class="list-disc pl-5 space-y-1 text-slate-400">
-                <li>播放数据默认<strong class="text-slate-200">永久保留</strong>，只有你主动修改保留策略或删除时才会移除。</li>
-                <li>删除与过期清理前会显示<strong class="text-slate-200">影响条数预览</strong>，需你明确确认后才会执行。</li>
-                <li>导出仅包含所选用户的数据；服务不会在日志中记录导出内容。</li>
-                <li>请确保被统计的 Navidrome 用户知悉数据被收集，并由部署方负责告知与合规。</li>
-            </ul>
-        </section>
+        <nav class="flex gap-1 p-1 rounded-xl bg-ink-900/80 border border-white/5 mb-6" role="tablist" aria-label="设置分类">
+            <button type="button" role="tab" id="tab-privacy-btn" data-tab="privacy" aria-selected="true" aria-controls="tab-privacy"
+                class="tab-btn flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 border border-transparent transition-colors hover:text-slate-200">
+                隐私与数据
+            </button>
+        </nav>
 
         <div id="errorBanner" class="hidden mb-6 px-4 py-3 rounded-xl bg-red-950/50 border border-red-500/20 text-red-300 text-sm" role="alert"></div>
         <div id="successBanner" class="hidden mb-6 px-4 py-3 rounded-xl bg-emerald-950/40 border border-emerald-500/20 text-emerald-300 text-sm" role="status"></div>
 
-        <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6 mb-6" aria-labelledby="retentionTitle">
-            <h2 id="retentionTitle" class="text-lg font-semibold text-white mb-4">数据保留</h2>
+        <div id="tab-privacy" role="tabpanel" aria-labelledby="tab-privacy-btn" class="space-y-6">
+            <section class="rounded-2xl bg-ink-900/80 border border-mint/20 p-5 text-sm text-slate-300 leading-relaxed">
+                <h2 class="text-mint font-semibold mb-2">隐私原则</h2>
+                <ul class="list-disc pl-5 space-y-1 text-slate-400">
+                    <li>播放数据默认<strong class="text-slate-200">永久保留</strong>，只有你主动修改保留策略或删除时才会移除。</li>
+                    <li>删除与过期清理前会显示<strong class="text-slate-200">影响条数与预计空间</strong>，需你明确确认后才会执行。</li>
+                    <li>导出仅包含所选用户的数据；服务不会在日志中记录导出内容。</li>
+                    <li>请确保被统计的 Navidrome 用户知悉数据被收集，并由部署方负责告知与合规。</li>
+                </ul>
+            </section>
 
-            <label class="flex items-center gap-3 mb-4 cursor-pointer">
-                <input id="permanentToggle" type="checkbox" checked class="w-4 h-4 rounded border-white/20 bg-ink-800 text-accent focus:ring-accent/50">
-                <span class="text-sm text-slate-300">永久保留（默认）</span>
-            </label>
-
-            <div id="retentionSliderWrap" class="hidden space-y-3 mb-4">
-                <div class="flex justify-between text-xs text-slate-500 font-mono">
-                    <span>1 天</span>
-                    <span id="retentionValue">90 天</span>
-                    <span>360 天</span>
+            <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="storageTitle">
+                <h2 id="storageTitle" class="text-lg font-semibold text-white mb-4">数据占用</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
+                    <div class="rounded-xl bg-ink-800/60 border border-white/5 p-4">
+                        <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">当前数据库大小</p>
+                        <p id="storageCurrentSize" class="text-2xl font-semibold text-white font-mono tabular-nums">—</p>
+                        <p id="storageCurrentRecords" class="text-xs text-slate-500 mt-1">— 条记录</p>
+                    </div>
+                    <div class="rounded-xl bg-ink-800/60 border border-white/5 p-4">
+                        <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">按当前策略预计</p>
+                        <p id="storageEstimatedSize" class="text-2xl font-semibold text-mint font-mono tabular-nums">—</p>
+                        <p id="storageEstimatedDetail" class="text-xs text-slate-500 mt-1">拖动滑块查看预计占用</p>
+                    </div>
                 </div>
-                <input id="retentionSlider" type="range" min="1" max="360" value="90" class="w-full">
-            </div>
+            </section>
 
-            <p id="retentionPreview" class="text-sm text-slate-500 mb-4">超出保留期的记录：0 条（预览）</p>
+            <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="retentionTitle">
+                <h2 id="retentionTitle" class="text-lg font-semibold text-white mb-4">数据保留</h2>
 
-            <div class="flex flex-wrap gap-3">
-                <button id="saveRetentionBtn" type="button" class="px-4 py-2 rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors">保存保留策略</button>
-                <button id="applyRetentionBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">确认清理过期数据</button>
-            </div>
-        </section>
-
-        <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="userDataTitle">
-            <h2 id="userDataTitle" class="text-lg font-semibold text-white mb-4">按用户管理数据</h2>
-
-            <label class="block mb-4">
-                <span class="text-xs text-slate-500 uppercase tracking-wider">选择用户</span>
-                <select id="userSelect" class="mt-2 w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/50">
-                    <option value="">加载中…</option>
-                </select>
-            </label>
-
-            <p id="userPreview" class="text-sm text-slate-500 mb-4">该用户记录数：—</p>
-
-            <div class="flex flex-wrap gap-3 mb-6">
-                <button id="exportBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300">导出 JSON</button>
-                <label class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 cursor-pointer">
-                    导入 JSON
-                    <input id="importFile" type="file" accept="application/json,.json" class="hidden">
+                <label class="flex items-center gap-3 mb-4 cursor-pointer">
+                    <input id="permanentToggle" type="checkbox" checked class="w-4 h-4 rounded border-white/20 bg-ink-800 text-accent focus:ring-accent/50">
+                    <span class="text-sm text-slate-300">永久保留（默认）</span>
                 </label>
-                <button id="deleteUserBtn" type="button" class="px-4 py-2 rounded-lg bg-red-950/60 hover:bg-red-900/60 border border-red-500/30 text-sm text-red-300">删除该用户全部数据</button>
-            </div>
 
-            <label class="flex items-center gap-2 text-sm text-slate-400">
-                <input id="mergeImport" type="checkbox" checked class="w-4 h-4 rounded border-white/20 bg-ink-800 text-accent">
-                导入时合并（不勾选则先清空该用户再导入）
-            </label>
-        </section>
+                <div id="retentionSliderWrap" class="hidden space-y-3 mb-4">
+                    <div class="flex justify-between text-xs text-slate-500 font-mono">
+                        <span>1 天</span>
+                        <span id="retentionValue">90 天</span>
+                        <span>360 天</span>
+                    </div>
+                    <input id="retentionSlider" type="range" min="1" max="360" value="90" class="w-full">
+                </div>
+
+                <p id="retentionPreview" class="text-sm text-slate-500 mb-4">超出保留期的记录：0 条（预览）</p>
+
+                <div class="flex flex-wrap gap-3">
+                    <button id="saveRetentionBtn" type="button" class="px-4 py-2 rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors">保存保留策略</button>
+                    <button id="applyRetentionBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">确认清理过期数据</button>
+                </div>
+            </section>
+
+            <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="userDataTitle">
+                <h2 id="userDataTitle" class="text-lg font-semibold text-white mb-4">按用户管理数据</h2>
+
+                <div class="mb-4">
+                    <span class="text-xs text-slate-500 uppercase tracking-wider">选择用户</span>
+                    <div id="userSelect" class="themed-select relative mt-2" data-value="">
+                        <button type="button" id="userSelectBtn" aria-haspopup="listbox" aria-expanded="false"
+                            class="w-full flex items-center justify-between gap-2 rounded-xl bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-left text-white hover:border-accent/30 focus:outline-none focus:ring-2 focus:ring-accent/40 transition-colors">
+                            <span id="userSelectLabel" class="truncate text-slate-400">加载中…</span>
+                            <svg class="w-4 h-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                        <ul id="userSelectMenu" role="listbox" tabindex="-1"
+                            class="hidden absolute z-20 mt-1 w-full max-h-52 overflow-auto rounded-xl bg-ink-800 border border-white/10 shadow-card py-1">
+                        </ul>
+                    </div>
+                </div>
+
+                <p id="userPreview" class="text-sm text-slate-500 mb-4">该用户记录数：—</p>
+
+                <div class="flex flex-wrap gap-3 mb-6">
+                    <button id="exportBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">导出 JSON</button>
+                    <label class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 cursor-pointer transition-colors">
+                        导入 JSON
+                        <input id="importFile" type="file" accept="application/json,.json" class="hidden">
+                    </label>
+                    <button id="deleteUserBtn" type="button" class="px-4 py-2 rounded-lg bg-red-950/60 hover:bg-red-900/60 border border-red-500/30 text-sm text-red-300 transition-colors">删除该用户全部数据</button>
+                </div>
+
+                <label class="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
+                    <input id="mergeImport" type="checkbox" checked class="w-4 h-4 rounded border-white/20 bg-ink-800 text-accent">
+                    导入时合并（不勾选则先清空该用户再导入）
+                </label>
+            </section>
+        </div>
     </div>
 
     <div id="loginOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-ink-950/90 backdrop-blur-sm px-4">
@@ -115,6 +152,16 @@
 
     <script>
         const fetchOptions = { credentials: 'same-origin' };
+        let previewTimer = null;
+        let storageSnapshot = null;
+
+        function formatBytes(bytes) {
+            const value = Number(bytes) || 0;
+            if (value < 1024) return value + ' B';
+            if (value < 1024 * 1024) return (value / 1024).toFixed(1) + ' KB';
+            if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + ' MB';
+            return (value / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        }
 
         function showError(msg) {
             const el = document.getElementById('errorBanner');
@@ -141,6 +188,92 @@
                 throw new Error('unauthorized');
             }
             return response;
+        }
+
+        function getSelectedUsername() {
+            return document.getElementById('userSelect').dataset.value || '';
+        }
+
+        function setSelectedUsername(username, label) {
+            const root = document.getElementById('userSelect');
+            root.dataset.value = username;
+            document.getElementById('userSelectLabel').textContent = label;
+            document.getElementById('userSelectLabel').classList.toggle('text-slate-400', !username);
+            document.getElementById('userSelectLabel').classList.toggle('text-white', Boolean(username));
+        }
+
+        function closeUserMenu() {
+            document.getElementById('userSelectMenu').classList.add('hidden');
+            document.getElementById('userSelectBtn').setAttribute('aria-expanded', 'false');
+        }
+
+        function openUserMenu() {
+            document.getElementById('userSelectMenu').classList.remove('hidden');
+            document.getElementById('userSelectBtn').setAttribute('aria-expanded', 'true');
+        }
+
+        function renderUserOptions(users) {
+            const menu = document.getElementById('userSelectMenu');
+            menu.textContent = '';
+            if (users.length === 0) {
+                setSelectedUsername('', '暂无用户数据');
+                const item = document.createElement('li');
+                item.className = 'px-3 py-2 text-sm text-slate-500';
+                item.textContent = '暂无用户数据';
+                menu.appendChild(item);
+                return;
+            }
+            users.forEach((user) => {
+                const item = document.createElement('li');
+                item.role = 'option';
+                item.dataset.value = user.username;
+                item.className = 'px-3 py-2.5 text-sm text-slate-300 cursor-pointer hover:bg-accent/10 hover:text-accent-glow transition-colors';
+                item.textContent = user.username + ' · ' + user.record_count + ' 条';
+                item.addEventListener('click', () => {
+                    setSelectedUsername(user.username, user.username + ' · ' + user.record_count + ' 条');
+                    closeUserMenu();
+                    refreshUserPreview().catch(() => {});
+                });
+                menu.appendChild(item);
+            });
+            const current = getSelectedUsername();
+            const stillExists = users.some((u) => u.username === current);
+            if (!stillExists) {
+                const first = users[0];
+                setSelectedUsername(first.username, first.username + ' · ' + first.record_count + ' 条');
+            }
+        }
+
+        function updateStorageDisplay(preview) {
+            if (!preview) return;
+            document.getElementById('storageCurrentSize').textContent = formatBytes(preview.database_bytes);
+            document.getElementById('storageCurrentRecords').textContent = preview.total_records.toLocaleString() + ' 条记录';
+
+            const permanent = document.getElementById('permanentToggle').checked;
+            if (permanent) {
+                document.getElementById('storageEstimatedSize').textContent = formatBytes(preview.database_bytes);
+                document.getElementById('storageEstimatedDetail').textContent = '永久保留，预计占用不变';
+                return;
+            }
+
+            document.getElementById('storageEstimatedSize').textContent =
+                formatBytes(preview.estimated_database_bytes_after);
+            const freed = Math.max(preview.database_bytes - preview.estimated_database_bytes_after, 0);
+            document.getElementById('storageEstimatedDetail').textContent =
+                '将释放约 ' + formatBytes(freed) + ' · 删除 ' + preview.records_to_delete.toLocaleString() + ' 条';
+        }
+
+        function updateRetentionPreviewText(preview) {
+            const label = preview.retention_days === null ? '永久保留' : preview.retention_days + ' 天';
+            if (preview.retention_days === null) {
+                document.getElementById('retentionPreview').textContent =
+                    '当前为永久保留，不会自动删除历史记录。';
+                return;
+            }
+            document.getElementById('retentionPreview').textContent =
+                '超出保留期（' + label + '）的记录：' + preview.records_to_delete.toLocaleString() +
+                ' 条，预计释放 ' + formatBytes(Math.max(preview.database_bytes - preview.estimated_database_bytes_after, 0)) +
+                '（预览，尚未删除）';
         }
 
         async function submitLogin(token) {
@@ -174,9 +307,16 @@
             const query = days === null ? '' : '?days=' + days;
             const response = await apiFetch('/api/privacy/retention/preview' + query);
             const data = await response.json();
-            const label = data.retention_days === null ? '永久保留' : data.retention_days + ' 天';
-            document.getElementById('retentionPreview').textContent =
-                '超出保留期（' + label + '）的记录：' + data.records_to_delete + ' 条（预览，尚未删除）';
+            storageSnapshot = data;
+            updateStorageDisplay(data);
+            updateRetentionPreviewText(data);
+        }
+
+        function scheduleRetentionPreview() {
+            if (previewTimer) clearTimeout(previewTimer);
+            previewTimer = setTimeout(() => {
+                refreshRetentionPreview().catch(() => {});
+            }, 120);
         }
 
         async function loadSettings() {
@@ -189,26 +329,12 @@
         async function loadUsers() {
             const response = await apiFetch('/api/privacy/users');
             const users = await response.json();
-            const select = document.getElementById('userSelect');
-            select.textContent = '';
-            if (users.length === 0) {
-                const opt = document.createElement('option');
-                opt.value = '';
-                opt.textContent = '暂无用户数据';
-                select.appendChild(opt);
-                return;
-            }
-            users.forEach((user) => {
-                const opt = document.createElement('option');
-                opt.value = user.username;
-                opt.textContent = user.username + ' (' + user.record_count + ' 条)';
-                select.appendChild(opt);
-            });
+            renderUserOptions(users);
             await refreshUserPreview();
         }
 
         async function refreshUserPreview() {
-            const username = document.getElementById('userSelect').value;
+            const username = getSelectedUsername();
             if (!username) {
                 document.getElementById('userPreview').textContent = '该用户记录数：0';
                 return;
@@ -216,8 +342,20 @@
             const response = await apiFetch('/api/privacy/users/' + encodeURIComponent(username) + '/delete/preview');
             const data = await response.json();
             document.getElementById('userPreview').textContent =
-                '该用户记录数：' + data.records_to_delete + ' 条（删除预览）';
+                '该用户记录数：' + data.records_to_delete.toLocaleString() + ' 条（删除预览）';
         }
+
+        document.getElementById('userSelectBtn').addEventListener('click', () => {
+            const menu = document.getElementById('userSelectMenu');
+            if (menu.classList.contains('hidden')) openUserMenu();
+            else closeUserMenu();
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!document.getElementById('userSelect').contains(event.target)) {
+                closeUserMenu();
+            }
+        });
 
         document.getElementById('permanentToggle').addEventListener('change', (event) => {
             document.getElementById('retentionSliderWrap').classList.toggle('hidden', event.target.checked);
@@ -226,7 +364,7 @@
 
         document.getElementById('retentionSlider').addEventListener('input', (event) => {
             document.getElementById('retentionValue').textContent = event.target.value + ' 天';
-            refreshRetentionPreview().catch(() => {});
+            scheduleRetentionPreview();
         });
 
         document.getElementById('saveRetentionBtn').addEventListener('click', async () => {
@@ -269,7 +407,7 @@
         });
 
         document.getElementById('exportBtn').addEventListener('click', async () => {
-            const username = document.getElementById('userSelect').value;
+            const username = getSelectedUsername();
             if (!username) return showError('请先选择用户。');
             try {
                 const response = await apiFetch('/api/privacy/users/' + encodeURIComponent(username) + '/export');
@@ -287,7 +425,7 @@
         });
 
         document.getElementById('importFile').addEventListener('change', async (event) => {
-            const username = document.getElementById('userSelect').value;
+            const username = getSelectedUsername();
             const file = event.target.files[0];
             event.target.value = '';
             if (!username || !file) return;
@@ -306,13 +444,14 @@
                 const data = await response.json();
                 showSuccess('已导入 ' + data.imported + ' 条记录。');
                 await loadUsers();
+                await refreshRetentionPreview();
             } catch (error) {
                 if (error.message !== 'unauthorized') showError('导入失败，请检查 JSON 格式与用户名是否匹配。');
             }
         });
 
         document.getElementById('deleteUserBtn').addEventListener('click', async () => {
-            const username = document.getElementById('userSelect').value;
+            const username = getSelectedUsername();
             if (!username) return showError('请先选择用户。');
             await refreshUserPreview();
             const preview = document.getElementById('userPreview').textContent;
@@ -326,13 +465,10 @@
                 const data = await response.json();
                 showSuccess('已删除 ' + data.deleted + ' 条记录。');
                 await loadUsers();
+                await refreshRetentionPreview();
             } catch (error) {
                 if (error.message !== 'unauthorized') showError('删除失败。');
             }
-        });
-
-        document.getElementById('userSelect').addEventListener('change', () => {
-            refreshUserPreview().catch(() => {});
         });
 
         document.getElementById('loginForm').addEventListener('submit', async (event) => {

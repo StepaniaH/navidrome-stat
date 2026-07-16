@@ -40,6 +40,7 @@ from src.schemas import (
     RetentionApplyResponse,
     RetentionPreviewResponse,
     ConfirmRequest,
+    StorageStatsResponse,
     SummaryStat,
     TranscodingStat,
     UserDeletePreviewResponse,
@@ -55,6 +56,7 @@ from src.privacy_ops import (
     delete_user_data,
     export_user_data,
     get_retention_days,
+    get_storage_stats,
     import_user_data,
     list_users,
     preview_delete_user,
@@ -413,6 +415,11 @@ async def api_update_privacy_settings(body: PrivacySettingsUpdate):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await set_retention_days(body.retention_days)
     return _privacy_settings_response(body.retention_days)
+
+
+@app.get("/api/privacy/storage", response_model=StorageStatsResponse)
+async def api_privacy_storage():
+    return await get_storage_stats()
 
 
 @app.get("/api/privacy/retention/preview", response_model=RetentionPreviewResponse)

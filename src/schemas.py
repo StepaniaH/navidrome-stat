@@ -81,6 +81,17 @@ class PrivacySettingsUpdate(BaseModel):
 class RetentionPreviewResponse(BaseModel):
     records_to_delete: int
     retention_days: Optional[int] = None
+    database_bytes: int
+    total_records: int
+    estimated_data_bytes: int
+    bytes_to_delete: int = 0
+    estimated_database_bytes_after: int
+
+
+class StorageStatsResponse(BaseModel):
+    database_bytes: int
+    total_records: int
+    estimated_data_bytes: int
 
 
 class RetentionApplyResponse(BaseModel):

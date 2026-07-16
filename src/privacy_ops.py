@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -12,6 +13,18 @@ from src.database import DB_PATH, init_db
 
 def _path(db_path: str | None = None) -> str:
     return DB_PATH if db_path is None else db_path
+
+
+_ROW_PAYLOAD_BYTES_SQL = """
+    COALESCE(LENGTH(played_at), 0) +
+    COALESCE(LENGTH(username), 0) +
+    COALESCE(LENGTH(client_name), 0) +
+    COALESCE(LENGTH(track_id), 0) +
+    COALESCE(LENGTH(title), 0) +
+    COALESCE(LENGTH(artist), 0) +
+    COALESCE(LENGTH(album), 0) +
+    16
+"""
 
 EXPORT_FORMAT_VERSION = 1
 RETENTION_PERMANENT = None
@@ -85,24 +98,84 @@ def _retention_cutoff_iso(days: int) -> str:
     return cutoff.isoformat()
 
 
+def _estimate_database_bytes_after_purge(
+    database_bytes: int,
+    estimated_data_bytes: int,
+    bytes_to_delete: int,
+) -> int:
+    if estimated_data_bytes <= 0 or bytes_to_delete <= 0:
+        return database_bytes
+    freed = int(database_bytes * (bytes_to_delete / estimated_data_bytes))
+    return max(database_bytes - freed, 0)
+
+
+async def _play_history_storage_metrics(
+    db: aiosqlite.Connection,
+    *,
+    played_before: str | None = None,
+) -> tuple[int, int]:
+    where_clause = ""
+    params: tuple[Any, ...] = ()
+    if played_before is not None:
+        where_clause = " WHERE played_at < ?"
+        params = (played_before,)
+
+    async with db.execute(
+        f"SELECT COUNT(*), COALESCE(SUM({_ROW_PAYLOAD_BYTES_SQL}), 0) "
+        f"FROM play_history{where_clause}",
+        params,
+    ) as cursor:
+        row = await cursor.fetchone()
+    return int(row[0]), int(row[1])
+
+
+async def get_storage_stats(db_path: str | None = None) -> dict[str, int]:
+    path = _path(db_path)
+    database_bytes = os.path.getsize(path) if os.path.exists(path) else 0
+    async with aiosqlite.connect(path) as db:
+        total_records, estimated_data_bytes = await _play_history_storage_metrics(db)
+    return {
+        "database_bytes": database_bytes,
+        "total_records": total_records,
+        "estimated_data_bytes": estimated_data_bytes,
+    }
+
+
 async def preview_retention_purge(
     days: Optional[int] = None,
     db_path: str | None = None,
-) -> dict[str, int]:
+) -> dict[str, Any]:
     path = _path(db_path)
+    storage = await get_storage_stats(path)
     if days is None:
         days = await get_retention_days(path)
     if days is None:
-        return {"records_to_delete": 0, "retention_days": None}
+        return {
+            "records_to_delete": 0,
+            "retention_days": None,
+            "bytes_to_delete": 0,
+            "estimated_database_bytes_after": storage["database_bytes"],
+            **storage,
+        }
 
     cutoff = _retention_cutoff_iso(days)
     async with aiosqlite.connect(path) as db:
-        async with db.execute(
-            "SELECT COUNT(*) FROM play_history WHERE played_at < ?",
-            (cutoff,),
-        ) as cursor:
-            row = await cursor.fetchone()
-    return {"records_to_delete": int(row[0]), "retention_days": days}
+        records_to_delete, bytes_to_delete = await _play_history_storage_metrics(
+            db,
+            played_before=cutoff,
+        )
+    estimated_after = _estimate_database_bytes_after_purge(
+        storage["database_bytes"],
+        storage["estimated_data_bytes"],
+        bytes_to_delete,
+    )
+    return {
+        "records_to_delete": records_to_delete,
+        "retention_days": days,
+        "bytes_to_delete": bytes_to_delete,
+        "estimated_database_bytes_after": estimated_after,
+        **storage,
+    }
 
 
 async def apply_retention_purge(db_path: str | None = None) -> dict[str, int]:
