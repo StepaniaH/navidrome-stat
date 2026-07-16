@@ -61,7 +61,7 @@
 - Uvicorn 在容器和 `src/main.py` 直接运行路径中绑定 `0.0.0.0:39421`。
 - Compose 将宿主机 `39421` 映射到容器同端口，加载 `.env`，并把单个数据库文件挂载到 `/app/navidrome_stats.db`。
 - Compose 声明存活健康检查（`GET /health`），未将上游失败配置为容器重启条件。
-- `requirements.txt` 仅含运行依赖；测试依赖在 `requirements-dev.txt`。
+- `requirements.txt`、`requirements.lock` 与 `requirements-dev.txt` 固定运行与测试依赖版本；Docker 使用 `requirements.lock` 安装。
 - 仓库提供 `.dockerignore`，构建上下文排除 `.env`、数据库、测试与文档。
 - 代码没有 TLS 终止、反向代理、访问控制或备份实现；这些只能由实际部署环境提供，当前仓库无法证明。
 

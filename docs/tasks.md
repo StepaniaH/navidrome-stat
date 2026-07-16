@@ -200,7 +200,7 @@
 - **验证命令**：`docker compose config`；`docker build`；容器用户/文件清单检查；容器烟雾测试；`pytest -q`；选定的依赖扫描命令。
 - **涉及文件**：`Dockerfile`、`docker-compose.yml`、`requirements.txt`/锁文件、可能的 `.dockerignore`、README、`docs/current-state.md`。
 - **风险/回滚**：非 root 迁移可能导致现有数据库不可写；依赖锁定可能暴露兼容问题。先在卷副本测试权限，保留旧镜像标签和数据库备份。
-- **完成记录**：2026-07-16，Cursor Agent。拆分 `requirements-dev.txt`；新增 `.dockerignore` 排除 `.env`/数据库/测试。验证：`docker compose config` 通过；`pytest -q` 29 passed。遗留：版本锁定、非 root 用户、多阶段构建待用户确认部署约束。
+- **完成记录**：2026-07-16，Cursor Agent。拆分 `requirements-dev.txt`；新增 `.dockerignore` 排除 `.env`/数据库/测试。2026-07-16 续：固定 `requirements.txt`/`requirements-dev.txt` 版本；新增 `requirements.lock` 与 `scripts/refresh_requirements_lock.sh`；Dockerfile 改用 lock 安装。验证：`pytest -q` 31 passed；`docker compose config` 通过。遗留：非 root 用户、基础镜像 digest、容器烟雾测试待用户确认部署约束。
 
 ## NDS-UI-001 Dashboard 运行状态与可访问性
 

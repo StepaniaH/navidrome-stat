@@ -1,5 +1,6 @@
-fastapi
-uvicorn
-httpx
-aiosqlite
-python-dotenv
+# Runtime dependencies (direct). Transitive pins: requirements.lock
+fastapi==0.139.0
+uvicorn==0.51.0
+httpx==0.28.1
+aiosqlite==0.22.1
+python-dotenv==1.2.2

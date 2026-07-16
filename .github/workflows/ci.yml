@@ -17,9 +17,13 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-dev.txt
+            requirements.lock
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
+
+      - name: Verify runtime lockfile installs
+        run: pip install -r requirements.lock
 
       - name: Run tests
         run: pytest -q

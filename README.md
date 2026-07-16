@@ -88,6 +88,23 @@ pip install -r requirements-dev.txt
 uvicorn src.main:app --host 0.0.0.0 --port 39421
 ```
 
+### Dependencies
+
+- `requirements.txt` — pinned direct runtime packages.
+- `requirements.lock` — full transitive runtime lock used by Docker.
+- `requirements-dev.txt` — runtime + pinned test tools.
+
+To upgrade a runtime dependency:
+
+```bash
+# 1. Edit the version pin in requirements.txt
+# 2. Regenerate the lock file
+bash scripts/refresh_requirements_lock.sh
+# 3. Reinstall and test
+pip install -r requirements-dev.txt
+pytest -q
+```
+
 ## Project Documentation
 
 - [Agent 工作入口](AGENTS.md)
