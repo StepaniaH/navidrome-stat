@@ -104,12 +104,12 @@
                 <p id="statTotalPlays" class="stat-value text-3xl font-bold text-white">—</p>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
-                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">活跃客户端</p>
-                <p id="statClients" class="stat-value text-3xl font-bold text-accent-glow">—</p>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">累计收听</p>
+                <p id="statListenTime" class="stat-value text-3xl font-bold text-mint">—</p>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
-                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">转码占比</p>
-                <p id="statTranscode" class="stat-value text-3xl font-bold text-mint">—</p>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">曲目数</p>
+                <p id="statUniqueTracks" class="stat-value text-3xl font-bold text-accent-glow">—</p>
             </div>
         </section>
 
@@ -156,6 +156,7 @@
                             <th scope="col" class="px-5 sm:px-6 py-3">曲目</th>
                             <th scope="col" class="px-5 sm:px-6 py-3 hidden sm:table-cell">艺人</th>
                             <th scope="col" class="px-5 sm:px-6 py-3 hidden md:table-cell">专辑</th>
+                            <th scope="col" class="px-5 sm:px-6 py-3 hidden lg:table-cell">最近播放</th>
                             <th scope="col" class="px-5 sm:px-6 py-3 text-right">Plays</th>
                         </tr>
                     </thead>
@@ -226,19 +227,42 @@
             }
         }
 
-        function updateSummary(players, transcoding, history) {
-            const totalPlays = history.reduce((sum, row) => sum + (row.play_count || 0), 0);
-            document.getElementById('statTotalPlays').textContent = totalPlays.toLocaleString();
+        function formatListenDuration(totalSeconds) {
+            const seconds = Number(totalSeconds) || 0;
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (hours > 0) return `${hours}h ${minutes}m`;
+            if (minutes > 0) return `${minutes}m`;
+            return `${seconds}s`;
+        }
 
-            const clientCount = players.filter(p => p.client_name).length;
-            document.getElementById('statClients').textContent = clientCount > 0 ? clientCount : (players.length > 0 ? players.length : '0');
+        function formatPlayedAt(isoString) {
+            if (!isoString) return '—';
+            const date = new Date(isoString);
+            if (Number.isNaN(date.getTime())) return '—';
+            return date.toLocaleString('zh-CN', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        }
+
+        function updateSummary(summary, transcoding) {
+            document.getElementById('statTotalPlays').textContent =
+                (summary.total_plays ?? 0).toLocaleString();
+            document.getElementById('statListenTime').textContent =
+                formatListenDuration(summary.total_listen_sec);
+            document.getElementById('statUniqueTracks').textContent =
+                (summary.unique_tracks ?? 0).toLocaleString();
 
             const direct = transcoding.find(t => !t.is_transcoding)?.count || 0;
             const trans = transcoding.find(t => t.is_transcoding)?.count || 0;
             const total = direct + trans;
-            document.getElementById('statTranscode').textContent = total > 0
-                ? Math.round((trans / total) * 100) + '%'
-                : '—';
+            const subtitle = document.getElementById('statUniqueTracks');
+            if (total > 0) {
+                subtitle.title = `转码占比 ${Math.round((trans / total) * 100)}% · ${summary.client_count ?? 0} 个客户端`;
+            }
         }
 
         function toggleChartEmpty(chartId, emptyId, hasData) {
@@ -303,7 +327,7 @@
             if (data.length === 0) {
                 const tr = document.createElement('tr');
                 const td = document.createElement('td');
-                td.colSpan = 5;
+                td.colSpan = 6;
                 td.className = 'px-5 sm:px-6 py-12 text-center';
                 const wrap = document.createElement('div');
                 wrap.className = 'flex flex-col items-center text-slate-600';
@@ -362,6 +386,10 @@
                 albumTd.textContent = item.album || '-';
                 albumTd.title = item.album || '';
 
+                const playedTd = document.createElement('td');
+                playedTd.className = 'px-5 sm:px-6 py-3.5 hidden lg:table-cell text-slate-500 whitespace-nowrap font-mono text-xs';
+                playedTd.textContent = formatPlayedAt(item.last_played_at);
+
                 const countTd = document.createElement('td');
                 countTd.className = 'px-5 sm:px-6 py-3.5 text-right';
                 const badge = document.createElement('span');
@@ -373,6 +401,7 @@
                 tr.appendChild(titleTd);
                 tr.appendChild(artistTd);
                 tr.appendChild(albumTd);
+                tr.appendChild(playedTd);
                 tr.appendChild(countTd);
                 tbody.appendChild(tr);
             });
@@ -385,23 +414,25 @@
             setStatus('loading', '同步中…');
 
             try {
-                const [playersRes, transcodingRes, historyRes] = await Promise.all([
+                const [summaryRes, playersRes, transcodingRes, historyRes] = await Promise.all([
+                    fetch('/api/stats/summary'),
                     fetch('/api/stats/players'),
                     fetch('/api/stats/transcoding'),
                     fetch('/api/stats/history?limit=10'),
                 ]);
 
-                if (!playersRes.ok || !transcodingRes.ok || !historyRes.ok) {
-                    throw new Error('部分数据请求失败 (' + [playersRes, transcodingRes, historyRes].filter(r => !r.ok).map(r => r.status).join(', ') + ')');
+                if (!summaryRes.ok || !playersRes.ok || !transcodingRes.ok || !historyRes.ok) {
+                    throw new Error('部分数据请求失败 (' + [summaryRes, playersRes, transcodingRes, historyRes].filter(r => !r.ok).map(r => r.status).join(', ') + ')');
                 }
 
-                const [playersData, transcodingData, historyData] = await Promise.all([
+                const [summaryData, playersData, transcodingData, historyData] = await Promise.all([
+                    summaryRes.json(),
                     playersRes.json(),
                     transcodingRes.json(),
                     historyRes.json(),
                 ]);
 
-                updateSummary(playersData, transcodingData, historyData);
+                updateSummary(summaryData, transcodingData);
                 renderPlayerChart(playersData);
                 renderTranscodingChart(transcodingData);
                 renderHistoryTable(historyData);

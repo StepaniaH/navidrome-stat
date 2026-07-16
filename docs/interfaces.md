@@ -21,9 +21,10 @@
 | `/` | 存在静态文件时返回 `src/static/index.html`；否则返回 JSON message | 受支持但可演进 | 返回类型取决于文件是否存在 |
 | `/health` | `{"status":"ok"}` | 受支持但可演进 | 存活探针；仅表示进程可响应 |
 | `/health/ready` | JSON：`status`、`checks`、`metrics` | 受支持但可演进 | 就绪探针；`not_ready` 时 HTTP 503；不含地址、用户名或曲目信息 |
+| `/api/stats/summary` | JSON：`total_plays`、`total_listen_sec`、`unique_tracks`、`client_count` | 受支持但可演进 | 全库聚合，不含个人明细列表 |
 | `/api/stats/players` | JSON 数组，元素为 `client_name`、`count` | 受支持但可演进 | 按播放记录数降序；名称可为 null |
 | `/api/stats/transcoding` | JSON 数组，元素为 `is_transcoding`、`count` | 受支持但可演进 | `is_transcoding` 通常为 0 或 1，也可能因既有数据为 null |
-| `/api/stats/history` | JSON 数组，元素为 `username`、`title`、`artist`、`album`、`play_count` | 受支持但可演进 | 查询参数 `limit` 默认 10、范围 1–100；非法值返回 422；按 `username, track_id` 聚合，`title`/`artist`/`album` 取自最新一条记录（`MAX(id)`），按最近 `played_at` 降序 |
+| `/api/stats/history` | JSON 数组，元素为 `username`、`title`、`artist`、`album`、`play_count`、`last_played_at`、`total_listen_sec` | 受支持但可演进 | 查询参数 `limit` 默认 10、范围 1–100；非法值返回 422；按 `username, track_id` 聚合，`title`/`artist`/`album`/`last_played_at` 取自最新一条记录（`MAX(id)`），按最近 `played_at` 降序 |
 
 当前 history 调用示例：
 
@@ -77,6 +78,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 | `NAVIDROME_USER` | 客户端初始化时必需 | 无 | `src/client.py` | 稳定 | 上游账户名，按敏感标识处理 |
 | `NAVIDROME_PASS` | 客户端初始化时必需 | 无 | `src/client.py` | 稳定 | 上游密码，必须由运行环境注入 |
 | `POLL_INTERVAL` | 可选 | `10` | `src/main.py` | 受支持但可演进 | 秒数；模块导入时解析为整数，当前无范围校验 |
+| `MAX_POLL_BACKOFF_SEC` | 可选 | `60` | `src/main.py` | 受支持但可演进 | 上游连续失败时轮询退避上限（秒） |
 | `DATABASE_URL` | 可选 | `navidrome_stats.db` | `src/database.py` | 受支持但可演进 | 当前语义是 SQLite 文件路径，不是 URL |
 
 本地开发通过 `python-dotenv` 在导入 `src/client.py` 时加载 `.env`。构造 `NavidromeClient` 时传入的非空参数优先于环境变量。

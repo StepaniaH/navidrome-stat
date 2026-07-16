@@ -127,14 +127,42 @@ async def ping_db(db_path: str = DB_PATH) -> bool:
         return False
 
 
+async def get_summary(db_path: str = DB_PATH):
+    """Returns aggregate listening statistics."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT
+                COUNT(*) AS total_plays,
+                COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec,
+                COUNT(DISTINCT track_id) AS unique_tracks,
+                COUNT(DISTINCT client_name) AS client_count
+            FROM play_history
+        """) as cursor:
+            row = await cursor.fetchone()
+            return dict(row)
+
+
 async def get_playback_history(limit: int = 10, db_path: str = DB_PATH):
     """Returns recent tracks with aggregated play counts."""
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT ph.username, ph.title, ph.artist, ph.album, agg.play_count
+            SELECT
+                ph.username,
+                ph.title,
+                ph.artist,
+                ph.album,
+                ph.played_at AS last_played_at,
+                agg.play_count,
+                agg.total_listen_sec
             FROM (
-                SELECT username, track_id, COUNT(*) AS play_count, MAX(id) AS latest_id
+                SELECT
+                    username,
+                    track_id,
+                    COUNT(*) AS play_count,
+                    SUM(listen_duration_sec) AS total_listen_sec,
+                    MAX(id) AS latest_id
                 FROM play_history
                 GROUP BY username, track_id
             ) agg

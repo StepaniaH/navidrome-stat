@@ -122,13 +122,16 @@ async def test_exact_threshold_saved(tracker, save_mock):
 
 
 @pytest.mark.asyncio
-async def test_paused_entry_skipped(tracker, save_mock):
+async def test_paused_entry_finalizes_session(tracker, save_mock):
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
 
-    await tracker.process_poll([_entry(is_playing=False)], t0)
+    await tracker.process_poll([_entry()], t0)
+    await tracker.process_poll([_entry()], t1)
+    await tracker.process_poll([_entry(is_playing=False)], t1)
 
-    assert tracker.active_sessions == {}
-    save_mock.assert_not_called()
+    save_mock.assert_awaited_once()
+    assert "p1" not in tracker.active_sessions
 
 
 @pytest.mark.asyncio

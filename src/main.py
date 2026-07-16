@@ -14,6 +14,7 @@ from src.database import (
     get_player_stats,
     get_transcoding_stats,
     get_playback_history,
+    get_summary,
     ping_db,
 )
 from src.runtime_state import runtime_state
@@ -25,6 +26,7 @@ from src.schemas import (
     HistoryItem,
     PlayerStat,
     ReadinessResponse,
+    SummaryStat,
     TranscodingStat,
 )
 from src.sessions import PlaybackSessionTracker
@@ -35,6 +37,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", 10))
+MAX_POLL_BACKOFF_SEC = int(os.getenv("MAX_POLL_BACKOFF_SEC", 60))
 
 
 async def _save_play_session_with_logging(session: dict) -> None:
@@ -60,9 +63,11 @@ async def finalize_session(player_id: str):
 
 async def polling_loop(client: NavidromeClient):
     logger.info("Starting polling loop with interval: %s seconds", POLL_INTERVAL)
+    consecutive_failures = 0
 
     while True:
         current_time = datetime.now(timezone.utc)
+        sleep_for = POLL_INTERVAL
         try:
             data = await client.get_now_playing()
             response = data.get("subsonic-response", {})
@@ -71,17 +76,28 @@ async def polling_loop(client: NavidromeClient):
                 error_code = error_info.get("code") if isinstance(error_info, dict) else None
                 runtime_state.record_poll_upstream_error(current_time, error_code)
                 logger.error("Error from Navidrome API (code=%s)", error_code)
+                consecutive_failures += 1
+                sleep_for = min(
+                    POLL_INTERVAL * (2 ** (consecutive_failures - 1)),
+                    MAX_POLL_BACKOFF_SEC,
+                )
             else:
                 now_playing = response.get("nowPlaying", {})
                 entries = now_playing.get("entry", [])
                 await session_tracker.process_poll(entries, current_time)
                 runtime_state.record_poll_success(current_time)
+                consecutive_failures = 0
 
         except Exception as e:
             runtime_state.record_poll_exception(current_time)
             logger.error("Error in polling loop: %s", e)
+            consecutive_failures += 1
+            sleep_for = min(
+                POLL_INTERVAL * (2 ** (consecutive_failures - 1)),
+                MAX_POLL_BACKOFF_SEC,
+            )
 
-        await asyncio.sleep(POLL_INTERVAL)
+        await asyncio.sleep(sleep_for)
 
 
 async def build_readiness_report() -> dict:
@@ -203,6 +219,12 @@ async def health_ready():
     report = await build_readiness_report()
     status_code = 200 if report["status"] != "not_ready" else 503
     return JSONResponse(content=report, status_code=status_code)
+
+
+@app.get("/api/stats/summary", response_model=SummaryStat)
+async def api_summary_stats():
+    """Endpoint for aggregate listening statistics."""
+    return await _query_stats(get_summary)
 
 
 @app.get("/api/stats/players", response_model=list[PlayerStat])

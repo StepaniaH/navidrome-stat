@@ -81,15 +81,21 @@ class PlaybackSessionTracker:
         seen_player_ids: set[str] = set()
 
         for entry in self._normalize_entries(entries):
-            if not entry.get("isPlaying", True):
-                continue
-
             player_id_raw = entry.get("playerId")
             if player_id_raw is None:
                 continue
 
             player_id = str(player_id_raw)
             track_id = entry.get("id")
+
+            if not entry.get("isPlaying", True):
+                if (
+                    player_id in self.active_sessions
+                    and self.active_sessions[player_id]["track_id"] == track_id
+                ):
+                    await self.finalize_session(player_id)
+                continue
+
             seen_player_ids.add(player_id)
 
             if player_id in self.active_sessions:

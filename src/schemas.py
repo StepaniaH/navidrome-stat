@@ -18,12 +18,21 @@ class TranscodingStat(BaseModel):
     count: int
 
 
+class SummaryStat(BaseModel):
+    total_plays: int
+    total_listen_sec: int
+    unique_tracks: int
+    client_count: int
+
+
 class HistoryItem(BaseModel):
     username: Optional[str] = None
     title: Optional[str] = None
     artist: Optional[str] = None
     album: Optional[str] = None
     play_count: int
+    last_played_at: Optional[str] = None
+    total_listen_sec: Optional[int] = None
 
 
 class HealthLiveResponse(BaseModel):
