@@ -183,6 +183,73 @@ async def get_summary(db_path: str | None = None):
             return dict(row)
 
 
+async def get_hourly_stats(db_path: str | None = None):
+    """Returns play counts grouped by hour of day (0-23)."""
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT CAST(strftime("%H", played_at) AS INTEGER) AS hour,
+                   COUNT(*) AS count
+            FROM play_history
+            GROUP BY hour
+            ORDER BY hour ASC
+        """) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_daily_stats(db_path: str | None = None):
+    """Returns play counts per day for the last 30 days, ordered by date ASC."""
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT date(played_at) AS date,
+                   COUNT(*) AS count
+            FROM play_history
+            WHERE date(played_at) >= date('now', '-30 days')
+            GROUP BY date
+            ORDER BY date ASC
+        """) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_top_artists(limit: int = 10, db_path: str | None = None):
+    """Returns top artists by play count, ordered by count DESC."""
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT artist, COUNT(*) AS count
+            FROM play_history
+            WHERE artist IS NOT NULL AND artist != ""
+            GROUP BY artist
+            ORDER BY count DESC
+            LIMIT ?
+        """, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_top_albums(limit: int = 10, db_path: str | None = None):
+    """Returns top albums by play count, ordered by count DESC."""
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT album, COUNT(*) AS count
+            FROM play_history
+            WHERE album IS NOT NULL AND album != ""
+            GROUP BY album
+            ORDER BY count DESC
+            LIMIT ?
+        """, (limit,)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
 async def get_playback_history(limit: int = 10, db_path: str | None = None):
     """Returns recent tracks with aggregated play counts."""
     path = _path(db_path)

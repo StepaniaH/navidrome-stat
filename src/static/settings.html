@@ -26,118 +26,237 @@
                 radial-gradient(ellipse 60% 40% at 100% 0%, rgba(52, 211, 153, 0.08), transparent);
         }
         input[type=range] { accent-color: #a78bfa; }
-        .tab-btn[aria-selected="true"] {
-            background: rgba(167, 139, 250, 0.15);
-            color: #e9d5ff;
-            border-color: rgba(167, 139, 250, 0.35);
+        .settings-tab {
+            border-left: 2px solid transparent;
         }
+        .settings-tab[aria-selected="true"] {
+            background: rgba(167, 139, 250, 0.12);
+            color: #e9d5ff;
+            border-left-color: #34d399;
+        }
+        @media (max-width: 767px) {
+            .settings-tab {
+                border-left: 0;
+                border-bottom: 2px solid transparent;
+            }
+            .settings-tab[aria-selected="true"] {
+                border-left: 0;
+                border-bottom-color: #34d399;
+            }
+        }
+        .retention-mode {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.6rem 0.75rem;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background-color: rgba(26, 26, 38, 0.6);
+            color: #94a3b8;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .retention-mode:hover { color: #e2e8f0; }
+        .retention-mode-active {
+            background-color: rgba(167, 139, 250, 0.16);
+            border-color: rgba(167, 139, 250, 0.6);
+            color: #e9d5ff;
+        }
+        .retention-mode input { position: absolute; opacity: 0; width: 0; height: 0; }
     </style>
 </head>
 <body class="mesh-bg text-slate-100 min-h-screen antialiased">
-    <div class="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <header class="mb-6">
             <a href="/" class="text-xs font-mono uppercase tracking-widest text-slate-500 hover:text-accent transition-colors">← 返回统计</a>
             <h1 class="text-2xl font-bold text-white mt-2">设置</h1>
-            <p class="text-sm text-slate-400 mt-1">管理服务配置与数据隐私选项。</p>
+            <p class="text-sm text-slate-400 mt-1">管理隐私数据生命周期与 Navidrome 信息来源。</p>
         </header>
 
-        <nav class="flex gap-1 p-1 rounded-xl bg-ink-900/80 border border-white/5 mb-6" role="tablist" aria-label="设置分类">
-            <button type="button" role="tab" id="tab-privacy-btn" data-tab="privacy" aria-selected="true" aria-controls="tab-privacy"
-                class="tab-btn flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-slate-400 border border-transparent transition-colors hover:text-slate-200">
-                隐私与数据
-            </button>
-        </nav>
+        <div class="flex flex-col md:flex-row gap-6">
+            <!-- Left sidebar / top tab bar -->
+            <aside class="md:w-52 md:shrink-0">
+                <nav id="settingsTabBar" class="flex md:flex-col gap-1 p-2 rounded-xl bg-ink-900/80 border border-white/5 sticky top-4" role="tablist" aria-label="设置分类">
+                    <button type="button" role="tab" id="tab-privacy-btn" data-tab="privacy" aria-selected="true" aria-controls="tab-privacy"
+                        class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
+                        <svg class="w-4 h-4 shrink-0 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>隐私与数据</span>
+                    </button>
+                    <button type="button" role="tab" id="tab-source-btn" data-tab="source" aria-selected="false" aria-controls="tab-source"
+                        class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
+                        <svg class="w-4 h-4 shrink-0 text-accent-glow" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <span>信息来源</span>
+                    </button>
+                </nav>
+            </aside>
 
-        <div id="errorBanner" class="hidden mb-6 px-4 py-3 rounded-xl bg-red-950/50 border border-red-500/20 text-red-300 text-sm" role="alert"></div>
-        <div id="successBanner" class="hidden mb-6 px-4 py-3 rounded-xl bg-emerald-950/40 border border-emerald-500/20 text-emerald-300 text-sm" role="status"></div>
+            <!-- Right detail panel -->
+            <main class="flex-1 min-w-0 space-y-6">
+                <div id="errorBanner" class="hidden px-4 py-3 rounded-xl bg-red-950/50 border border-red-500/20 text-red-300 text-sm" role="alert"></div>
+                <div id="successBanner" class="hidden px-4 py-3 rounded-xl bg-emerald-950/40 border border-emerald-500/20 text-emerald-300 text-sm" role="status"></div>
 
-        <div id="tab-privacy" role="tabpanel" aria-labelledby="tab-privacy-btn" class="space-y-6">
-            <section class="rounded-2xl bg-ink-900/80 border border-mint/20 p-5 text-sm text-slate-300 leading-relaxed">
-                <h2 class="text-mint font-semibold mb-2">隐私原则</h2>
-                <ul class="list-disc pl-5 space-y-1 text-slate-400">
-                    <li>播放数据默认<strong class="text-slate-200">永久保留</strong>，只有你主动修改保留策略或删除时才会移除。</li>
-                    <li>删除与过期清理前会显示<strong class="text-slate-200">影响条数与预计空间</strong>，需你明确确认后才会执行。</li>
-                    <li>导出仅包含所选用户的数据；服务不会在日志中记录导出内容。</li>
-                    <li>请确保被统计的 Navidrome 用户知悉数据被收集，并由部署方负责告知与合规。</li>
-                </ul>
-            </section>
+                <div id="tab-privacy" role="tabpanel" aria-labelledby="tab-privacy-btn" class="space-y-6">
+                    <!-- Current policy summary -->
+                    <section class="rounded-2xl bg-ink-900/60 border border-white/5 p-4" aria-labelledby="policyTitle">
+                        <p id="policyTitle" class="text-xs text-slate-500 uppercase tracking-wider mb-1">当前策略</p>
+                        <p id="policySummary" class="text-sm text-slate-200">加载中…</p>
+                    </section>
 
-            <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="storageTitle">
-                <h2 id="storageTitle" class="text-lg font-semibold text-white mb-4">数据占用</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
-                    <div class="rounded-xl bg-ink-800/60 border border-white/5 p-4">
-                        <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">当前数据库大小</p>
-                        <p id="storageCurrentSize" class="text-2xl font-semibold text-white font-mono tabular-nums">—</p>
-                        <p id="storageCurrentRecords" class="text-xs text-slate-500 mt-1">— 条记录</p>
-                    </div>
-                    <div class="rounded-xl bg-ink-800/60 border border-white/5 p-4">
-                        <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">按当前策略预计</p>
-                        <p id="storageEstimatedSize" class="text-2xl font-semibold text-mint font-mono tabular-nums">—</p>
-                        <p id="storageEstimatedDetail" class="text-xs text-slate-500 mt-1">拖动滑块查看预计占用</p>
-                    </div>
-                </div>
-            </section>
+                    <!-- Data retention -->
+                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="retentionTitle">
+                        <h2 id="retentionTitle" class="text-lg font-semibold text-white mb-4">数据保留</h2>
 
-            <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="retentionTitle">
-                <h2 id="retentionTitle" class="text-lg font-semibold text-white mb-4">数据保留</h2>
+                        <p id="retentionModeLabel" class="text-xs text-slate-500 uppercase tracking-wider mb-2">保留模式</p>
+                        <div role="radiogroup" aria-labelledby="retentionModeLabel" class="grid grid-cols-2 gap-2 mb-4">
+                            <label class="retention-mode retention-mode-active">
+                                <input id="modePermanent" type="radio" name="retentionMode" value="permanent" checked>
+                                <span>永久保留</span>
+                            </label>
+                            <label class="retention-mode">
+                                <input id="modeFinite" type="radio" name="retentionMode" value="finite">
+                                <span>保留指定天数</span>
+                            </label>
+                        </div>
 
-                <label class="flex items-center gap-3 mb-4 cursor-pointer">
-                    <input id="permanentToggle" type="checkbox" checked class="w-4 h-4 rounded border-white/20 bg-ink-800 text-accent focus:ring-accent/50">
-                    <span class="text-sm text-slate-300">永久保留（默认）</span>
-                </label>
+                        <div id="retentionSliderWrap" class="hidden space-y-3 mb-4">
+                            <div class="flex justify-between text-xs text-slate-500 font-mono">
+                                <span>1 天</span>
+                                <span id="retentionValue">90 天</span>
+                                <span>360 天</span>
+                            </div>
+                            <input id="retentionSlider" type="range" min="1" max="360" value="90" class="w-full">
+                        </div>
 
-                <div id="retentionSliderWrap" class="hidden space-y-3 mb-4">
-                    <div class="flex justify-between text-xs text-slate-500 font-mono">
-                        <span>1 天</span>
-                        <span id="retentionValue">90 天</span>
-                        <span>360 天</span>
-                    </div>
-                    <input id="retentionSlider" type="range" min="1" max="360" value="90" class="w-full">
-                </div>
+                        <p id="retentionPreview" class="text-sm text-slate-500 mb-4">超出保留期的记录：0 条（预览）</p>
 
-                <p id="retentionPreview" class="text-sm text-slate-500 mb-4">超出保留期的记录：0 条（预览）</p>
+                        <div class="flex flex-wrap gap-3">
+                            <button id="saveRetentionBtn" type="button" class="px-4 py-2 rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors">保存保留策略</button>
+                            <button id="applyRetentionBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">确认清理过期数据</button>
+                        </div>
+                    </section>
 
-                <div class="flex flex-wrap gap-3">
-                    <button id="saveRetentionBtn" type="button" class="px-4 py-2 rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors">保存保留策略</button>
-                    <button id="applyRetentionBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">确认清理过期数据</button>
-                </div>
-            </section>
+                    <!-- Storage overview (read-only) -->
+                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="storageTitle">
+                        <h2 id="storageTitle" class="text-lg font-semibold text-white mb-4">数据占用</h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
+                            <div class="rounded-xl bg-ink-800/60 border border-white/5 p-4">
+                                <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">当前数据库大小</p>
+                                <p id="storageCurrentSize" class="text-2xl font-semibold text-white font-mono tabular-nums">—</p>
+                                <p id="storageCurrentRecords" class="text-xs text-slate-500 mt-1">— 条记录</p>
+                            </div>
+                            <div class="rounded-xl bg-ink-800/60 border border-white/5 p-4">
+                                <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">按当前策略预计</p>
+                                <p id="storageEstimatedSize" class="text-2xl font-semibold text-mint font-mono tabular-nums">—</p>
+                                <p id="storageEstimatedDetail" class="text-xs text-slate-500 mt-1">拖动滑块查看预计占用</p>
+                            </div>
+                        </div>
+                        <p class="text-xs text-slate-600 mt-3">预计占用随「保留模式」滑块变化。</p>
+                    </section>
 
-            <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="userDataTitle">
-                <h2 id="userDataTitle" class="text-lg font-semibold text-white mb-4">按用户管理数据</h2>
+                    <!-- Per-user data operations -->
+                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="userDataTitle">
+                        <h2 id="userDataTitle" class="text-lg font-semibold text-white mb-4">按用户管理数据</h2>
 
-                <div class="mb-4">
-                    <span class="text-xs text-slate-500 uppercase tracking-wider">选择用户</span>
-                    <div id="userSelect" class="themed-select relative mt-2" data-value="">
-                        <button type="button" id="userSelectBtn" aria-haspopup="listbox" aria-expanded="false"
-                            class="w-full flex items-center justify-between gap-2 rounded-xl bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-left text-white hover:border-accent/30 focus:outline-none focus:ring-2 focus:ring-accent/40 transition-colors">
-                            <span id="userSelectLabel" class="truncate text-slate-400">加载中…</span>
-                            <svg class="w-4 h-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                            </svg>
-                        </button>
-                        <ul id="userSelectMenu" role="listbox" tabindex="-1"
-                            class="hidden absolute z-20 mt-1 w-full max-h-52 overflow-auto rounded-xl bg-ink-800 border border-white/10 shadow-card py-1">
+                        <div class="mb-4">
+                            <span class="text-xs text-slate-500 uppercase tracking-wider">选择用户</span>
+                            <div id="userSelect" class="themed-select relative mt-2" data-value="">
+                                <button type="button" id="userSelectBtn" aria-haspopup="listbox" aria-expanded="false"
+                                    class="w-full flex items-center justify-between gap-2 rounded-xl bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-left text-white hover:border-accent/30 focus:outline-none focus:ring-2 focus:ring-accent/40 transition-colors">
+                                    <span id="userSelectLabel" class="truncate text-slate-400">加载中…</span>
+                                    <svg class="w-4 h-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </button>
+                                <ul id="userSelectMenu" role="listbox" tabindex="-1"
+                                    class="hidden absolute z-20 mt-1 w-full max-h-52 overflow-auto rounded-xl bg-ink-800 border border-white/10 shadow-card py-1">
+                                </ul>
+                            </div>
+                        </div>
+
+                        <p id="userPreview" class="text-sm text-slate-500 mb-4">该用户记录数：—</p>
+
+                        <div class="space-y-3">
+                            <div>
+                                <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">导出</p>
+                                <button id="exportBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">导出 JSON</button>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">导入</p>
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <label class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 cursor-pointer transition-colors">
+                                        导入 JSON
+                                        <input id="importFile" type="file" accept="application/json,.json" class="hidden">
+                                    </label>
+                                    <label class="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
+                                        <input id="mergeImport" type="checkbox" checked class="w-4 h-4 rounded border-white/20 bg-ink-800 text-accent">
+                                        合并导入（不勾选则先清空该用户再导入）
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">删除</p>
+                                <button id="deleteUserBtn" type="button" class="px-4 py-2 rounded-lg bg-red-950/60 hover:bg-red-900/60 border border-red-500/30 text-sm text-red-300 transition-colors">删除该用户全部数据</button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Privacy notice (collapsible) -->
+                    <details class="rounded-2xl bg-ink-900/60 border border-mint/15 p-5 text-sm text-slate-300 leading-relaxed">
+                        <summary class="text-mint font-semibold cursor-pointer select-none">隐私原则</summary>
+                        <ul class="list-disc pl-5 space-y-1 text-slate-400 mt-3">
+                            <li>播放数据默认<strong class="text-slate-200">永久保留</strong>，只有你主动修改保留策略或删除时才会移除。</li>
+                            <li>删除与过期清理前会显示<strong class="text-slate-200">影响条数与预计空间</strong>，需你明确确认后才会执行。</li>
+                            <li>导出仅包含所选用户的数据；服务不会在日志中记录导出内容。</li>
+                            <li>请确保被统计的 Navidrome 用户知悉数据被收集，并由部署方负责告知与合规。</li>
                         </ul>
-                    </div>
+                    </details>
                 </div>
 
-                <p id="userPreview" class="text-sm text-slate-500 mb-4">该用户记录数：—</p>
+                <div id="tab-source" role="tabpanel" aria-labelledby="tab-source-btn" class="hidden space-y-6">
+                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="sourceTitle">
+                        <h2 id="sourceTitle" class="text-lg font-semibold text-white mb-2">信息来源 · Navidrome 连接</h2>
+                        <p class="text-sm text-slate-400 mb-4">配置 Navidrome 服务地址与认证账户。保存后<strong class="text-slate-200">需重启服务生效</strong>，运行中的轮询客户端不会热更新。</p>
 
-                <div class="flex flex-wrap gap-3 mb-6">
-                    <button id="exportBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">导出 JSON</button>
-                    <label class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 cursor-pointer transition-colors">
-                        导入 JSON
-                        <input id="importFile" type="file" accept="application/json,.json" class="hidden">
-                    </label>
-                    <button id="deleteUserBtn" type="button" class="px-4 py-2 rounded-lg bg-red-950/60 hover:bg-red-900/60 border border-red-500/30 text-sm text-red-300 transition-colors">删除该用户全部数据</button>
+                        <div id="sourceReadiness" class="mb-4 px-3 py-2 rounded-lg bg-ink-800/60 border border-white/5 text-sm text-slate-400">
+                            <span>当前上游状态：</span><span id="sourceReadinessValue" class="text-slate-300">未知</span>
+                        </div>
+
+                        <form id="sourceForm" class="space-y-4" autocomplete="off">
+                            <div class="space-y-1">
+                                <label for="sourceUrl" class="text-xs text-slate-500 uppercase tracking-wider">Navidrome URL</label>
+                                <input id="sourceUrl" name="sourceUrl" type="text" autocomplete="off" spellcheck="false"
+                                    class="w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/40"
+                                    placeholder="http://navidrome.example.invalid:4533">
+                            </div>
+                            <div class="space-y-1">
+                                <label for="sourceUser" class="text-xs text-slate-500 uppercase tracking-wider">用户名</label>
+                                <input id="sourceUser" name="sourceUser" type="text" autocomplete="off"
+                                    class="w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/40"
+                                    placeholder="account name">
+                            </div>
+                            <div class="space-y-1">
+                                <label for="sourcePass" class="text-xs text-slate-500 uppercase tracking-wider">密码</label>
+                                <input id="sourcePass" name="sourcePass" type="password" autocomplete="new-password"
+                                    class="w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/40"
+                                    placeholder="留空则保持不变">
+                            </div>
+                            <div class="flex flex-wrap gap-3">
+                                <button id="saveSourceBtn" type="submit" class="px-4 py-2 rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors">保存</button>
+                                <button id="testSourceBtn" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">测试连接</button>
+                            </div>
+                        </form>
+
+                        <p id="sourceMessage" class="hidden px-4 py-3 rounded-xl text-sm" role="status"></p>
+
+                        <details class="mt-5 rounded-xl bg-ink-800/40 border border-white/5 p-4 text-sm text-slate-400 leading-relaxed">
+                            <summary class="cursor-pointer select-none text-slate-300">环境变量优先级说明</summary>
+                            <p class="mt-3">环境变量 <code class="text-slate-200">NAVIDROME_URL</code>、<code class="text-slate-200">NAVIDROME_USER</code>、<code class="text-slate-200">NAVIDROME_PASS</code> 始终拥有最高优先级。此处保存的配置仅在<strong class="text-slate-200">对应环境变量未设置时</strong>作为回退生效。即使你在 GUI 保存了新值，只要环境变量已设置，运行中的客户端仍会使用环境变量，需重启服务并移除环境变量后才会切换到 GUI 配置。</p>
+                        </details>
+                    </section>
                 </div>
-
-                <label class="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
-                    <input id="mergeImport" type="checkbox" checked class="w-4 h-4 rounded border-white/20 bg-ink-800 text-accent">
-                    导入时合并（不勾选则先清空该用户再导入）
-                </label>
-            </section>
+            </main>
         </div>
     </div>
 
@@ -249,7 +368,7 @@
             document.getElementById('storageCurrentSize').textContent = formatBytes(preview.database_bytes);
             document.getElementById('storageCurrentRecords').textContent = preview.total_records.toLocaleString() + ' 条记录';
 
-            const permanent = document.getElementById('permanentToggle').checked;
+            const permanent = document.getElementById('modePermanent').checked;
             if (permanent) {
                 document.getElementById('storageEstimatedSize').textContent = formatBytes(preview.database_bytes);
                 document.getElementById('storageEstimatedDetail').textContent = '永久保留，预计占用不变';
@@ -276,6 +395,18 @@
                 '（预览，尚未删除）';
         }
 
+        function updatePolicySummary() {
+            const summary = document.getElementById('policySummary');
+            if (!summary) return;
+            const permanent = document.getElementById('modePermanent').checked;
+            if (permanent) {
+                summary.textContent = '永久保留：播放历史不会被自动清理。';
+                return;
+            }
+            const days = document.getElementById('retentionSlider').value;
+            summary.textContent = '保留 ' + days + ' 天：超出该天数的记录可被清理（需确认）。';
+        }
+
         async function submitLogin(token) {
             const response = await fetch('/api/auth/login', {
                 method: 'POST',
@@ -288,18 +419,29 @@
             await bootstrap();
         }
 
+        function updateRetentionModeVisuals() {
+            document.querySelectorAll('.retention-mode').forEach((el) => {
+                const radio = el.querySelector('input[type="radio"]');
+                if (!radio) return;
+                el.classList.toggle('retention-mode-active', radio.checked);
+            });
+        }
+
         function getRetentionDaysFromUi() {
-            if (document.getElementById('permanentToggle').checked) return null;
+            if (document.getElementById('modePermanent').checked) return null;
             return Number(document.getElementById('retentionSlider').value);
         }
 
         function applyRetentionUi(permanent, days) {
-            document.getElementById('permanentToggle').checked = permanent;
+            document.getElementById('modePermanent').checked = permanent;
+            document.getElementById('modeFinite').checked = !permanent;
+            updateRetentionModeVisuals();
             document.getElementById('retentionSliderWrap').classList.toggle('hidden', permanent);
             if (!permanent && days) {
                 document.getElementById('retentionSlider').value = String(days);
                 document.getElementById('retentionValue').textContent = days + ' 天';
             }
+            updatePolicySummary();
         }
 
         async function refreshRetentionPreview() {
@@ -357,13 +499,19 @@
             }
         });
 
-        document.getElementById('permanentToggle').addEventListener('change', (event) => {
-            document.getElementById('retentionSliderWrap').classList.toggle('hidden', event.target.checked);
-            refreshRetentionPreview().catch(() => {});
+        document.querySelectorAll('input[name="retentionMode"]').forEach((radio) => {
+            radio.addEventListener('change', () => {
+                updateRetentionModeVisuals();
+                const permanent = document.getElementById('modePermanent').checked;
+                document.getElementById('retentionSliderWrap').classList.toggle('hidden', permanent);
+                updatePolicySummary();
+                refreshRetentionPreview().catch(() => {});
+            });
         });
 
         document.getElementById('retentionSlider').addEventListener('input', (event) => {
             document.getElementById('retentionValue').textContent = event.target.value + ' 天';
+            updatePolicySummary();
             scheduleRetentionPreview();
         });
 
@@ -481,6 +629,142 @@
             }
         });
 
+        // ---- Source config tab ----
+
+        function setSourceMessage(text, kind) {
+            const el = document.getElementById('sourceMessage');
+            el.textContent = text;
+            el.classList.remove('hidden', 'bg-emerald-950/40', 'border-emerald-500/20', 'text-emerald-300',
+                'bg-red-950/50', 'border-red-500/20', 'text-red-300',
+                'bg-ink-800/60', 'border-white/10', 'text-slate-300');
+            if (kind === 'success') {
+                el.classList.add('bg-emerald-950/40', 'border', 'border-emerald-500/20', 'text-emerald-300');
+            } else if (kind === 'error') {
+                el.classList.add('bg-red-950/50', 'border', 'border-red-500/20', 'text-red-300');
+            } else {
+                el.classList.add('bg-ink-800/60', 'border', 'border-white/10', 'text-slate-300');
+            }
+        }
+
+        async function loadSourceConfig() {
+            try {
+                const response = await apiFetch('/api/source/config');
+                const data = await response.json();
+                document.getElementById('sourceUrl').value = data.url || '';
+                document.getElementById('sourceUser').value = data.username || '';
+                document.getElementById('sourcePass').value = '';
+                const passEl = document.getElementById('sourcePass');
+                if (data.password_configured) {
+                    passEl.placeholder = '已配置 · 留空则保持不变';
+                } else {
+                    passEl.placeholder = '留空则保持不变';
+                }
+            } catch (error) {
+                if (error.message !== 'unauthorized') setSourceMessage('无法加载信息来源配置。', 'error');
+            }
+        }
+
+        async function loadSourceReadiness() {
+            try {
+                const response = await apiFetch('/health/ready');
+                const data = await response.json();
+                const upstream = data.checks && data.checks.upstream;
+                let label;
+                if (upstream === 'ok') label = '正常（最近轮询成功）';
+                else if (upstream === 'error') label = '异常（上游返回错误）';
+                else if (data.status === 'degraded') label = '未知（仅使用环境变量或上游待轮询）';
+                else label = '未知';
+                document.getElementById('sourceReadinessValue').textContent = label;
+            } catch (error) {
+                document.getElementById('sourceReadinessValue').textContent = '未知';
+            }
+        }
+
+        document.getElementById('sourceForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const url = document.getElementById('sourceUrl').value.trim();
+            const username = document.getElementById('sourceUser').value.trim();
+            const password = document.getElementById('sourcePass').value;
+            if (!url) return setSourceMessage('请填写 Navidrome URL。', 'error');
+            if (!username) return setSourceMessage('请填写用户名。', 'error');
+            try {
+                const payload = { url, username };
+                if (password) payload.password = password;
+                const response = await apiFetch('/api/source/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) {
+                    let detail = '保存失败。';
+                    try { const body = await response.json(); if (body.detail) detail = body.detail; } catch (e) {}
+                    return setSourceMessage(detail, 'error');
+                }
+                document.getElementById('sourcePass').value = '';
+                await loadSourceConfig();
+                setSourceMessage('已保存，重启服务后生效。', 'success');
+            } catch (error) {
+                if (error.message !== 'unauthorized') setSourceMessage('保存失败，请重试。', 'error');
+            }
+        });
+
+        document.getElementById('testSourceBtn').addEventListener('click', async () => {
+            setSourceMessage('正在测试连接…', 'info');
+            const url = document.getElementById('sourceUrl').value.trim();
+            const username = document.getElementById('sourceUser').value.trim();
+            const password = document.getElementById('sourcePass').value;
+            try {
+                const payload = {};
+                if (url) payload.url = url;
+                if (username) payload.username = username;
+                if (password) payload.password = password;
+                const response = await apiFetch('/api/source/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json();
+                setSourceMessage(data.message, data.ok ? 'success' : 'error');
+            } catch (error) {
+                if (error.message !== 'unauthorized') setSourceMessage('测试连接失败。', 'error');
+            }
+        });
+
+        function switchSettingsTab(name) {
+            document.querySelectorAll('#settingsTabBar [role="tab"]').forEach((btn) => {
+                const active = btn.dataset.tab === name;
+                btn.setAttribute('aria-selected', active ? 'true' : 'false');
+                if (active) btn.focus({ preventScroll: true });
+            });
+            document.querySelectorAll('main [role="tabpanel"]').forEach((panel) => {
+                if (panel.id === 'tab-' + name) {
+                    panel.classList.remove('hidden');
+                } else {
+                    panel.classList.add('hidden');
+                }
+            });
+            if (name === 'source') {
+                loadSourceReadiness().catch(() => {});
+            }
+        }
+
+        document.querySelectorAll('#settingsTabBar [role="tab"]').forEach((btn) => {
+            btn.addEventListener('click', () => switchSettingsTab(btn.dataset.tab));
+            btn.addEventListener('keydown', (event) => {
+                const tabs = Array.from(document.querySelectorAll('#settingsTabBar [role="tab"]'));
+                const idx = tabs.indexOf(event.currentTarget);
+                let next = -1;
+                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (idx + 1) % tabs.length;
+                else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (idx - 1 + tabs.length) % tabs.length;
+                else if (event.key === 'Home') next = 0;
+                else if (event.key === 'End') next = tabs.length - 1;
+                if (next >= 0) {
+                    event.preventDefault();
+                    switchSettingsTab(tabs[next].dataset.tab);
+                }
+            });
+        });
+
         async function bootstrap() {
             try {
                 const statusRes = await fetch('/api/auth/status', fetchOptions);
@@ -496,6 +780,7 @@
                 }
                 await loadSettings();
                 await loadUsers();
+                await loadSourceConfig();
             } catch (error) {
                 showError('无法加载设置，请检查服务是否运行。');
             }

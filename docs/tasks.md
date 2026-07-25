@@ -28,6 +28,7 @@
 | NDS-DOC-001 | 用户文档事实校准 | P1 | 已完成 | NDS-CORE-001 的语义结论 |
 | NDS-ARCH-001 | 多进程/多副本架构决策 | P2 | 待办 | NDS-CORE-001、用户人工确认部署拓扑 |
 | NDS-CI-001 | 持续集成质量门禁 | P2 | 已完成 | NDS-TEST-001、NDS-DEP-001 |
+| NDS-SRC-001 | 信息来源配置与设置信息架构 | P1 | 已完成 | 无 |
 
 ## NDS-SEC-001 访问控制与部署边界
 
@@ -252,6 +253,23 @@
 - **涉及文件**：架构决策记录、`src/main.py`、可能的协调模块、集成测试、Docker/部署文档、`docs/current-state.md`。
 - **风险/回滚**：分布式协调会增加复杂度并可能造成采集中断。优先选择满足真实拓扑的最小方案；保留受支持的单实例回滚模式。
 - **完成记录**：未填写。任务尚未实施，不得标记完成。
+
+## NDS-SRC-001 信息来源配置与设置信息架构
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：无；GUI 保存的连接配置仅作为环境变量缺失时的回退，运行客户端的热更新不在本次范围。
+- **目标**：将“设置”信息架构收敛为两个顶级标签（隐私与数据 / 信息来源），并提供可在 GUI 编辑且受控的 Navidrome 连接配置，密码按敏感数据处理。
+- **实施步骤**：
+  1. 新增 `src/source_config.py`：使用现有 `schema_meta` 表持久化 `source_url`/`source_user`/`source_password`，不引入 schema 版本迁移。
+  2. 实现配置解析顺序：请求覆盖值 > 环境变量 > 已保存 DB 值；lifespan 在构造 `NavidromeClient` 前解析回退配置。
+  3. 新增 `GET/PUT /api/source/config` 与 `POST /api/source/test`，受现有认证中间件保护；GET 只返回 `url`、`username`、`password_configured`，从不返回密码；PUT 校验 URL 协议为 http/https 且 user 非空；test 端点用临时 `NavidromeClient` 调用 `get_now_playing()`，返回通用 `{ok, message}`，不泄露上游响应。
+  4. 重构 `src/static/settings.html`：两个顶级标签；保留期使用可见的单选/分段控件而非唯一靠复选框揭示滑块；新增信息来源表单（密码 `type=password`，占位 `留空则保持不变`）与“测试连接”按钮；保存后提示“已保存，重启服务后生效”。
+  5. 文档同步 `interfaces.md`、`current-state.md`、`privacy.md`；不在文档/测试/日志写入真实凭据。
+- **验收标准**：仅两个顶级设置标签；保留分段控件与滑块可见；密码输入为 password 类型且 GET 不渲染密码；源配置端点存在且受认证保护；环境变量优先级保留；`pytest -q` 通过；`git diff --check` 通过。
+- **验证命令**：`pytest -q`；`git diff --check`；源码级核验设置标签数量、滑块/分段控件、密码输入类型、源端点契约。
+- **涉及文件**：`src/source_config.py`（新增）、`src/main.py`、`src/schemas.py`、`src/static/settings.html`、`tests/test_source_config.py`（新增）、`tests/test_privacy_api.py`、`docs/interfaces.md`、`docs/current-state.md`、`docs/privacy.md`、`docs/tasks.md`。
+- **风险/回滚**：SQLite 本地明文存储 Navidrome 密码是已识别安全权衡（自托管场景可接受，但数据库文件应受部署访问控制保护）；GUI 修改不热更新运行中的客户端，需重启生效；回滚恢复 `schema_meta` 中新增键或整体恢复文件。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。新增 `src/source_config.py` 持久化与解析；新增 GET/PUT/POST 源配置端点；lifespan 解析回退配置；设置页改为两标签（隐私与数据 / 信息来源），保留期改可见分段控件；新增 `tests/test_source_config.py`。验证：见本任务报告。遗留：密码明文存储为已知权衡；热更新未实现。
 
 ## NDS-CI-001 持续集成质量门禁
 

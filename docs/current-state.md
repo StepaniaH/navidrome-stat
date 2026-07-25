@@ -12,12 +12,13 @@
 | SQLite 层 | 建表、写入播放会话、聚合查询与隐私数据操作 | `src/database.py`、`src/privacy_ops.py` |
 | Dashboard | 请求统计 API，使用 ECharts 展示图表和表格 | `src/static/index.html` |
 | 隐私设置页 | 保留策略、按用户导出/导入/删除 | `src/static/settings.html` |
+| 来源配置层 | GUI 保存的 Navidrome 连接配置持久化与解析（env 优先） | `src/source_config.py` |
 | 容器配置 | Python 3.11 镜像、端口、数据库挂载和 `.env` 注入 | `Dockerfile`、`docker-compose.yml` |
 
 运行数据流：
 
 1. FastAPI lifespan 调用 `init_db()`，随后创建 `polling_loop()` 后台任务。
-2. `NavidromeClient` 从构造参数或环境变量读取连接信息，每次请求生成六位 salt 和 MD5 token。
+2. lifespan 调用 `resolve_effective_source_config()`（环境变量 > 已保存 DB 值）解析连接信息，再构造 `NavidromeClient`；不齐全则记录错误且不启动轮询。`NavidromeClient` 每次请求生成六位 salt 和 MD5 token。
 3. 轮询循环调用上游 `/rest/getNowPlaying`，由 `PlaybackSessionTracker` 按 `playerId` 追踪会话；缺失 `playerId` 的条目被跳过。
 4. 同一播放器继续播放同一 `track_id` 时只更新 `last_seen_at`；换曲、停止后超过 30 秒或应用关闭时尝试结算。
 5. 结算以 `last_seen_at - first_seen_at` 计算观测时长。时长大于等于 30 秒才写入一条 `play_history` 记录。
@@ -51,7 +52,7 @@
 
 ## 4. HTTP 与前端
 
-- 应用包含 `/`、`/settings`、`/health`、`/health/ready`、认证路由、四个统计 API 与隐私管理 API。可选 `STATS_API_TOKEN` 保护统计与隐私 API。
+- 应用包含 `/`、`/settings`、`/health`、`/health/ready`、认证路由、四个统计 API 与隐私管理 API，以及来源配置 API（`GET/PUT /api/source/config`、`POST /api/source/test`）。可选 `STATS_API_TOKEN` 保护统计、隐私与来源 API。
 - `/health` 与 `/health/ready` 始终公开，供探针使用。
 - `POST /api/auth/login` 在启用认证时设置 httpOnly 会话 Cookie；Dashboard 支持令牌登录。
 - 响应附加 CSP、`nosniff`、`DENY` 框架与 `no-referrer` 策略。
@@ -59,10 +60,11 @@
 - history 的 `limit` 使用 FastAPI `Query` 校验，范围 1–100，默认 10。
 - Dashboard 的 Tailwind CSS 和 ECharts 从公共 CDN 加载；ECharts 5.5.0 带 SRI；CSP 限制脚本来源。
 - 页面提供可见的错误横幅、手动刷新按钮和上次更新时间；历史表格用户数据用 `textContent` 渲染。
+- 设置页（`/settings`）有两个顶级标签：「隐私与数据」（策略摘要、数据保留分段控件与滑块、存储概览、按用户导出/导入/删除、可折叠隐私原则）与「信息来源」（Navidrome URL/用户名/密码表单、保存按钮、保存后提示「已保存，重启服务后生效」、「测试连接」按钮、上游就绪状态、环境变量优先级说明）。保留模式为可见的单选/分段控件而非仅靠复选框揭示滑块；密码输入为 `type=password`，GET 仅返回 `password_configured: bool`，从不渲染密码。
 
 ## 5. 部署与配置
 
-- Docker 镜像基于 `python:3.11-slim`，安装 `build-essential`，以默认容器用户运行。
+- Docker 镜像采用多阶段构建：builder 阶段基于 `python:3.11-slim` 安装 `build-essential` 并在 `/opt/venv` 中安装 `requirements.lock`；runner 阶段同样基于 `python:3.11-slim`，仅复制 `/opt/venv`，不保留 `build-essential`，并以非 root 用户 `appuser`（UID 1000）运行。
 - Uvicorn 在容器和 `src/main.py` 直接运行路径中绑定 `0.0.0.0:39421`。
 - Compose 将宿主机 `39421` 映射到容器同端口，加载 `.env`，并把单个数据库文件挂载到 `/app/navidrome_stats.db`。
 - Compose 声明存活健康检查（`GET /health`），未将上游失败配置为容器重启条件。

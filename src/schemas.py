@@ -7,6 +7,10 @@ HISTORY_LIMIT_DEFAULT = 10
 HISTORY_LIMIT_MIN = 1
 HISTORY_LIMIT_MAX = 100
 
+TOP_LIMIT_DEFAULT = 10
+TOP_LIMIT_MIN = 1
+TOP_LIMIT_MAX = 50
+
 
 class PlayerStat(BaseModel):
     client_name: Optional[str] = None
@@ -23,6 +27,26 @@ class SummaryStat(BaseModel):
     total_listen_sec: int
     unique_tracks: int
     client_count: int
+
+
+class HourlyStat(BaseModel):
+    hour: int
+    count: int
+
+
+class DailyStat(BaseModel):
+    date: str
+    count: int
+
+
+class TopArtistItem(BaseModel):
+    artist: str
+    count: int
+
+
+class TopAlbumItem(BaseModel):
+    album: str
+    count: int
 
 
 class HistoryItem(BaseModel):
@@ -124,3 +148,34 @@ class UserImportResponse(BaseModel):
 
 class ConfirmRequest(BaseModel):
     confirm: bool = False
+
+
+class NowPlayingItem(BaseModel):
+    username: Optional[str] = None
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    client_name: Optional[str] = None
+    seconds_elapsed: int
+
+
+class SourceConfigResponse(BaseModel):
+    url: Optional[str] = None
+    username: Optional[str] = None
+    password_configured: bool = False
+
+
+class SourceConfigUpdate(BaseModel):
+    url: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
+class SourceTestRequest(BaseModel):
+    url: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
+class SourceTestResponse(BaseModel):
+    ok: bool
+    message: str

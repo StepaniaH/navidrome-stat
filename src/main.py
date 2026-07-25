@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from src.auth import (
     SESSION_COOKIE_NAME,
     is_auth_enabled,
@@ -20,6 +20,10 @@ from src.database import (
     save_play_session,
     get_player_stats,
     get_transcoding_stats,
+    get_hourly_stats,
+    get_daily_stats,
+    get_top_artists,
+    get_top_albums,
     get_playback_history,
     get_summary,
     ping_db,
@@ -32,14 +36,26 @@ from src.schemas import (
     AuthStatusResponse,
     HealthLiveResponse,
     HistoryItem,
+    HourlyStat,
+    DailyStat,
     LoginRequest,
+    NowPlayingItem,
     PlayerStat,
+    TopArtistItem,
+    TopAlbumItem,
+    TOP_LIMIT_DEFAULT,
+    TOP_LIMIT_MAX,
+    TOP_LIMIT_MIN,
     PrivacySettingsResponse,
     PrivacySettingsUpdate,
     ReadinessResponse,
     RetentionApplyResponse,
     RetentionPreviewResponse,
     ConfirmRequest,
+    SourceConfigResponse,
+    SourceConfigUpdate,
+    SourceTestRequest,
+    SourceTestResponse,
     StorageStatsResponse,
     SummaryStat,
     TranscodingStat,
@@ -64,7 +80,17 @@ from src.privacy_ops import (
     set_retention_days,
     validate_retention_days,
 )
+from src.metrics import format_prometheus_metrics
 from src.sessions import PlaybackSessionTracker
+from src.source_config import (
+    get_saved_source_config,
+    has_full_config,
+    redacted_view,
+    resolve_effective_source_config,
+    resolve_source_config,
+    set_saved_source_config,
+    validate_source_url,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -225,7 +251,18 @@ async def lifespan(app: FastAPI):
     task = None
     retention_task = None
     try:
-        client = NavidromeClient()
+        config = await resolve_effective_source_config()
+        if not has_full_config(config):
+            raise ValueError(
+                "Missing Navidrome configuration. Provide via environment "
+                "variables (NAVIDROME_URL, NAVIDROME_USER, NAVIDROME_PASS) "
+                "or save a fallback in the settings UI."
+            )
+        client = NavidromeClient(
+            url=config["url"],
+            user=config["user"],
+            password=config["password"],
+        )
         runtime_state.client_initialized = True
         logger.info("Starting background polling task...")
         task = asyncio.create_task(polling_loop(client))
@@ -261,7 +298,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-AUTH_EXEMPT_PATHS = frozenset({"/health", "/health/ready", "/api/auth/login", "/api/auth/status"})
+AUTH_EXEMPT_PATHS = frozenset({"/health", "/health/ready", "/metrics", "/api/auth/login", "/api/auth/status"})
 
 
 @app.middleware("http")
@@ -367,6 +404,16 @@ async def health_ready():
     return JSONResponse(content=report, status_code=status_code)
 
 
+@app.get("/metrics")
+async def metrics():
+    """Prometheus exposition endpoint; always anonymous."""
+    active = len(session_tracker.active_sessions)
+    return PlainTextResponse(
+        content=format_prometheus_metrics(active_sessions=active),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
+
+
 @app.get("/api/stats/summary", response_model=SummaryStat)
 async def api_summary_stats():
     """Endpoint for aggregate listening statistics."""
@@ -383,6 +430,70 @@ async def api_player_stats():
 async def api_transcoding_stats():
     """Endpoint for transcoding ratio."""
     return await _query_stats(get_transcoding_stats)
+
+
+@app.get("/api/stats/hourly", response_model=list[HourlyStat])
+async def api_hourly_stats():
+    """Endpoint for play counts grouped by hour of day (0-23)."""
+    return await _query_stats(get_hourly_stats)
+
+
+@app.get("/api/stats/daily", response_model=list[DailyStat])
+async def api_daily_stats():
+    """Endpoint for play counts per day over the last 30 days."""
+    return await _query_stats(get_daily_stats)
+
+
+@app.get("/api/stats/top-artists", response_model=list[TopArtistItem])
+async def api_top_artists(
+    limit: int = Query(
+        default=TOP_LIMIT_DEFAULT,
+        ge=TOP_LIMIT_MIN,
+        le=TOP_LIMIT_MAX,
+    ),
+):
+    """Endpoint for top artists by play count."""
+    return await _query_stats(lambda: get_top_artists(limit=limit))
+
+
+@app.get("/api/stats/top-albums", response_model=list[TopAlbumItem])
+async def api_top_albums(
+    limit: int = Query(
+        default=TOP_LIMIT_DEFAULT,
+        ge=TOP_LIMIT_MIN,
+        le=TOP_LIMIT_MAX,
+    ),
+):
+    """Endpoint for top albums by play count."""
+    return await _query_stats(lambda: get_top_albums(limit=limit))
+
+
+@app.get("/api/stats/now-playing", response_model=list[NowPlayingItem])
+async def api_now_playing():
+    """Endpoint for currently active playback sessions (in-memory, no DB access)."""
+    try:
+        now = datetime.now(timezone.utc)
+        items: list[NowPlayingItem] = []
+        for session in session_tracker.active_sessions.values():
+            first_seen_at = session.get("first_seen_at")
+            seconds_elapsed = 0
+            if first_seen_at is not None:
+                seconds_elapsed = int((now - first_seen_at).total_seconds())
+                if seconds_elapsed < 0:
+                    seconds_elapsed = 0
+            items.append(
+                NowPlayingItem(
+                    username=session.get("username"),
+                    title=session.get("title"),
+                    artist=session.get("artist"),
+                    client_name=session.get("client_name"),
+                    seconds_elapsed=seconds_elapsed,
+                )
+            )
+        return items
+    except Exception:
+        logger.error("Now playing query failed")
+        raise HTTPException(status_code=503, detail="Stats temporarily unavailable")
 
 
 @app.get("/api/stats/history", response_model=list[HistoryItem])
@@ -505,6 +616,89 @@ async def api_delete_user(username: str, body: ConfirmRequest):
     except Exception as exc:
         logger.error("User delete failed")
         raise HTTPException(status_code=503, detail="Delete failed") from exc
+
+
+@app.get("/api/source/config", response_model=SourceConfigResponse)
+async def api_source_config_get():
+    """Return non-sensitive view of the effective source config (env > saved).
+
+    Never returns the password; only reports whether one is configured.
+    """
+    saved = await get_saved_source_config()
+    config = resolve_source_config(overrides=None, saved=saved)
+    view = redacted_view(config)
+    return SourceConfigResponse(**view)
+
+
+@app.put("/api/source/config", response_model=SourceConfigResponse)
+async def api_source_config_put(body: SourceConfigUpdate):
+    """Persist GUI fallback source config. Env vars keep priority at runtime.
+
+    The password only changes when a non-empty value is supplied; the request
+    value is never echoed back. URLs are validated to http/https.
+    """
+    if body.url is not None:
+        try:
+            body.url = validate_source_url(body.url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if body.username is not None and not body.username.strip():
+        raise HTTPException(status_code=422, detail="username must not be empty")
+
+    saved = await get_saved_source_config()
+    new_url = body.url if body.url is not None else saved.get("url")
+    new_user = body.username if body.username is not None else saved.get("user")
+    if not new_url or not new_user:
+        raise HTTPException(status_code=422, detail="url and username are required")
+
+    try:
+        await set_saved_source_config(
+            url=new_url,
+            user=new_user,
+            password=body.password,
+        )
+    except Exception as exc:
+        logger.error("Source config persist failed")
+        raise HTTPException(status_code=503, detail="Failed to save source config") from exc
+
+    updated = await get_saved_source_config()
+    config = resolve_source_config(overrides=None, saved=updated)
+    view = redacted_view(config)
+    return SourceConfigResponse(**view)
+
+
+@app.post("/api/source/test", response_model=SourceTestResponse)
+async def api_source_test(body: SourceTestRequest):
+    """Test connectivity with supplied/current settings without persisting.
+
+    Returns only generic success/failure; never echoes upstream responses,
+    credentials, or passwords.
+    """
+    saved = await get_saved_source_config()
+    overrides = {
+        "url": body.url,
+        "user": body.username,
+        "password": body.password,
+    }
+    config = resolve_source_config(overrides=overrides, saved=saved)
+    if not has_full_config(config):
+        return SourceTestResponse(ok=False, message="配置不完整，缺少 URL、用户名或密码")
+
+    test_client = NavidromeClient(
+        url=config["url"],
+        user=config["user"],
+        password=config["password"],
+    )
+    try:
+        await test_client.get_now_playing()
+    except Exception:
+        return SourceTestResponse(ok=False, message="无法连接到上游 Navidrome")
+    finally:
+        try:
+            await test_client.close()
+        except Exception:
+            logger.error("Failed to close test NavidromeClient")
+    return SourceTestResponse(ok=True, message="连接成功")
 
 
 if __name__ == "__main__":

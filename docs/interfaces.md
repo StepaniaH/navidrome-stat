@@ -21,6 +21,7 @@
 | `/` | GET | 存在静态文件时返回 `src/static/index.html`；否则 JSON message | 受支持但可演进 | 页面可加载；数据仍受 API 认证约束 |
 | `/health` | GET | `{"status":"ok"}` | 稳定 | 存活探针；始终匿名 |
 | `/health/ready` | GET | JSON：`status`、`checks`、`metrics` | 受支持但可演进 | 就绪探针；`not_ready` 时 HTTP 503；始终匿名 |
+| `/metrics` | GET | Prometheus text format metrics | 受支持但可演进 | Always anonymous; Prometheus exposition format |
 | `/api/auth/status` | GET | `{"auth_required": bool}` | 受支持但可演进 | 报告是否配置了 `STATS_API_TOKEN` |
 | `/api/auth/login` | POST | `{"status":"ok"}` + 会话 Cookie | 受支持但可演进 | 请求体 `{"token":"..."}`；未启用认证时 404 |
 | `/api/auth/logout` | POST | `{"status":"ok"}` | 受支持但可演进 | 清除会话 Cookie |
@@ -28,6 +29,11 @@
 | `/api/stats/players` | GET | JSON 数组，元素为 `client_name`、`count` | 受支持但可演进 | 启用认证时需授权 |
 | `/api/stats/transcoding` | GET | JSON 数组，元素为 `is_transcoding`、`count` | 受支持但可演进 | 启用认证时需授权 |
 | `/api/stats/history` | GET | JSON 数组（见下） | 受支持但可演进 | `limit` 默认 10、范围 1–100；启用认证时需授权 |
+| `/api/stats/hourly` | GET | JSON 数组，元素为 `hour`（0–23）、`count` | 受支持但可演进 | 按一天内时段聚合；启用认证时需授权 |
+| `/api/stats/daily` | GET | JSON 数组，元素为 `date`（`YYYY-MM-DD`）、`count` | 受支持但可演进 | 最近 30 天按日聚合，`date` 升序；启用认证时需授权 |
+| `/api/stats/top-artists` | GET | JSON 数组，元素为 `artist`（str）、`count`（int） | 受支持但可演进 | `limit` 默认 10、范围 1–50；跳过空 artist；按 `count` 降序；启用认证时需授权 |
+| `/api/stats/top-albums` | GET | JSON 数组，元素为 `album`（str）、`count`（int） | 受支持但可演进 | `limit` 默认 10、范围 1–50；跳过空 album；按 `count` 降序；启用认证时需授权 |
+| `/api/stats/now-playing` | GET | JSON 数组，元素为 `username`、`title`、`artist`、`client_name`、`seconds_elapsed`（int） | 受支持但可演进 | 来自内存 `session_tracker.active_sessions`，不访问数据库；`seconds_elapsed` 从会话首次发现时间起算；启用认证时需授权 |
 | `/settings` | GET | `settings.html` 隐私与数据管理页 | 受支持但可演进 | 保留策略、按用户导出/导入/删除 |
 | `/api/privacy/settings` | GET/PUT | `retention_days`（`null`=永久）、`permanent` | 受支持但可演进 | PUT 接受 `null` 或 1–360 |
 | `/api/privacy/retention/preview` | GET | `records_to_delete`、`retention_days` | 受支持但可演进 | 可选 `?days=` 预览未保存策略 |
@@ -37,6 +43,9 @@
 | `/api/privacy/users/{username}/import` | POST | `imported`、`merge` | 受支持但可演进 | 校验 `format_version` 与用户名 |
 | `/api/privacy/users/{username}/delete/preview` | GET | `records_to_delete` | 受支持但可演进 | 仅计数 |
 | `/api/privacy/users/{username}/delete` | POST | `deleted` | 受支持但可演进 | 请求体 `{"confirm": true}` 必填 |
+| `/api/source/config` | GET | `url`、`username`、`password_configured`（bool） | 受支持但可演进 | **永不返回 password**；返回 env > saved 的有效配置脱敏视图；启用认证时需授权 |
+| `/api/source/config` | PUT | 同 GET | 受支持但可演进 | 接受 `url`、`username`、可选 `password`；URL 必须为 http/https；`username` 不得为空；`password` 仅在非空时更新；不回显 password；启用认证时需授权 |
+| `/api/source/test` | POST | `{ok: bool, message: str}` | 受支持但可演进 | 接受可选 `url`/`username`/`password`，解析顺序：请求值 > 环境变量 > 已保存 DB；用临时 `NavidromeClient` 调用 `getNowPlaying`，调用后立即 `close()`；仅返回通用成功/失败与简短中文消息，不返回上游响应体、凭据或异常详情；启用认证时需授权 |
 
 当前 history 调用示例：
 
@@ -48,7 +57,7 @@ FastAPI 默认还生成 OpenAPI JSON 和交互文档路由。因为代码没有�
 
 ### 错误行为
 
-- 非整数或超出 1–100 的 `limit` 由 FastAPI 返回 422 请求验证错误。
+- 非整数或超出 1–100 的 `limit`（history）或 1–50 的 `limit`（top-artists/top-albums）由 FastAPI 返回 422 请求验证错误。
 - 统计 API 数据库异常返回 503 与固定文案 `Stats temporarily unavailable`，不泄露路径或查询细节。
 - 启用认证时未授权访问统计 API 或 OpenAPI 返回 401 与 `Unauthorized`。
 - 代码没有定义 API 级错误码、错误响应 schema 或速率限制。
@@ -91,9 +100,9 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 
 | 名称 | 必需性 | 默认值 | 读取位置 | 稳定性 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `NAVIDROME_URL` | 客户端初始化时必需 | 无 | `src/client.py` | 稳定 | 上游基础 URL；真实值不得入库 |
-| `NAVIDROME_USER` | 客户端初始化时必需 | 无 | `src/client.py` | 稳定 | 上游账户名，按敏感标识处理 |
-| `NAVIDROME_PASS` | 客户端初始化时必需 | 无 | `src/client.py` | 稳定 | 上游密码，必须由运行环境注入 |
+| `NAVIDROME_URL` | 客户端初始化时必需（无 env 时回退到 GUI 保存值） | 无 | `src/source_config.py`、`src/client.py` | 稳定 | 上游基础 URL；真实值不得入库；env 优先级高于 GUI 保存值，按字段独立覆盖 |
+| `NAVIDROME_USER` | 客户端初始化时必需（无 env 时回退到 GUI 保存值） | 无 | `src/source_config.py`、`src/client.py` | 稳定 | 上游账户名，按敏感标识处理 |
+| `NAVIDROME_PASS` | 客户端初始化时必需（无 env 时回退到 GUI 保存值） | 无 | `src/source_config.py`、`src/client.py` | 稳定 | 上游密码，必须由运行环境注入；GUI 也可保存到 `schema_meta` 作为回退（见来源配置章节） |
 | `POLL_INTERVAL` | 可选 | `10` | `src/main.py` | 受支持但可演进 | 秒数；模块导入时解析为整数，当前无范围校验 |
 | `MAX_POLL_BACKOFF_SEC` | 可选 | `60` | `src/main.py` | 受支持但可演进 | 上游连续失败时轮询退避上限（秒） |
 | `DATABASE_URL` | 可选 | `navidrome_stats.db` | `src/database.py` | 受支持但可演进 | 当前语义是 SQLite 文件路径，不是 URL |
@@ -104,7 +113,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 
 ## 5. SQLite schema
 
-数据库接口为“内部”。`schema_meta` 表记录 `schema_version`（当前 **2**）及 `retention_days`（`permanent` 或 1–360）；`init_db()` 在启动时向前迁移并创建索引。任何字段、约束或索引变更都必须先建立任务并提供既有数据迁移与回滚方案。
+数据库接口为“内部”。`schema_meta` 表记录 `schema_version`（当前 **2**）及 `retention_days`（`permanent` 或 1–360）；`init_db()` 在启动时向前迁移并创建索引。来源配置（`source_url`/`source_user`/`source_password`）直接复用 `schema_meta` 作为键值存储，未引入新表或 schema 版本迁移，既有库无需迁移即可读写。任何字段、约束或索引变更都必须先建立任务并提供既有数据迁移与回滚方案。
 
 表：`schema_meta`
 
@@ -112,6 +121,9 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 | --- | --- |
 | `schema_version` | 当前为 `2` |
 | `retention_days` | `permanent`（默认）或 `1`–`360` 的字符串 |
+| `source_url` | GUI 保存的 Navidrome URL，作为 `NAVIDROME_URL` 缺失时的回退（内部，部署敏感信息） |
+| `source_user` | GUI 保存的 Navidrome 用户名，作为 `NAVIDROME_USER` 缺失时的回退（内部，账户标识） |
+| `source_password` | GUI 保存的 Navidrome 密码明文，作为 `NAVIDROME_PASS` 缺失时的回退（内部，高敏感凭据；不得出现在 API 响应或日志中） |
 
 表：`play_history`
 
@@ -140,9 +152,24 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - `src.database.save_play_session(session, db_path=...)`
 - `src.database.get_player_stats(db_path=...)`
 - `src.database.get_transcoding_stats(db_path=...)`
+- `src.database.get_hourly_stats(db_path=...)`
+- `src.database.get_daily_stats(db_path=...)`
+- `src.database.get_top_artists(limit=..., db_path=...)`
+- `src.database.get_top_albums(limit=..., db_path=...)`
 - `src.database.get_playback_history(limit=..., db_path=...)`
 - `src.sessions.PlaybackSessionTracker(...)`、`process_poll(...)`、`finalize_session(...)`、`finalize_all()`
 - `src.main.finalize_session(player_id)`、`polling_loop(client)`
+- `src.source_config.get_saved_source_config(...)`、`set_saved_source_config(...)`、`resolve_source_config(...)`、`resolve_effective_source_config(...)`、`validate_source_url(...)`、`has_full_config(...)`、`redacted_view(...)`
+
+## 6.1 来源配置解析顺序
+
+`src.source_config.resolve_source_config(overrides, saved)` 按字段独立解析，优先级（高 → 低）：
+
+1. 请求提交的非空覆盖值（用于 `POST /api/source/test` 测试给定值）；
+2. 环境变量 `NAVIDROME_URL` / `NAVIDROME_USER` / `NAVIDROME_PASS`；
+3. 已保存 DB `schema_meta` 中的 `source_url` / `source_user` / `source_password`。
+
+lifespan 在构造运行中的 `NavidromeClient` 前调用 `resolve_effective_source_config()`（仅 env > saved），若三者不齐全则记录错误并将 `client_initialized` 置为 false，不启动轮询。GUI 保存配置不会热更新运行客户端，需重启服务生效。`/api/source/test` 构造的临时客户端调用 `get_now_playing()` 后于 `finally` 中 `close()`。
 
 ## 7. 变更流程
 
