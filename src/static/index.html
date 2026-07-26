@@ -63,6 +63,9 @@
         }
         .chart-container { height: 280px; width: 100%; }
         @media (min-width: 768px) { .chart-container { height: 320px; } }
+        /* Ranking lists have ten variable-height rows; let their cards grow instead of clipping rows. */
+        .chart-container.ranking-table { height: auto; min-height: 280px; }
+        @media (min-width: 768px) { .chart-container.ranking-table { min-height: 320px; } }
         .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
         @keyframes pulse-dot {
             0%, 100% { opacity: 1; transform: scale(1); }
