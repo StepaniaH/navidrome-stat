@@ -33,6 +33,7 @@
 | NDS-UI-002 | 正在播放本地计时与每日趋势时间范围选择 | P2 | 已完成 | NDS-UI-001 |
 | NDS-UI-003 | Dashboard 统一历史窗口与环比对比指标 | P2 | 已完成 | NDS-UI-002 |
 | NDS-UI-004 | 时区感知的周×时热力图 | P2 | 已完成 | NDS-UI-003 |
+| NDS-UI-005 | 丰富榜单与客户端分析 | P2 | 已完成 | NDS-UI-004 |
 
 ## NDS-SEC-001 访问控制与部署边界
 
@@ -378,3 +379,20 @@
 - **涉及文件**：`src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html`、`tests/test_heatmap.py`（新增）、`tests/test_static_dashboard.py`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
 - **风险/回滚**：所有历史端点的 `timezone` 参数可选且默认 `UTC`，既有调用方行为保持；`browser` 在不支持 `Intl.DateTimeFormat` 的环境中退回 `UTC`，不影响后端；`get_weekday_hour_stats` 是新增只读查询，不修改既有数据；回滚恢复 `src/main.py`、`src/database.py`、`src/schemas.py`、`src/static/index.html`、`tests/` 与相关文档即可。
 - **完成记录**：2026-07-26，OpenCode (glm-5.2)。后端：`resolve_timezone` + `get_weekday_hour_stats` + `WeekdayHourStat` + `_validate_stats_timezone` + `GET /api/stats/heatmap`，全部历史端点接受可选 `timezone`（默认 `UTC`）。前端：`#statsTimezoneSelect`（browser/UTC）、`resolveStatsTimezone()`、change 事件、`WEEKDAY_LABELS`/`HOUR_LABELS`、`renderWeekdayHourChart(data)`、`setLoading` 与 resize 接入；`fetchStats` 给所有历史 URL 附加 `&timezone=${encodeURIComponent(resolveStatsTimezone())}`，`now-playing` 不带；新增「周时热力图」卡片。测试：`tests/test_heatmap.py` 13 项，`tests/test_static_dashboard.py` 新增 13 项源码级断言。验证：`pytest -q` 273 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 通过；无真实凭据入库。遗留：暂无。
+
+## NDS-UI-005 丰富榜单与客户端分析
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-UI-004。
+- **目标**：让热门艺人/专辑支持按播放次数或收听时长排名，并展示客户端收听时长、平均单次时长和转码率。
+- **实施步骤**：
+  1. `src/schemas.py` 增加 ranking metric 与扩展 Player/Transcoding/TopArtist/TopAlbum 响应字段。
+  2. `src/database.py` 在现有窗口/时区过滤基础上增加客户端聚合、转码百分比和榜单 `metric=plays|listen_time` 聚合；排序确定性为值降序、名称升序。
+  3. `src/main.py` 为两个榜单端点增加 metric 校验并保持旧字段；客户端与转码端点保持旧字段兼容。
+  4. `src/static/index.html` 增加榜单指标切换、榜单次要指标、客户端明细表和转码 tooltip 百分比；所有用户数据继续使用 DOM API 与 `textContent` 渲染。
+  5. 新增 `tests/test_ranking_metrics.py`，覆盖两种 metric、并列排序、空客户端名、客户端平均值/转码率、窗口传播、非法 metric 和空库；补充静态 UI 断言。
+- **验收标准**：API 返回扩展字段且旧字段保持；非法 metric 返回 422；排行榜两种 metric 排序稳定；客户端明细与转码百分比按窗口计算；前端切换只请求榜单、移动端不溢出、无用户数据 `innerHTML`；全量测试和文档检查通过。
+- **验证命令**：`pytest -q`；`pytest -q tests/test_ranking_metrics.py tests/test_static_dashboard.py`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html`、`tests/test_ranking_metrics.py`、`tests/test_main.py`、`tests/test_top_artists_albums.py`、`tests/test_stats_window.py`、`tests/test_static_dashboard.py`、`README.md`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：只读聚合查询和展示扩展，不改变会话状态机、数据库 schema 或既有播放记录；旧 API 字段保留，新增字段可选；回滚本阶段文件即可。
+- **完成记录**：2026-07-26，当前 agent 接手 OpenCode 中断后的前端收尾。新增榜单 metric 请求与切换、客户端详情表、转码播放/时长百分比 tooltip；验证：`pytest -q` 305 passed，待执行阶段提交。

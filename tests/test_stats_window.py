@@ -326,8 +326,8 @@ def test_get_playback_history_respects_window(db_path):
         ("/api/stats/transcoding?days=30", "get_transcoding_stats", "src.main.get_transcoding_stats", {"days": 30, "timezone_name": "UTC"}),
         ("/api/stats/hourly?days=90", "get_hourly_stats", "src.main.get_hourly_stats", {"days": 90, "timezone_name": "UTC"}),
         ("/api/stats/daily?days=90", "get_daily_stats", "src.main.get_daily_stats", {"days": 90, "timezone_name": "UTC"}),
-        ("/api/stats/top-artists?limit=10&days=30", "get_top_artists", "src.main.get_top_artists", {"limit": 10, "days": 30, "timezone_name": "UTC"}),
-        ("/api/stats/top-albums?limit=10&days=30", "get_top_albums", "src.main.get_top_albums", {"limit": 10, "days": 30, "timezone_name": "UTC"}),
+        ("/api/stats/top-artists?limit=10&days=30", "get_top_artists", "src.main.get_top_artists", {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays"}),
+        ("/api/stats/top-albums?limit=10&days=30", "get_top_albums", "src.main.get_top_albums", {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays"}),
         ("/api/stats/history?limit=10&days=30", "get_playback_history", "src.main.get_playback_history", {"limit": 10, "days": 30, "timezone_name": "UTC"}),
     ],
 )

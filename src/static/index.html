@@ -105,8 +105,48 @@
             font-family: "SF Mono", ui-monospace, monospace;
             font-size: 0.8125rem;
             text-align: right;
-            min-width: 2.5rem;
+            min-width: 3.5rem;
             font-variant-numeric: tabular-nums;
+            line-height: 1.1;
+        }
+        .ranking-count-primary { font-weight: 600; }
+        .ranking-count-secondary {
+            font-size: 0.6875rem;
+            color: #64748b;
+            margin-top: 0.125rem;
+        }
+        .player-legend-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .player-legend-table th, .player-legend-table td {
+            padding: 0.375rem 0.5rem;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        .player-legend-table th {
+            color: #64748b;
+            font-weight: 500;
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .player-legend-table td.client-cell {
+            text-align: left;
+            max-width: 12rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #e2e8f0;
+        }
+        @media (min-width: 768px) {
+            .player-legend-table td.client-cell { max-width: 16rem; }
+        }
+        .player-legend-table tr + tr td { border-top: 1px solid rgba(255,255,255,0.04); }
+        @media (max-width: 480px) {
+            .player-legend-table th.hide-mobile, .player-legend-table td.hide-mobile { display: none; }
         }
         @media (max-width: 480px) {
             .ranking-row {
@@ -229,6 +269,7 @@
                         暂无客户端数据
                     </div>
                 </div>
+                <div id="playerChartLegend" class="mt-4 hidden text-xs" aria-live="polite"></div>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
                 <h2 class="text-sm font-semibold text-slate-300 mb-1">转码比例</h2>
@@ -289,28 +330,40 @@
         </section>
 
         <!-- Top Artists & Top Albums -->
-        <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label="热门艺人与专辑">
-            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300 mb-1">热门艺人</h2>
-                <p class="text-xs text-slate-600 mb-4">按播放次数排名</p>
-                <div id="topArtistsChartWrap" class="relative">
-                    <div id="topArtistsChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
-                    <div id="topArtistsChart" class="chart-container ranking-table" role="table" aria-label="热门艺人播放次数排行榜"></div>
-                    <div id="topArtistsChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
-                        <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
-                        暂无艺人数据
-                    </div>
+        <section class="mb-8" aria-label="热门艺人与专辑">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <h2 class="text-sm font-semibold text-slate-300">热门艺人与专辑</h2>
+                <div role="group" aria-label="榜单指标" id="rankingMetricControl"
+                    class="inline-flex rounded-lg bg-ink-800 border border-white/5 p-0.5 text-xs self-start">
+                    <button type="button" data-ranking-metric="plays"
+                        class="ranking-metric-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">播放次数</button>
+                    <button type="button" data-ranking-metric="listen_time"
+                        class="ranking-metric-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">收听时长</button>
                 </div>
             </div>
-            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300 mb-1">热门专辑</h2>
-                <p class="text-xs text-slate-600 mb-4">按播放次数排名</p>
-                <div id="topAlbumsChartWrap" class="relative">
-                    <div id="topAlbumsChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
-                    <div id="topAlbumsChart" class="chart-container ranking-table" role="table" aria-label="热门专辑播放次数排行榜"></div>
-                    <div id="topAlbumsChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
-                        <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
-                        暂无专辑数据
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-1">热门艺人</h3>
+                    <p id="topArtistsSubtitle" class="text-xs text-slate-600 mb-4">按播放次数排名</p>
+                    <div id="topArtistsChartWrap" class="relative">
+                        <div id="topArtistsChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                        <div id="topArtistsChart" class="chart-container ranking-table" role="table" aria-label="热门艺人播放次数排行榜"></div>
+                        <div id="topArtistsChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
+                            <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
+                            暂无艺人数据
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-1">热门专辑</h3>
+                    <p id="topAlbumsSubtitle" class="text-xs text-slate-600 mb-4">按播放次数排名</p>
+                    <div id="topAlbumsChartWrap" class="relative">
+                        <div id="topAlbumsChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                        <div id="topAlbumsChart" class="chart-container ranking-table" role="table" aria-label="热门专辑播放次数排行榜"></div>
+                        <div id="topAlbumsChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
+                            <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
+                            暂无专辑数据
+                        </div>
                     </div>
                 </div>
             </div>
@@ -386,6 +439,13 @@
         let hasLoadedOnce = false;
         let authRequired = false;
         let statsDays = 30;
+        // Ranking metric state shared by the top artists and top albums cards.
+        // ``plays`` keeps the historical count-based ranking; ``listen_time``
+        // ranks by total observed listen seconds. Switching it only re-fetches
+        // the two ranking endpoints via ``fetchRankings`` (its own in-flight
+        // guard); a full ``fetchStats`` also forwards the current metric.
+        let rankingMetric = 'plays';
+        let rankingInFlight = false;
 
         // Timezone control state. ``browser`` resolves to the IANA name
         // reported by ``Intl.DateTimeFormat`` at load time and is forwarded to
@@ -701,9 +761,57 @@
         }
 
         function renderPlayerChart(data) {
-            const hasData = data.length > 0 && data.some(d => d.count > 0);
+            const legend = document.getElementById('playerChartLegend');
+            legend.replaceChildren();
+            legend.classList.add('hidden');
+            const hasData = Array.isArray(data) && data.length > 0 && data.some(d => Number(d.count) > 0);
             toggleChartEmpty('playerChart', 'playerChartEmpty', hasData);
             if (!hasData) return;
+
+            const table = document.createElement('table');
+            table.className = 'player-legend-table';
+            const caption = document.createElement('caption');
+            caption.className = 'sr-only';
+            caption.textContent = '客户端收听详情';
+            table.appendChild(caption);
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            ['客户端', '播放', '收听时长', '平均单次', '转码率'].forEach((label, index) => {
+                const th = document.createElement('th');
+                th.scope = 'col';
+                th.textContent = label;
+                if (index === 3) th.classList.add('hide-mobile');
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            const tbody = document.createElement('tbody');
+            data.forEach((item, index) => {
+                const row = document.createElement('tr');
+                const name = document.createElement('td');
+                name.className = 'client-cell';
+                name.textContent = item.client_name || 'Unknown';
+                name.title = item.client_name || 'Unknown';
+                const count = document.createElement('td');
+                count.textContent = Number(item.count || 0).toLocaleString();
+                const total = document.createElement('td');
+                total.textContent = formatListenDuration(item.total_listen_sec);
+                const average = document.createElement('td');
+                average.className = 'hide-mobile';
+                average.textContent = formatListenDuration(item.average_listen_sec);
+                const transcode = document.createElement('td');
+                const rate = Number(item.transcoding_rate_pct);
+                transcode.textContent = Number.isFinite(rate) ? `${rate.toFixed(1)}%` : '—';
+                [name, count, total, average, transcode].forEach(cell => {
+                    cell.classList.add('text-right');
+                    row.appendChild(cell);
+                });
+                row.firstElementChild.classList.remove('text-right');
+                tbody.appendChild(row);
+            });
+            table.appendChild(tbody);
+            legend.appendChild(table);
+            legend.classList.remove('hidden');
 
             playerChart.setOption({
                 ...chartBase,
@@ -725,19 +833,29 @@
         }
 
         function renderTranscodingChart(data) {
-            const hasData = data.length > 0 && data.some(d => d.count > 0);
+            const hasData = Array.isArray(data) && data.length > 0 && data.some(d => Number(d.count) > 0);
             toggleChartEmpty('transcodingChart', 'transcodingChartEmpty', hasData);
             if (!hasData) return;
 
             const transformed = data.map(item => ({
                 name: item.is_transcoding ? 'Transcoded' : 'Direct Play',
                 value: item.count,
+                playsPct: Number(item.plays_pct) || 0,
+                listenPct: Number(item.listen_sec_pct) || 0,
+                listenSec: Number(item.total_listen_sec) || 0,
             }));
 
             transcodingChart.setOption({
                 ...chartBase,
                 color: ['#34d399', '#f472b6'],
                 legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 } },
+                tooltip: {
+                    ...chartBase.tooltip,
+                    formatter: (params) => {
+                        const item = params.data || {};
+                        return `${params.name}<br/>播放 ${Number(item.value || 0).toLocaleString()} 次 (${item.playsPct ?? 0}%)<br/>收听 ${formatListenDuration(item.listenSec)} (${item.listenPct ?? 0}%)`;
+                    },
+                },
                 series: [{
                     name: 'Playback',
                     type: 'pie',
@@ -918,14 +1036,17 @@
             }, true);
         }
 
-        function renderRankingList({ containerId, emptyId, data, labelKey, barClass, ariaLabel }) {
+        function renderRankingList({ containerId, emptyId, data, labelKey, barClass, ariaLabel, metric }) {
             const container = document.getElementById(containerId);
             const empty = document.getElementById(emptyId);
             container.replaceChildren();
             container.setAttribute('role', 'table');
             container.setAttribute('aria-label', ariaLabel);
 
-            const hasData = Array.isArray(data) && data.length > 0 && data.some(d => Number(d.count) > 0);
+            // HasData uses value so listen_time rankings with zero plays still
+            // render when there is real data; counts of zero with non-zero
+            // seconds are unlikely but supported.
+            const hasData = Array.isArray(data) && data.length > 0 && data.some(d => Number(d.value) > 0 || Number(d.count) > 0 || Number(d.total_listen_sec) > 0);
             if (!hasData) {
                 empty.classList.remove('hidden');
                 container.classList.add('invisible');
@@ -934,15 +1055,20 @@
             empty.classList.add('hidden');
             container.classList.remove('invisible');
 
-            const sorted = [...data].sort((a, b) => Number(b.count) - Number(a.count));
-            const maxCount = Math.max(
+            // Backend already returns deterministic value DESC, name ASC.
+            // Bar widths use the active ranking key (``value``) so the same
+            // renderer works for both metrics; the secondary cell always
+            // exposes the other dimension so both are visible.
+            const maxValue = Math.max(
                 1,
-                ...sorted.map(d => Number(d.count) || 0),
+                ...data.map(d => Number(d.value) || 0),
             );
 
-            sorted.forEach((item, idx) => {
+            data.forEach((item, idx) => {
+                const value = Number(item.value) || 0;
                 const count = Number(item.count) || 0;
-                const pct = Math.max(0, Math.min(100, Math.round((count / maxCount) * 100)));
+                const totalListenSec = Number(item.total_listen_sec) || 0;
+                const pct = Math.max(0, Math.min(100, Math.round((value / maxValue) * 100)));
                 const labelValue = item[labelKey] != null ? String(item[labelKey]) : '';
 
                 const row = document.createElement('div');
@@ -963,7 +1089,10 @@
                 const barCell = document.createElement('div');
                 barCell.className = 'ranking-bar-cell';
                 barCell.setAttribute('role', 'cell');
-                barCell.setAttribute('aria-label', `播放 ${count} 次`);
+                const ariaSummary = metric === 'listen_time'
+                    ? `收听 ${formatListenDuration(value)} · ${count.toLocaleString()} 次`
+                    : `播放 ${count.toLocaleString()} 次 · ${formatListenDuration(totalListenSec)}`;
+                barCell.setAttribute('aria-label', ariaSummary);
                 const track = document.createElement('div');
                 track.className = 'ranking-track';
                 const bar = document.createElement('div');
@@ -975,7 +1104,18 @@
                 const countCell = document.createElement('div');
                 countCell.className = 'ranking-count stat-value';
                 countCell.setAttribute('role', 'cell');
-                countCell.textContent = count.toLocaleString();
+                const primary = document.createElement('div');
+                primary.className = 'ranking-count-primary';
+                primary.textContent = metric === 'listen_time'
+                    ? formatListenDuration(value)
+                    : `${count.toLocaleString()} 次`;
+                const secondary = document.createElement('div');
+                secondary.className = 'ranking-count-secondary';
+                secondary.textContent = metric === 'listen_time'
+                    ? `${count.toLocaleString()} 次`
+                    : formatListenDuration(totalListenSec);
+                countCell.appendChild(primary);
+                countCell.appendChild(secondary);
 
                 row.appendChild(rankCell);
                 row.appendChild(labelCell);
@@ -985,7 +1125,7 @@
             });
         }
 
-        function renderTopArtistsChart(data) {
+        function renderTopArtistsChart(data, metric) {
             renderRankingList({
                 containerId: 'topArtistsChart',
                 emptyId: 'topArtistsChartEmpty',
@@ -993,10 +1133,11 @@
                 labelKey: 'artist',
                 barClass: 'ranking-bar-artists',
                 ariaLabel: '热门艺人播放次数排行榜',
+                metric: metric || rankingMetric,
             });
         }
 
-        function renderTopAlbumsChart(data) {
+        function renderTopAlbumsChart(data, metric) {
             renderRankingList({
                 containerId: 'topAlbumsChart',
                 emptyId: 'topAlbumsChartEmpty',
@@ -1004,6 +1145,7 @@
                 labelKey: 'album',
                 barClass: 'ranking-bar-albums',
                 ariaLabel: '热门专辑播放次数排行榜',
+                metric: metric || rankingMetric,
             });
         }
 
@@ -1111,8 +1253,8 @@
                     fetch(`/api/stats/heatmap?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
                     fetch(`/api/stats/history?limit=10&days=${statsDays}&timezone=${tzParam}`, fetchOptions),
                     fetch('/api/stats/now-playing', fetchOptions),
-                    fetch(`/api/stats/top-artists?limit=10&days=${statsDays}&timezone=${tzParam}`, fetchOptions),
-                    fetch(`/api/stats/top-albums?limit=10&days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/top-artists?limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`, fetchOptions),
+                    fetch(`/api/stats/top-albums?limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`, fetchOptions),
                 ]);
 
                 if ([summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes].some(r => r.status === 401)) {
@@ -1145,8 +1287,8 @@
                 renderHourlyChart(hourlyData);
                 renderDailyChart(dailyData);
                 renderWeekdayHourChart(weekdayHourData);
-                renderTopArtistsChart(topArtistsData);
-                renderTopAlbumsChart(topAlbumsData);
+                renderTopArtistsChart(topArtistsData, rankingMetric);
+                renderTopAlbumsChart(topAlbumsData, rankingMetric);
                 renderHistoryTable(historyData);
 
                 hasLoadedOnce = true;
@@ -1169,6 +1311,48 @@
             if (refreshTimer) clearInterval(refreshTimer);
             const ms = document.hidden ? HIDDEN_REFRESH_MS : REFRESH_MS;
             refreshTimer = setInterval(fetchStats, ms);
+        }
+
+        function setActiveRankingMetric(metric) {
+            const label = metric === 'listen_time' ? '按收听时长排名' : '按播放次数排名';
+            document.querySelectorAll('.ranking-metric-btn').forEach((btn) => {
+                const active = btn.dataset.rankingMetric === metric;
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                btn.classList.toggle('bg-accent', active);
+                btn.classList.toggle('text-white', active);
+                btn.classList.toggle('text-slate-400', !active);
+            });
+            ['topArtistsSubtitle', 'topAlbumsSubtitle'].forEach((id) => {
+                const element = document.getElementById(id);
+                if (element) element.textContent = label;
+            });
+        }
+
+        async function fetchRankings() {
+            if (rankingInFlight || fetchInFlight) return;
+            rankingInFlight = true;
+            try {
+                const tzParam = encodeURIComponent(resolveStatsTimezone());
+                const query = `limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`;
+                const [artistsRes, albumsRes] = await Promise.all([
+                    fetch(`/api/stats/top-artists?${query}`, fetchOptions),
+                    fetch(`/api/stats/top-albums?${query}`, fetchOptions),
+                ]);
+                if ([artistsRes, albumsRes].some(r => r.status === 401)) {
+                    showLogin('访问令牌无效或已过期，请重新登录。');
+                    return;
+                }
+                if (!artistsRes.ok || !albumsRes.ok) throw new Error('ranking request failed');
+                const [artists, albums] = await Promise.all([artistsRes.json(), albumsRes.json()]);
+                renderTopArtistsChart(artists, rankingMetric);
+                renderTopAlbumsChart(albums, rankingMetric);
+                hideError();
+            } catch (error) {
+                showError('无法获取热门榜单数据。');
+                console.error('Error fetching rankings:', error);
+            } finally {
+                rankingInFlight = false;
+            }
         }
 
         // Global statistics window control. Replaces the previous daily-only range
@@ -1204,6 +1388,18 @@
             });
         });
         setActiveStatsWindowButton(statsDays);
+
+        document.querySelectorAll('.ranking-metric-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const metric = btn.dataset.rankingMetric;
+                if (metric !== 'plays' && metric !== 'listen_time') return;
+                if (metric === rankingMetric) return;
+                rankingMetric = metric;
+                setActiveRankingMetric(metric);
+                fetchRankings();
+            });
+        });
+        setActiveRankingMetric(rankingMetric);
 
         // Timezone selector. A change updates the state and re-fetches all
         // historical widgets via ``fetchStats`` (which has its own in-flight

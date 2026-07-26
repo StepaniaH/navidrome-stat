@@ -38,6 +38,9 @@ from src.schemas import (
     AuthStatusResponse,
     DAILY_DAYS_DEFAULT,
     DAILY_DAYS_MAX,
+    RANKING_METRIC_DEFAULT,
+    RANKING_METRICS,
+    RANKING_METRIC_VALIDATION_ERROR,
     STATS_DAYS_ALL,
     STATS_DAYS_MAX,
     STATS_DAYS_MIN,
@@ -295,6 +298,19 @@ def _validate_stats_timezone(timezone_name: str) -> str:
     except ValueError:
         raise HTTPException(status_code=422, detail=TIMEZONE_VALIDATION_ERROR)
     return timezone_name
+
+
+def _validate_ranking_metric(metric: str) -> str:
+    """Validate the ranking ``metric`` query parameter for top artists/albums.
+
+    Accepted values are defined by ``src.schemas.RANKING_METRICS``. Any other
+    value produces HTTP 422 via FastAPI's request validation surface (the
+    check happens here so the error body is uniform with the other stats
+    validation errors).
+    """
+    if metric not in RANKING_METRICS:
+        raise HTTPException(status_code=422, detail=RANKING_METRIC_VALIDATION_ERROR)
+    return metric
 
 
 @asynccontextmanager
@@ -576,11 +592,24 @@ async def api_top_artists(
     ),
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    metric: str = Query(default=RANKING_METRIC_DEFAULT),
 ):
-    """Endpoint for top artists by play count over the selected window."""
+    """Endpoint for top artists ranked by ``metric`` over the selected window.
+
+    ``metric=plays`` (default) preserves the historical ``count DESC``
+    ordering; ``metric=listen_time`` ranks by ``total_listen_sec``. Both
+    responses keep ``count`` for backward compatibility and add
+    ``total_listen_sec`` plus ``value`` (the active ranking key). Invalid
+    metric values return 422. ``days``/``timezone`` filtering matches the
+    other historical endpoints; timezone is not needed for totals but is
+    accepted to keep the API contract consistent.
+    """
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_top_artists(limit=limit, days=window, timezone_name=tz))
+    m = _validate_ranking_metric(metric)
+    return await _query_stats(
+        lambda: get_top_artists(limit=limit, days=window, timezone_name=tz, metric=m)
+    )
 
 
 @app.get("/api/stats/top-albums", response_model=list[TopAlbumItem])
@@ -592,11 +621,19 @@ async def api_top_albums(
     ),
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    metric: str = Query(default=RANKING_METRIC_DEFAULT),
 ):
-    """Endpoint for top albums by play count over the selected window."""
+    """Endpoint for top albums ranked by ``metric`` over the selected window.
+
+    Same contract as ``/api/stats/top-artists`` with ``album`` in place of
+    ``artist``.
+    """
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_top_albums(limit=limit, days=window, timezone_name=tz))
+    m = _validate_ranking_metric(metric)
+    return await _query_stats(
+        lambda: get_top_albums(limit=limit, days=window, timezone_name=tz, metric=m)
+    )
 
 
 @app.get("/api/stats/now-playing", response_model=list[NowPlayingItem])

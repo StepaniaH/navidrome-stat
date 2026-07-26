@@ -8,7 +8,7 @@ from src.database import init_db, save_play_session, get_top_artists, get_top_al
 from src.main import app
 
 
-def _session(played_at: str, track_id: str = "t1", artist: str = "Artist", album: str = "Album", duration_sec: int = 30):
+def _session(played_at: str, track_id: str = "t1", artist: str = "Artist", album: str = "Album", duration_sec: int = 30, transcoding: int = 0):
     return {
         "last_seen_at": played_at,
         "username": "testuser",
@@ -17,20 +17,27 @@ def _session(played_at: str, track_id: str = "t1", artist: str = "Artist", album
         "title": "Song",
         "artist": artist,
         "album": album,
-        "is_transcoding": 0,
+        "is_transcoding": transcoding,
         "duration_sec": duration_sec,
     }
 
 
+def _row(name_key: str, name: str, count: int, total_listen_sec: int, value: int):
+    return {name_key: name, "count": count, "total_listen_sec": total_listen_sec, "value": value}
+
+
 def test_get_top_artists_groups_and_orders(db_path):
     asyncio.run(init_db(db_path))
-    asyncio.run(save_play_session(_session("2024-03-24T01:00:00Z", "t1", artist="Alpha"), db_path=db_path))
-    asyncio.run(save_play_session(_session("2024-03-24T02:00:00Z", "t2", artist="Beta"), db_path=db_path))
-    asyncio.run(save_play_session(_session("2024-03-24T03:00:00Z", "t3", artist="Alpha"), db_path=db_path))
+    asyncio.run(save_play_session(_session("2024-03-24T01:00:00Z", "t1", artist="Alpha", duration_sec=30), db_path=db_path))
+    asyncio.run(save_play_session(_session("2024-03-24T02:00:00Z", "t2", artist="Beta", duration_sec=10), db_path=db_path))
+    asyncio.run(save_play_session(_session("2024-03-24T03:00:00Z", "t3", artist="Alpha", duration_sec=40), db_path=db_path))
 
     rows = asyncio.run(get_top_artists(db_path=db_path))
 
-    assert rows == [{"artist": "Alpha", "count": 2}, {"artist": "Beta", "count": 1}]
+    assert rows == [
+        _row("artist", "Alpha", 2, 70, 2),
+        _row("artist", "Beta", 1, 10, 1),
+    ]
 
 
 def test_get_top_artists_skips_empty_artist(db_path):
@@ -40,7 +47,7 @@ def test_get_top_artists_skips_empty_artist(db_path):
 
     rows = asyncio.run(get_top_artists(db_path=db_path))
 
-    assert rows == [{"artist": "Alpha", "count": 1}]
+    assert rows == [_row("artist", "Alpha", 1, 30, 1)]
 
 
 def test_get_top_artists_respects_limit(db_path):
@@ -61,13 +68,16 @@ def test_get_top_artists_empty_database(db_path):
 
 def test_get_top_albums_groups_and_orders(db_path):
     asyncio.run(init_db(db_path))
-    asyncio.run(save_play_session(_session("2024-03-24T01:00:00Z", "t1", album="Record A"), db_path=db_path))
-    asyncio.run(save_play_session(_session("2024-03-24T02:00:00Z", "t2", album="Record B"), db_path=db_path))
-    asyncio.run(save_play_session(_session("2024-03-24T03:00:00Z", "t3", album="Record A"), db_path=db_path))
+    asyncio.run(save_play_session(_session("2024-03-24T01:00:00Z", "t1", album="Record A", duration_sec=30), db_path=db_path))
+    asyncio.run(save_play_session(_session("2024-03-24T02:00:00Z", "t2", album="Record B", duration_sec=10), db_path=db_path))
+    asyncio.run(save_play_session(_session("2024-03-24T03:00:00Z", "t3", album="Record A", duration_sec=40), db_path=db_path))
 
     rows = asyncio.run(get_top_albums(db_path=db_path))
 
-    assert rows == [{"album": "Record A", "count": 2}, {"album": "Record B", "count": 1}]
+    assert rows == [
+        _row("album", "Record A", 2, 70, 2),
+        _row("album", "Record B", 1, 10, 1),
+    ]
 
 
 def test_get_top_albums_skips_empty_album(db_path):
@@ -77,7 +87,7 @@ def test_get_top_albums_skips_empty_album(db_path):
 
     rows = asyncio.run(get_top_albums(db_path=db_path))
 
-    assert rows == [{"album": "Record A", "count": 1}]
+    assert rows == [_row("album", "Record A", 1, 30, 1)]
 
 
 def test_get_top_albums_respects_limit(db_path):
@@ -99,23 +109,23 @@ def test_get_top_albums_empty_database(db_path):
 @pytest.mark.asyncio
 @patch("src.main.get_top_artists", new_callable=AsyncMock)
 async def test_api_top_artists(mock_get):
-    mock_get.return_value = [{"artist": "Alpha", "count": 5}]
+    mock_get.return_value = [{"artist": "Alpha", "count": 5, "total_listen_sec": 120, "value": 5}]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/top-artists")
     assert response.status_code == 200
-    assert response.json() == [{"artist": "Alpha", "count": 5}]
-    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC")
+    assert response.json() == [{"artist": "Alpha", "count": 5, "total_listen_sec": 120, "value": 5}]
+    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="plays")
 
 
 @pytest.mark.asyncio
 @patch("src.main.get_top_albums", new_callable=AsyncMock)
 async def test_api_top_albums(mock_get):
-    mock_get.return_value = [{"album": "Record A", "count": 3}]
+    mock_get.return_value = [{"album": "Record A", "count": 3, "total_listen_sec": 90, "value": 3}]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/top-albums")
     assert response.status_code == 200
-    assert response.json() == [{"album": "Record A", "count": 3}]
-    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC")
+    assert response.json() == [{"album": "Record A", "count": 3, "total_listen_sec": 90, "value": 3}]
+    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="plays")
 
 
 @pytest.mark.asyncio
@@ -133,7 +143,7 @@ async def test_api_top_artists_limit_bounds(mock_get, limit, expected_status):
         response = await ac.get(f"/api/stats/top-artists?limit={limit}")
     assert response.status_code == expected_status
     if expected_status == 200:
-        mock_get.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC")
+        mock_get.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC", metric="plays")
 
 
 @pytest.mark.asyncio
@@ -151,7 +161,7 @@ async def test_api_top_albums_limit_bounds(mock_get, limit, expected_status):
         response = await ac.get(f"/api/stats/top-albums?limit={limit}")
     assert response.status_code == expected_status
     if expected_status == 200:
-        mock_get.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC")
+        mock_get.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC", metric="plays")
 
 
 @pytest.mark.asyncio

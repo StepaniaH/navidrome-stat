@@ -37,11 +37,25 @@ async def test_health_ready_not_ready_when_database_unavailable(mock_ping):
 @pytest.mark.asyncio
 @patch("src.main.get_player_stats", new_callable=AsyncMock)
 async def test_api_player_stats(mock_get_stats):
-    mock_get_stats.return_value = [{"client_name": "Feishin", "count": 10}]
+    mock_get_stats.return_value = [{
+        "client_name": "Feishin",
+        "count": 10,
+        "total_listen_sec": 1500,
+        "average_listen_sec": 150.0,
+        "transcoded_count": 2,
+        "transcoding_rate_pct": 20.0,
+    }]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/players")
     assert response.status_code == 200
-    assert response.json() == [{"client_name": "Feishin", "count": 10}]
+    assert response.json() == [{
+        "client_name": "Feishin",
+        "count": 10,
+        "total_listen_sec": 1500,
+        "average_listen_sec": 150.0,
+        "transcoded_count": 2,
+        "transcoding_rate_pct": 20.0,
+    }]
 
 @pytest.mark.asyncio
 @patch("src.main.get_summary", new_callable=AsyncMock)
@@ -61,11 +75,23 @@ async def test_api_summary_stats(mock_get_summary):
 @pytest.mark.asyncio
 @patch("src.main.get_transcoding_stats", new_callable=AsyncMock)
 async def test_api_transcoding_stats(mock_get_stats):
-    mock_get_stats.return_value = [{"is_transcoding": 0, "count": 5}]
+    mock_get_stats.return_value = [{
+        "is_transcoding": 0,
+        "count": 5,
+        "total_listen_sec": 600,
+        "plays_pct": 100.0,
+        "listen_sec_pct": 100.0,
+    }]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/transcoding")
     assert response.status_code == 200
-    assert response.json() == [{"is_transcoding": 0, "count": 5}]
+    assert response.json() == [{
+        "is_transcoding": 0,
+        "count": 5,
+        "total_listen_sec": 600,
+        "plays_pct": 100.0,
+        "listen_sec_pct": 100.0,
+    }]
 
 
 @pytest.mark.asyncio

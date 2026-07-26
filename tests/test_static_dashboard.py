@@ -331,3 +331,51 @@ def test_update_summary_populates_change_badges(source):
     # No innerHTML/outerHTML mutation in summary rendering.
     assert "innerHTML" not in block
     assert "outerHTML" not in block
+
+
+def test_ranking_metric_control_and_state_exist(source):
+    assert 'id="rankingMetricControl"' in source
+    assert 'data-ranking-metric="plays"' in source
+    assert 'data-ranking-metric="listen_time"' in source
+    assert "let rankingMetric = 'plays';" in source
+    assert "let rankingInFlight = false;" in source
+
+
+def test_ranking_fetch_propagates_metric_and_uses_selected_value(source):
+    block = _function_block(source, "fetchStats")
+    assert "&metric=${rankingMetric}" in block
+    assert "renderTopArtistsChart(topArtistsData, rankingMetric)" in block
+    assert "renderTopAlbumsChart(topAlbumsData, rankingMetric)" in block
+
+
+def test_ranking_metric_switch_fetches_only_rankings(source):
+    block = _function_block(source, "fetchRankings")
+    assert "rankingInFlight" in block
+    assert "/api/stats/top-artists" in block
+    assert "/api/stats/top-albums" in block
+    assert "metric=${rankingMetric}" in block
+    assert "innerHTML" not in block
+
+
+def test_ranking_renderer_shows_both_metrics_safely(source):
+    block = _function_block(source, "renderRankingList")
+    assert "Number(d.value)" in block
+    assert "formatListenDuration(totalListenSec)" in block
+    assert "textContent" in block
+    assert "innerHTML" not in block
+
+
+def test_client_legend_and_transcoding_percentages_exist(source):
+    player_block = _function_block(source, "renderPlayerChart")
+    assert "playerChartLegend" in player_block
+    assert "player-legend-table" in player_block
+    assert "average_listen_sec" in player_block
+    assert "transcoding_rate_pct" in player_block
+    assert "textContent" in player_block
+    assert "innerHTML" not in player_block
+
+    transcode_block = _function_block(source, "renderTranscodingChart")
+    assert "playsPct" in transcode_block
+    assert "listenPct" in transcode_block
+    assert "listenSec" in transcode_block
+    assert "tooltip" in transcode_block

@@ -239,6 +239,13 @@ async def get_player_stats(
 ):
     """Returns the distribution of client usage based on play counts.
 
+    Each row is ``{client_name, count, total_listen_sec, average_listen_sec,
+    transcoded_count, transcoding_rate_pct}``. ``client_name`` and ``count``
+    preserve the historical contract; the additional fields are sourced from
+    ``listen_duration_sec`` and ``is_transcoding`` already stored on each row
+    (no schema change). Ordering is ``count DESC, client_name ASC`` so empty
+    and ``null`` client names sort deterministically above any non-empty name.
+
     ``days <= 0`` selects all history; ``days > 0`` selects records with
     ``played_at`` within the window bounds (UTC) derived from the requested
     timezone's local calendar. The timezone value is validated via
@@ -250,16 +257,38 @@ async def get_player_stats(
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
-            SELECT client_name, COUNT(*) as count
+            SELECT
+                client_name,
+                COUNT(*) AS count,
+                COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec,
+                COALESCE(SUM(CASE WHEN is_transcoding = 1 THEN 1 ELSE 0 END), 0) AS transcoded_count
             FROM play_history
             WHERE {pred}
             GROUP BY client_name
-            ORDER BY count DESC
+            ORDER BY count DESC, COALESCE(client_name, '') ASC
             """,
             params,
         ) as cursor:
             rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+
+    out: list[dict] = []
+    for row in rows:
+        count = int(row["count"] or 0)
+        total_listen_sec = int(row["total_listen_sec"] or 0)
+        transcoded_count = int(row["transcoded_count"] or 0)
+        average_listen_sec = round(total_listen_sec / count, 2) if count > 0 else 0.0
+        transcoding_rate_pct = (
+            round((transcoded_count / count) * 100, 2) if count > 0 else 0.0
+        )
+        out.append({
+            "client_name": row["client_name"],
+            "count": count,
+            "total_listen_sec": total_listen_sec,
+            "average_listen_sec": average_listen_sec,
+            "transcoded_count": transcoded_count,
+            "transcoding_rate_pct": transcoding_rate_pct,
+        })
+    return out
 
 
 async def get_transcoding_stats(
@@ -267,7 +296,14 @@ async def get_transcoding_stats(
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
 ):
-    """Returns the ratio of transcoded vs direct play counts.
+    """Returns the ratio of transcoded vs direct play counts plus listen time.
+
+    Each row is ``{is_transcoding, count, total_listen_sec, plays_pct,
+    listen_sec_pct}``. ``is_transcoding`` and ``count`` preserve the historical
+    contract. ``total_listen_sec`` is the sum of ``listen_duration_sec`` for
+    rows in this mode; ``plays_pct`` is the share of plays in this mode and
+    ``listen_sec_pct`` is the share of listen time. Both percentages are
+    rounded to 2 decimals and ``0`` when the respective denominator is zero.
 
     ``days <= 0`` selects all history; ``days > 0`` selects the last ``days``
     using UTC bounds derived from the requested timezone's local calendar.
@@ -280,7 +316,10 @@ async def get_transcoding_stats(
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
-            SELECT is_transcoding, COUNT(*) as count
+            SELECT
+                is_transcoding,
+                COUNT(*) AS count,
+                COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec
             FROM play_history
             WHERE {pred}
             GROUP BY is_transcoding
@@ -288,7 +327,27 @@ async def get_transcoding_stats(
             params,
         ) as cursor:
             rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+
+    total_plays = sum(int(r["count"] or 0) for r in rows)
+    total_listen_sec_all = sum(int(r["total_listen_sec"] or 0) for r in rows)
+    out: list[dict] = []
+    for row in rows:
+        count = int(row["count"] or 0)
+        total_listen_sec = int(row["total_listen_sec"] or 0)
+        plays_pct = round((count / total_plays) * 100, 2) if total_plays > 0 else 0.0
+        listen_sec_pct = (
+            round((total_listen_sec / total_listen_sec_all) * 100, 2)
+            if total_listen_sec_all > 0
+            else 0.0
+        )
+        out.append({
+            "is_transcoding": row["is_transcoding"],
+            "count": count,
+            "total_listen_sec": total_listen_sec,
+            "plays_pct": plays_pct,
+            "listen_sec_pct": listen_sec_pct,
+        })
+    return out
 
 
 async def ping_db(db_path: str | None = None) -> bool:
@@ -671,64 +730,111 @@ async def get_top_artists(
     limit: int = 10,
     days: int = 0,
     timezone_name: str = TIMEZONE_DEFAULT,
+    metric: str = "plays",
     db_path: str | None = None,
 ):
-    """Returns top artists by play count, ordered by count DESC.
+    """Returns top artists ranked by ``metric`` over the selected window.
+
+    Each row is ``{artist, count, total_listen_sec, value}``:
+
+    * ``count`` is the play count (rows in the window for this artist) and
+      preserves the historical contract;
+    * ``total_listen_sec`` is the sum of ``listen_duration_sec`` for this
+      artist, used to render a secondary "12 次 · 3h 42m" line;
+    * ``value`` is ``count`` for ``metric="plays"`` and ``total_listen_sec``
+      for ``metric="listen_time"`` so the frontend can compute bar widths
+      from a single field.
+
+    Ordering is deterministic: ``value DESC, artist ASC``. Empty and ``null``
+    artists are excluded (matches the historical contract).
 
     ``days <= 0`` selects all history; ``days > 0`` selects the last ``days``
     using UTC bounds derived from the requested timezone's local calendar.
-    The timezone value is validated via ``ZoneInfo`` and never
-    string-interpolated into SQL.
+    The timezone and metric values are validated by ``src.main`` before being
+    passed here and are never string-interpolated into SQL.
     """
-    path = _path(db_path)
-    pred, params = _window_predicate(days, timezone_name)
-    async with aiosqlite.connect(path) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            f"""
-            SELECT artist, COUNT(*) AS count
-            FROM play_history
-            WHERE artist IS NOT NULL AND artist != "" AND ({pred})
-            GROUP BY artist
-            ORDER BY count DESC
-            LIMIT ?
-            """,
-            [*params, limit],
-        ) as cursor:
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+    return await _get_top_entity(
+        entity_column="artist",
+        limit=limit,
+        days=days,
+        timezone_name=timezone_name,
+        metric=metric,
+        db_path=db_path,
+    )
 
 
 async def get_top_albums(
     limit: int = 10,
     days: int = 0,
     timezone_name: str = TIMEZONE_DEFAULT,
+    metric: str = "plays",
     db_path: str | None = None,
 ):
-    """Returns top albums by play count, ordered by count DESC.
+    """Returns top albums ranked by ``metric`` over the selected window.
 
-    ``days <= 0`` selects all history; ``days > 0`` selects the last ``days``
-    using UTC bounds derived from the requested timezone's local calendar.
-    The timezone value is validated via ``ZoneInfo`` and never
-    string-interpolated into SQL.
+    Same contract as ``get_top_artists`` with ``album`` in place of
+    ``artist``; empty and ``null`` albums are excluded.
     """
+    return await _get_top_entity(
+        entity_column="album",
+        limit=limit,
+        days=days,
+        timezone_name=timezone_name,
+        metric=metric,
+        db_path=db_path,
+    )
+
+
+async def _get_top_entity(
+    entity_column: str,
+    limit: int,
+    days: int,
+    timezone_name: str,
+    metric: str,
+    db_path: str | None,
+):
+    if metric not in ("plays", "listen_time"):
+        # Defensive: callers should validate; reject defensively rather than
+        # silently fall back to a different ranking.
+        raise ValueError(f"unknown ranking metric: {metric!r}")
+
+    # ``value`` mirrors the selected metric so the frontend can render bar
+    # widths without branching. The expression is repeated (rather than
+    # reusing the ``count``/``total_listen_sec`` aliases) because SQLite does
+    # not allow SELECT-list aliases to be referenced in other SELECT-list
+    # expressions. ``ORDER BY value`` does resolve the alias.
+    if metric == "plays":
+        value_expr = "COUNT(*)"
+    else:
+        value_expr = "COALESCE(SUM(listen_duration_sec), 0)"
+
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
-            SELECT album, COUNT(*) AS count
+            SELECT
+                {entity_column} AS name,
+                COUNT(*) AS count,
+                COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec,
+                {value_expr} AS value
             FROM play_history
-            WHERE album IS NOT NULL AND album != "" AND ({pred})
-            GROUP BY album
-            ORDER BY count DESC
+            WHERE {entity_column} IS NOT NULL AND {entity_column} != "" AND ({pred})
+            GROUP BY {entity_column}
+            ORDER BY value DESC, {entity_column} ASC
             LIMIT ?
             """,
             [*params, limit],
         ) as cursor:
             rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+
+    return [{
+        entity_column: row["name"],
+        "count": int(row["count"] or 0),
+        "total_listen_sec": int(row["total_listen_sec"] or 0),
+        "value": int(row["value"] or 0),
+    } for row in rows]
 
 
 async def get_playback_history(

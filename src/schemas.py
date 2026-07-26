@@ -36,15 +36,54 @@ STATS_DAYS_PRESETS = (7, 30, 90, 0)
 TIMEZONE_DEFAULT = "UTC"
 TIMEZONE_VALIDATION_ERROR = "timezone must be a valid IANA timezone name"
 
+# Ranking metric contract for ``/api/stats/top-artists`` and
+# ``/api/stats/top-albums``. ``plays`` (default) keeps the historical
+# ordering by play count; ``listen_time`` ranks by total observed listen
+# seconds. ``value`` is the ranking key for the requested metric (count for
+# ``plays``, seconds for ``listen_time``) so the frontend can compute bar
+# widths without branching on the metric. rankings are deterministically
+# ordered by ``value DESC, name ASC``. ``total_listen_sec`` is always
+# provided for the secondary "12 次 · 3h 42m" line and is independent of the
+# selected metric. This does not change playback/session semantics or the
+# stored data; it only re-reads ``listen_duration_sec`` for aggregation.
+RANKING_METRIC_PLAYS = "plays"
+RANKING_METRIC_LISTEN_TIME = "listen_time"
+RANKING_METRIC_DEFAULT = RANKING_METRIC_PLAYS
+RANKING_METRICS = (RANKING_METRIC_PLAYS, RANKING_METRIC_LISTEN_TIME)
+RANKING_METRIC_VALIDATION_ERROR = (
+    "metric must be one of: plays, listen_time"
+)
+
 
 class PlayerStat(BaseModel):
     client_name: Optional[str] = None
     count: int
+    # Extended client distribution fields. All optional so callers that only
+    # read ``client_name``/``count`` keep working. ``total_listen_sec`` is the
+    # sum of ``listen_duration_sec`` for this client; ``average_listen_sec``
+    # is per-play mean; ``transcoded_count`` is plays with ``is_transcoding=1``
+    # and ``transcoding_rate_pct`` is ``transcoded_count / count * 100``
+    # rounded to 2 decimals (``0`` when ``count == 0``). Ordering is
+    # ``count DESC, client_name ASC`` (null client_name sorts as "").
+    total_listen_sec: Optional[int] = None
+    average_listen_sec: Optional[float] = None
+    transcoded_count: Optional[int] = None
+    transcoding_rate_pct: Optional[float] = None
 
 
 class TranscodingStat(BaseModel):
     is_transcoding: Optional[int] = None
     count: int
+    # Extended transcoding fields. All optional so callers that only read
+    # ``is_transcoding``/``count`` keep working. ``total_listen_sec`` is the
+    # sum of ``listen_duration_sec`` for rows in this mode; ``plays_pct`` is
+    # the share of plays in this mode (``count / total_plays * 100``) and
+    # ``listen_sec_pct`` is the share of listen time
+    # (``total_listen_sec / total_listen_sec_all * 100``), both rounded to 2
+    # decimals and ``0`` when the respective denominator is zero.
+    total_listen_sec: Optional[int] = None
+    plays_pct: Optional[float] = None
+    listen_sec_pct: Optional[float] = None
 
 
 class SummaryStat(BaseModel):
@@ -90,11 +129,20 @@ class WeekdayHourStat(BaseModel):
 class TopArtistItem(BaseModel):
     artist: str
     count: int
+    # Ranking additions. ``total_listen_sec`` is the sum of
+    # ``listen_duration_sec`` for this artist; ``value`` is the ranking key
+    # for the requested ``metric`` (count for ``plays``, seconds for
+    # ``listen_time``). Both optional so existing callers that only read
+    # ``artist``/``count`` keep validating.
+    total_listen_sec: Optional[int] = None
+    value: Optional[int] = None
 
 
 class TopAlbumItem(BaseModel):
     album: str
     count: int
+    total_listen_sec: Optional[int] = None
+    value: Optional[int] = None
 
 
 class HistoryItem(BaseModel):
