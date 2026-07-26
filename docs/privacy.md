@@ -6,9 +6,9 @@
 
 | 数据 | 来源 | 处理位置 | 持久化 | 分类 |
 | --- | --- | --- | --- | --- |
-| Navidrome 基础 URL | 环境变量/构造参数 | `src/client.py` | 代码不主动持久化 | 部署敏感信息 |
-| Navidrome 用户名 | 环境变量/构造参数 | 认证请求 | 播放 entry 中的 username 另存数据库 | 账户标识/个人数据 |
-| Navidrome 密码 | 环境变量/构造参数 | 内存中生成 token | 代码不主动持久化 | 高敏感凭据 |
+| Navidrome 基础 URL | 环境变量/构造参数/GUI 保存 | `src/client.py`、`src/source_config.py` | GUI 保存值落入 `schema_meta.source_url` | 部署敏感信息 |
+| Navidrome 用户名 | 环境变量/构造参数/GUI 保存 | 认证请求、`src/source_config.py` | GUI 保存值落入 `schema_meta.source_user`；播放 entry 中的 username 另存数据库 | 账户标识/个人数据 |
+| Navidrome 密码 | 环境变量/构造参数/GUI 保存 | 内存中生成 token | GUI 保存值**明文**落入 `schema_meta.source_password`（仅作 env 缺失时回退） | 高敏感凭据 |
 | token 与 salt | 每次请求生成 | 上游请求查询参数 | 代码不主动持久化 | 敏感认证数据 |
 | playerId、trackId、客户端名称 | 上游 nowPlaying | 内存状态；部分写库 | 是，除 playerId | 使用行为数据 |
 | 用户名、曲名、艺人、专辑 | 上游 nowPlaying | 内存、SQLite、统计 API、Dashboard | 是 | 个人收听行为数据 |
@@ -18,19 +18,20 @@
 
 ## 2. 当前处理边界
 
-- 密码保存在 `NavidromeClient` 实例内存中，用于每次生成 Subsonic token；代码没有把密码写入 SQLite。
+- 密码保存在 `NavidromeClient` 实例内存中，用于每次生成 Subsonic token；代码默认不把密码写入 SQLite。**例外**：通过 `PUT /api/source/config` 保存的 GUI 来源配置会将 Navidrome 密码以**明文**写入 `schema_meta.source_password`，作为环境变量 `NAVIDROME_PASS` 缺失时的回退。这是自托管场景的已知安全权衡：`GET /api/source/config` 与所有日志只返回/记录 `password_configured: bool`，从不返回密码本身；部署方须确保数据库文件受文件系统访问控制保护（见 NDS-SRC-001 完成记录）。
 - token 和 salt 作为 URL 查询参数发送。应用没有主动记录请求 URL，但代理、上游服务器或网络设施是否记录查询参数不由本仓库控制。
 - SQLite 保存用户名和播放历史明细，明文存储于本地文件；可通过 `/settings` 配置保留期、导出、导入或按用户删除。
 - 播放历史**默认永久保留**（用户确认，2026-07-16）；保留期可在 1–360 天与永久之间切换，变更后需预览并确认才执行清理。
 - 按用户导出/导入 JSON 支持数据可携带性；导入校验 `format_version` 与用户名一致性；删除与过期清理仅返回/记录条数，不记录曲目内容。
 - 启用 `STATS_API_TOKEN` 时，统计 API、隐私 API 与 OpenAPI 需 Bearer 令牌或登录会话；`/health` 探针仍匿名。未设置时仅适用于可信网络。
 - Dashboard 从公共 CDN 获取脚本；历史表格使用 `textContent` 渲染；ECharts 使用 SRI；响应含 CSP。Tailwind CDN 自托管仍待部署方决策。
+- 页面语言、主题和统计时区只保存在当前浏览器的 `localStorage`，不包含用户名、曲目或凭据；统计时区作为已登记的 IANA 名称发送到统计 API，用于日期/小时分桶。
 - `/health/ready` 仅输出聚合指标与状态枚举，不含服务器地址、用户名或曲目信息；`httpx` 请求日志级别为 WARNING。
 - `.env`、数据库文件和真实部署值是否被正确排除、备份或保护取决于实际工作区及部署流程；文档不得复制这些值。
 
 ## 3. 敏感值规则
 
-- 真实 `NAVIDROME_URL`、`NAVIDROME_USER`、`NAVIDROME_PASS`、token、salt、cookie、反向代理地址和数据库内容不得写入版本控制、任务记录、测试 fixture、截图或提交信息。
+- 真实 `NAVIDROME_URL`、`NAVIDROME_USER`、`NAVIDROME_PASS`、token、salt、cookie、反向代理地址和数据库内容不得写入版本控制、任务记录、测试 fixture、截图或提交信息。GUI 保存的 `source_*` 值同样不得在文档/日志/响应中回显。
 - 文档示例使用保留域名或明确占位符，例如 `http://navidrome.example.invalid:4533`、`example_user`、`<set-in-runtime-environment>`。
 - 排障时优先记录状态码、异常类型和字段是否存在；不得粘贴完整认证 URL 或完整上游响应。
 - 测试必须使用合成数据。当前测试中的账户和媒体值是固定测试字符串，不应替换为真实样本。

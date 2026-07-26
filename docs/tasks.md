@@ -28,6 +28,15 @@
 | NDS-DOC-001 | 用户文档事实校准 | P1 | 已完成 | NDS-CORE-001 的语义结论 |
 | NDS-ARCH-001 | 多进程/多副本架构决策 | P2 | 待办 | NDS-CORE-001、用户人工确认部署拓扑 |
 | NDS-CI-001 | 持续集成质量门禁 | P2 | 已完成 | NDS-TEST-001、NDS-DEP-001 |
+| NDS-SRC-001 | 信息来源配置与设置信息架构 | P1 | 已完成 | 无 |
+| NDS-CORE-002 | 暂停/缺失宽限与配置安全 | P1 | 已完成 | NDS-CORE-001 |
+| NDS-UI-002 | 正在播放本地计时与每日趋势时间范围选择 | P2 | 已完成 | NDS-UI-001 |
+| NDS-UI-003 | Dashboard 统一历史窗口与环比对比指标 | P2 | 已完成 | NDS-UI-002 |
+| NDS-UI-004 | 时区感知的周×时热力图 | P2 | 已完成 | NDS-UI-003 |
+| NDS-UI-005 | 丰富榜单与客户端分析 | P2 | 已完成 | NDS-UI-004 |
+| NDS-DATA-002 | 短播放尝试与短播放率 | P2 | 已完成 | NDS-UI-005 |
+| NDS-DATA-003 | 播放来源溯源层 | P2 | 已完成 | NDS-DATA-002 |
+| NDS-UI-006 | 设置页偏好与主题本地化 | P1 | 已完成 | NDS-SRC-001、NDS-UI-004 |
 
 ## NDS-SEC-001 访问控制与部署边界
 
@@ -253,6 +262,39 @@
 - **风险/回滚**：分布式协调会增加复杂度并可能造成采集中断。优先选择满足真实拓扑的最小方案；保留受支持的单实例回滚模式。
 - **完成记录**：未填写。任务尚未实施，不得标记完成。
 
+## NDS-SRC-001 信息来源配置与设置信息架构
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：无；GUI 保存的连接配置仅作为环境变量缺失时的回退，运行客户端的热更新不在本次范围。
+- **目标**：将“设置”信息架构收敛为两个顶级标签（隐私与数据 / 信息来源），并提供可在 GUI 编辑且受控的 Navidrome 连接配置，密码按敏感数据处理。
+- **实施步骤**：
+  1. 新增 `src/source_config.py`：使用现有 `schema_meta` 表持久化 `source_url`/`source_user`/`source_password`，不引入 schema 版本迁移。
+  2. 实现配置解析顺序：请求覆盖值 > 环境变量 > 已保存 DB 值；lifespan 在构造 `NavidromeClient` 前解析回退配置。
+  3. 新增 `GET/PUT /api/source/config` 与 `POST /api/source/test`，受现有认证中间件保护；GET 只返回 `url`、`username`、`password_configured`，从不返回密码；PUT 校验 URL 协议为 http/https 且 user 非空；test 端点用临时 `NavidromeClient` 调用 `get_now_playing()`，返回通用 `{ok, message}`，不泄露上游响应。
+  4. 重构 `src/static/settings.html`：两个顶级标签；保留期使用可见的单选/分段控件而非唯一靠复选框揭示滑块；新增信息来源表单（密码 `type=password`，占位 `留空则保持不变`）与“测试连接”按钮；保存后提示“已保存，重启服务后生效”。
+  5. 文档同步 `interfaces.md`、`current-state.md`、`privacy.md`；不在文档/测试/日志写入真实凭据。
+- **验收标准**：仅两个顶级设置标签；保留分段控件与滑块可见；密码输入为 password 类型且 GET 不渲染密码；源配置端点存在且受认证保护；环境变量优先级保留；`pytest -q` 通过；`git diff --check` 通过。
+- **验证命令**：`pytest -q`；`git diff --check`；源码级核验设置标签数量、滑块/分段控件、密码输入类型、源端点契约。
+- **涉及文件**：`src/source_config.py`（新增）、`src/main.py`、`src/schemas.py`、`src/static/settings.html`、`tests/test_source_config.py`（新增）、`tests/test_privacy_api.py`、`docs/interfaces.md`、`docs/current-state.md`、`docs/privacy.md`、`docs/tasks.md`。
+- **风险/回滚**：SQLite 本地明文存储 Navidrome 密码是已识别安全权衡（自托管场景可接受，但数据库文件应受部署访问控制保护）；GUI 修改不热更新运行中的客户端，需重启生效；回滚恢复 `schema_meta` 中新增键或整体恢复文件。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。新增 `src/source_config.py` 持久化与解析；新增 GET/PUT/POST 源配置端点；lifespan 解析回退配置；设置页改为两标签（隐私与数据 / 信息来源），保留期改可见分段控件；新增 `tests/test_source_config.py`。验证：见本任务报告。遗留：密码明文存储为已知权衡；热更新未实现。
+
+## NDS-UI-006 设置页偏好与主题本地化
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-SRC-001、NDS-UI-004；不涉及真实部署或数据库内容。
+- **目标**：修复设置页消息布局重叠，统一标签图标，提供 General 时区页签，并让设置页和 Dashboard 的语言、主题及时区偏好通过浏览器本地存储即时生效。
+- **实施步骤**：
+  1. 将设置标签调整为服务器、隐私、常规、外观、关于并为每项提供可访问 SVG 图标。
+  2. 使用正常文档流消息块和 Catppuccin Frappe/Latte CSS 变量重构前端主题覆盖。
+  3. 增加本地翻译映射、`data-i18n` 更新、共享 localStorage 键和 General 时区选择。
+  4. 增加静态源码回归测试，不触碰真实数据库。
+- **验收标准**：五个标签顺序固定且均有图标；测试连接消息不覆盖表单；语言切换即时更新主要可见文案；主题、语言及时区使用共享 localStorage；Dashboard 统计请求使用保存时区；多服务器 CRUD 与密码脱敏代码保持不变。
+- **验证命令**：`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`；隐私扫描。
+- **涉及文件**：`src/static/settings.html`、`src/static/index.html`、`tests/test_static_settings.py`、`tests/test_static_dashboard.py`、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`、`docs/tasks.md`。
+- **风险/回滚**：前端 CSS 变量覆盖可能影响 CDN Tailwind 生成的类；回滚静态页面即可，不涉及数据库迁移。localStorage 仅保存非敏感显示偏好。
+- **完成记录**：2026-07-26，OpenCode。实现五标签设置导航、正常流消息、Catppuccin Frappe/Latte 变量、settings/dashboard 本地 i18n、共享语言/主题/时区偏好和 General 时区页签；新增源码级测试。验证：`pytest -q` 321 passed；`git diff --check` 通过；`python3 scripts/check_md_links.py` 通过；隐私扫描仅发现合成测试/烟雾测试占位值，未发现真实凭据。遗留：未执行浏览器自动化，CDN 策略仍由 NDS-SEC-002 人工确认。
+
 ## NDS-CI-001 持续集成质量门禁
 
 - **优先级/状态**：P2 / 已完成
@@ -269,3 +311,131 @@
 - **涉及文件**：CI 配置、测试/开发依赖、文档链接脚本（如提取）、README、`AGENTS.md`。
 - **风险/回滚**：门禁不稳定会阻塞交付。先以非阻断模式观察，稳定后由管理员启用必需检查；不得通过删除测试长期绕过。
 - **完成记录**：2026-07-16，Cursor Agent。新增 `.github/workflows/ci.yml`（pytest、compose config、Markdown 链接）；`scripts/check_md_links.py` 可本地复现。2026-07-16 续：CI 增加 `docker-smoke` job 执行 `scripts/docker_smoke_test.sh`。验证：`pytest -q` 36 passed；`python3 scripts/check_md_links.py`；`docker compose config`。遗留：分支保护、依赖漏洞扫描由仓库管理员启用。
+
+## NDS-CORE-002 暂停/缺失宽限与配置安全
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-CORE-001。
+- **目标**：在 `PlaybackSessionTracker` 中为暂停/缺失观测引入可配置宽限，避免“正在播放”短暂暂停/曲目切换导致过早结算与闪烁；统一 `POLL_INTERVAL`、`PLAY_THRESHOLD_SEC`、`PAUSE_GRACE_SEC` 的安全解析与钳制，无效值回退默认而非崩溃导入。
+- **实施步骤**：
+  1. 新增 `src/config.py` 提供 `parse_clamped_int` 与 `env_int`：非数字/缺失回退默认，数字越界钳制到上下界。
+  2. `src/sessions.py` 引入 `PAUSE_GRACE_SEC` 常量与构造参数；会话字典新增 `last_active_at` 与 `paused`，结算/早提交按 `last_active_at - first_seen_at` 计算活跃时长，排除暂停后的挂钟时间。
+  3. `process_poll` 区分活跃播放、暂停条目与缺失播放器：暂停同曲保持内存会话且不延长活跃时长；缺失播放器在距最后活跃观测超过 `pause_grace_sec` 后结算一次并清理；不同活跃曲目立即结算旧会话并开始新会话。
+  4. `src/main.py` 使用 `env_int` 解析 `POLL_INTERVAL`（5–300）、`MAX_POLL_BACKOFF_SEC`（1–3600）、`RETENTION_MAINTENANCE_SEC`（60–604800）、`PLAY_THRESHOLD_SEC`（1–3600）、`PAUSE_GRACE_SEC`（0–3600），并通过 `PlaybackSessionTracker` 构造参数注入阈值与宽限。
+  5. 新增/更新测试覆盖配置解析与状态机（暂停恢复、缺失恢复、宽限超期、不重复提交、不同活跃曲目立即结算）；同步 `README.md`、`docs/interfaces.md`、`docs/current-state.md`。
+- **验收标准**：暂停/缺失在宽限内不结算、不重复写入、不延长活跃时长；超期结算只发生一次；不同活跃曲目立即结算旧会话；非数字 `POLL_INTERVAL` 不崩溃导入；`PLAY_THRESHOLD_SEC=5` 生效；`pytest -q` 通过；`git diff --check` 通过；`python3 scripts/check_md_links.py` 通过。
+- **验证命令**：`pytest -q tests/test_sessions.py tests/test_config.py`；`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/config.py`（新增）、`src/sessions.py`、`src/main.py`、`tests/test_sessions.py`、`tests/test_config.py`（新增）、`README.md`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：默认值与原行为一致（30s 阈值、30s 宽限）；`PAUSE_GRACE_SEC=0` 恢复“一遇 `isPlaying=false`/缺失即结算”的近似旧行为；`played_at` 由 `last_seen_at` 改为 `last_active_at` 的 ISO 字符串，已落库记录不受影响；回滚恢复 `src/sessions.py`、`src/main.py` 与文件即可。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。新增 `src/config.py`；`src/sessions.py` 增加 `last_active_at`/`paused` 与宽限状态机；`src/main.py` 用 `env_int` 解析并注入阈值/宽限；新增 `tests/test_config.py` 与 `tests/test_sessions.py` 11 项新测试。验证：`pytest -q` 158 passed（含新测试）；`git diff --check` 干净；`python3 scripts/check_md_links.py` 全部解析。遗留：暂无。
+
+## NDS-CORE-003 pause-duration accounting 与宽限逻辑修正
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-CORE-002。
+- **目标**：修正 `src/sessions.py` 中的两个语义缺陷：会话时长按 `last_active_at - first_seen_at` 计算仍包含会话中部暂停的挂钟时间；缺失会话的过期处理在 `elif session.get("committed")` 分支下于宽限期内即被丢弃，与“宽限期内保留”的文档不符。
+- **实施步骤**：
+  1. 会话字典新增 `active_duration_sec`（float，初值 0）；`_session_from_entry` 不再以 `last_active_at - first_seen_at` 推导时长。
+  2. `process_poll` 同曲活跃分支：若上次状态为 `paused=True`（暂停或缺失后续），仅将 `last_active_at` 重置到恢复时间戳，不计入间隔；否则累计 `current_time - last_active_at` 到 `active_duration_sec` 并更新 `last_active_at`。暂停同曲条目或缺失轮询不累计时长也不更新 `last_active_at`。
+  3. `finalize_session` 与 `_maybe_commit_active_session` 改用 `active_duration_sec` 判断 `>= play_threshold_sec`；批处理 finalize 不再追加最终间隔。`_commit_session` 仍以 `last_active_at` 作为 `played_at` 来源。
+  4. 重写 stale 循环：缺失/暂停会话在 `current_time - last_active_at < pause_grace_sec` 时一律保留（无论是否已结算）并标记 `paused=True`、更新 `last_seen_at`；超期时只对未结算会话调用 `finalize_session` 一次，已结算会话直接从内存移除不重复写入。
+  5. 更新 `tests/test_sessions.py`：保留并修正 `test_pause_resume_same_track_continues_session` 以反映“恢复后从恢复时间戳继续累加”的语义；新增 `test_mid_session_pause_excluded_from_duration`（t0/t10/t20/t50/t60 => 20 而非 60）与 `test_committed_missing_within_grace_remains_beyond_grace_dropped`（已结算缺失在宽限内保留、超期移除且不重复写入）；新增 `test_pause_does_not_advance_listen_duration` 对 `active_duration_sec == 0` 的断言。
+  6. 同步 `docs/current-state.md` 第 4、5、32、35 条更新为按活跃累计的语义。
+- **验收标准**：会话中部暂停不补偿挂钟时长（恢复继续从恢复时间戳累加、最终间隔仅由活跃轮询累计）；`t0 active, t1 active` 仍得到 `t1-t0`；不同活跃曲目立即结算旧会话且不重复写入；已结算会话缺失在宽限内保留、超期移除不重复写入；`pytest -q` 通过；`git diff --check` 干净；`python3 scripts/check_md_links.py` 通过。
+- **验证命令**：`pytest -q tests/test_sessions.py`；`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/sessions.py`、`tests/test_sessions.py`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：仅 `src/sessions.py` 计算口径变化，未触及 schema 与已落库记录；`played_at` 仍由 `last_active_at` 产生；回滚恢复 `src/sessions.py`、`tests/test_sessions.py`、`docs/current-state.md`、`docs/tasks.md` 即可。`PAUSE_GRACE_SEC=0` 仍保持“一遇缺失即超期”语义；既有的 `paused`/`last_active_at`/`last_seen_at` 字段含义未变，新增 `active_duration_sec` 仅供内存使用、不写入 DB。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。`src/sessions.py` 改用累计 `active_duration_sec`；stale 循环重写以保留宽限内会话、超期对未结算 finalize 一次、已结算直接移除；`tests/test_sessions.py` 修正 1 项、新增 3 项测试。验证：`pytest -q` 184 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 通过。遗留：暂无。
+
+## NDS-UI-002 正在播放本地计时与每日趋势时间范围选择
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-UI-001。
+- **目标**：在“正在播放”列表加入本地 1 秒计时器，在两次 API 刷新之间本地递增显示的已用秒数，并以服务器返回的 `seconds_elapsed` 重新设置基线且不发起额外请求；为“每日播放趋势”加入 7/30/90 天分段控件，切换时仅重新拉取 `/api/stats/daily?days=N`。
+- **实施步骤**：
+  1. `src/database.py`：`get_daily_stats(days=30)` 使用参数化 SQLite 截止 `date('now', '-N days')`。
+  2. `src/schemas.py`：新增 `DAILY_DAYS_*` 常量；`src/main.py` 的 `GET /api/stats/daily` 新增 `days` 查询参数（FastAPI `Query` 7–90，默认 30），保持默认响应兼容。
+  3. `src/static/index.html`：在“每日播放趋势”加入 3 个按钮的可见分段控件；新增 `dailyDays` 状态、`fetchDaily()`（独立飞行标志防重叠）与 `setActiveDailyButton`；`fetchStats` 中的 daily 请求改用 `${dailyDays}`；为“正在播放”加入 `nowPlayingTicker`/`nowPlayingEntries` 与 `startNowPlayingTicker`/`stopNowPlayingTicker`，渲染时以 `seconds_elapsed` 设基线，`visibilitychange` 隐藏时停止、可见时恢复，空列表清空计时器。
+  4. 新增源码级静态测试 `tests/test_static_dashboard.py`；为后端 `days` 参数与数据库窗口新增 `tests/test_hourly_daily.py` 用例；同步文档。
+- **验收标准**：7/30/90 与非法 `days` 的 API/database 行为符合边界；本地计时器仅用 `textContent` 更新、不发起额外 API 调用，页面隐藏时停止、可见时恢复；分段控件切换调用 `fetchDaily` 且与自动刷新不重叠；`pytest -q`、`git diff --check`、`python3 scripts/check_md_links.py` 通过。
+- **验证命令**：`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`；`pytest -q tests/test_static_dashboard.py tests/test_hourly_daily.py`。
+- **涉及文件**：`src/database.py`、`src/schemas.py`、`src/main.py`、`src/static/index.html`、`tests/test_hourly_daily.py`、`tests/test_static_dashboard.py`（新增）、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`、`README.md`。
+- **风险/回滚**：本地计时仅用于显示，基线仍由服务器返回值决定，不会漂移超过一个刷新周期；分段控件不改变默认响应；回滚恢复 `index.html`、`schemas.py`、`database.py`、`main.py` 与文件即可。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。`get_daily_stats` 参数化；API 增加 `days`；前端加入分段控件与本地计时器；新增 `tests/test_static_dashboard.py` 14 项与 `tests/test_hourly_daily.py` 8 项新用例。验证：`pytest -q` 182 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 全部解析。遗留：暂无。
+
+## NDS-UI-003 Dashboard 统一历史窗口与环比对比指标
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-UI-002。
+- **目标**：用一个全局统计窗口（`7` / `30` / `90` / `0`=全部）覆盖 Dashboard 所有历史组件，并提供当前窗口对比前一等长窗口的指标，作为后续热力图与更丰富排名的基础。`now-playing` 保持实时、不被窗口过滤。
+- **实施步骤**：
+  1. `src/schemas.py` 新增窗口常量（`STATS_DAYS_ALL=0`、`STATS_DAYS_MIN=7`、`STATS_DAYS_MAX=90`、`STATS_DAYS_DEFAULT=30`、`STATS_DAYS_PRESETS=(7,30,90,0)`）并扩展 `SummaryStat` 为可选对比字段（`active_days`、`average_daily_plays`、`average_daily_listen_sec`、`previous_total_plays`、`previous_total_listen_sec`、`plays_change_pct`、`listen_change_pct`、`window_days`）。保留 `DAILY_DAYS_*`。
+  2. `src/database.py` 新增 `_window_predicate`/`_previous_window_predicate` 输出参数化 SQL 谓词（`days<=0` ⇒ `1=1`，`days>0` ⇒ `datetime(played_at) >= datetime('now', ?)` 等价物），并为 `get_summary`/`get_player_stats`/`get_transcoding_stats`/`get_hourly_stats`/`get_daily_stats`/`get_top_artists`/`get_top_albums`/`get_playback_history` 增加可选 `days` 参数；从不字符串拼接用户值。
+  3. `get_summary(days)` 实现对比语义：`active_days` 按 `COUNT(DISTINCT date(played_at))`；有限窗口的 `average_daily_*` 按 `active_days` 平均（无活跃日为 `0`），`days=0` 按最早至最晚播放日的包含天数平均；`previous_total_*` 来自前一等长窗口，`*_change_pct` 在 `previous` 为 0 或 `days=0` 时为 `null`；`window_days` 在 `days=0` 时为 `null`。
+  4. `src/main.py`：summary/players/transcoding/hourly/top-artists/top-albums/history 新增 `days` 查询参数（默认 `0`=全部历史，保留旧行为）；daily 保留默认 `30`，全部接受 `0`；新增 `_validate_stats_days` 拒绝 `1–6`（422）；`now-playing` 不接受 `days`。
+  5. `src/static/index.html`：用顶部全局 `#statsWindowControl`（7/30/90/全部，默认 30 天，状态 `statsDays`）替换原每日范围控件；切换时调用 `fetchStats`（复用其 in-flight 防护）；所有历史 widget 的 fetch URL 改为 `?days=${statsDays}`（history 保留 `limit`），`now-playing` 不带 `days`；summary 卡新增 `active_days`、日均副行与 `↑↓% vs 上周期` 徽章；新增 `#statsScopeLabel` 显示 `最近 N 天` / `全部历史`；移除 `dailyDays`/`fetchDaily`/`setActiveDailyButton`/`.daily-days-btn`。
+  6. 测试与文档：新增 `tests/test_stats_window.py`（DB 对比与窗口传播、API 传播与 422 边界、now-playing 不接受 `days`）；更新既有 `tests/test_main.py`/`tests/test_top_artists_albums.py`/`tests/test_hourly_daily.py`/`tests/test_static_dashboard.py` 的新签名与控件；同步 `README.md`、`docs/interfaces.md`、`docs/current-state.md`。
+- **验收标准**：所有历史端点统一接受 `days=0` 或 `days∈[7,90]`，其他值返回 422；`days` 向数据库函数传播；`get_summary` 在空库、零前一窗口、有限窗口与 `days=0` 的对比均值/百分比字段符合本文约定；前端只剩一个全局控件且 `now-playing` 不被窗口过滤；summary 卡显示范围与环比且无用户数据 `innerHTML`；`pytest -q`、`git diff --check`、`python3 scripts/check_md_links.py` 通过。
+- **验证命令**：`pytest -q`；`pytest -q tests/test_stats_window.py tests/test_static_dashboard.py`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html`、`tests/test_stats_window.py`（新增）、`tests/test_static_dashboard.py`、`tests/test_main.py`、`tests/test_top_artists_albums.py`、`tests/test_hourly_daily.py`、`README.md`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：所有新增字段均为可选且默认 `0`/`null`，不破坏既有调用；daily 默认 30 与历史接口默认 `0` 保留旧行为；前端单路径 `fetchStats` 降低了竞态风险；回滚恢复 `src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html` 与相关测试/文档即可。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。新增统计窗口常量与 `SummaryStat` 对比字段；`_window_predicate` / `_previous_window_predicate` 参数化谓词；`get_summary` 与全部聚合查询均接受 `days`；`_validate_stats_days` 在 `main.py` 拒绝 1–6；前端以 `#statsWindowControl` 替换每日分段控件并传播 `?days=${statsDays}`、新增 `#statsScopeLabel`、环比徽章与 `active_days` 副行。验证：`pytest -q` 225 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 全部解析。遗留：暂无。
+
+## NDS-UI-004 时区感知的周×时热力图
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-UI-003（全局统计窗口与 `fetchStats` 聚合入口）。
+- **目标**：在 Dashboard 新增一个 weekday×hour 热力图（7×24=168 单元），并让所有历史组件按用户选择的时区分组（`browser` 解析为 IANA 名称，`UTC` 直传），`now-playing` 仍保持实时且不受时区影响。
+- **实施步骤**：
+  1. `src/schemas.py` 新增 `TIMEZONE_DEFAULT="UTC"`、`TIMEZONE_VALIDATION_ERROR` 与 `WeekdayHourStat{weekday,hour,count}`；`src/database.py` 新增 `resolve_timezone`（`zoneinfo.ZoneInfo` 校验，无效抛 `ValueError`）与 `get_weekday_hour_stats(days=30, timezone_name="UTC", db_path=...)`，返回 168 行零填充网格，bucket 边界与有限窗口的 UTC 截止都按 `timezone_name` 计算，从不字符串拼接进 SQL。
+  2. `src/main.py` 新增 `_validate_stats_timezone`（422 on `ValueError`）与 `GET /api/stats/heatmap?days=&timezone=`（默认 `days=30`，`days=0` 全部历史，`1–6` 返回 422）；summary/players/transcoding/hourly/heatmap/daily/top-artists/top-albums/history 全部接受可选 `timezone` 查询参数（默认 `UTC`），`now-playing` 不接受。
+  3. `src/static/index.html`：在顶部新增 `#statsTimezoneSelect`（选项 `browser` 与 `UTC`，状态变量 `statsTimezone`），启动时通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 解析 `browser` 为 IANA 名称并以 `textContent` 安全写入选项标签，无法解析时移除选项并退回 `UTC`；新增 `resolveStatsTimezone()` 与 change 事件，切换时调用 `fetchStats()`（复用其 in-flight 防护）。
+  4. 在 hourly/daily 下方新增「周时热力图」卡片（`#weekdayHourChart` + `#weekdayHourChartSkeleton` + `#weekdayHourChartEmpty` + `#weekdayHourChartWrap`，`aria-label="周时热力图"`），包含 ECharts `weekdayHourChart` 实例与 `renderWeekdayHourChart(data)`：168 个 `{weekday,hour,count}` 单元，X 轴为静态 0–23 小时、Y 轴为静态 Mon–Sun（与 Python `date.weekday()` 对齐），含 `visualMap`、空状态、tooltip，无 `innerHTML`/`insertAdjacentHTML`。
+  5. `fetchStats` 中所有历史请求 URL 附加 `&timezone=${encodeURIComponent(resolveStatsTimezone())}`（`now-playing` 不带），将 heatmap 请求加入 `Promise.all`，参与 401/ok 状态检查、JSON 解析与 `renderWeekdayHourChart(weekdayHourData)` 渲染；`setLoading` 加入 `weekdayHourChartSkeleton` 与 `weekdayHourChart` 可见性切换，`window resize` 调用 `weekdayHourChart.resize()`。
+  6. 测试与文档：新增 `tests/test_heatmap.py`（DB 168 网格、UTC/Shanghai/New York 边界、有限窗口、无效时区、API 传播与 422 边界、503、认证保护、daily 跨午夜零填充）；在 `tests/test_static_dashboard.py` 增加时区选择器、状态、resolver、change handler、时区查询传播、heatmap 卡片/init/render/fetch/resize/setLoading 源码级断言；同步 `docs/interfaces.md` 与 `docs/current-state.md`。
+- **验收标准**：`get_weekday_hour_stats` 在空库与任意时区返回 168 个零填充行，bucket 边界与 Python `date.weekday()` 一致；`/api/stats/heatmap` 接受 `days=0` 或 `7–90`，`1–6`/`91`/负数返回 422，非法 `timezone` 返回 422，数据库异常 503，启用认证时未授权 401；Dashboard 时区选择只保留 `browser`/`UTC` 两个选项，`browser` 标签安全写入 IANA 名称，切换时复用 `fetchStats` 防护并重拉所有历史组件，`now-playing` 不被时区过滤；heatmap 卡片含静态 Mon–Sun 与 0–23 轴、168 单元、`visualMap`、空状态、`resize`；无用户数据 `innerHTML`；`pytest -q`、`git diff --check`、`python3 scripts/check_md_links.py` 通过，无真实凭据。
+- **验证命令**：`pytest -q`；`pytest -q tests/test_heatmap.py tests/test_static_dashboard.py`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html`、`tests/test_heatmap.py`（新增）、`tests/test_static_dashboard.py`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：所有历史端点的 `timezone` 参数可选且默认 `UTC`，既有调用方行为保持；`browser` 在不支持 `Intl.DateTimeFormat` 的环境中退回 `UTC`，不影响后端；`get_weekday_hour_stats` 是新增只读查询，不修改既有数据；回滚恢复 `src/main.py`、`src/database.py`、`src/schemas.py`、`src/static/index.html`、`tests/` 与相关文档即可。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。后端：`resolve_timezone` + `get_weekday_hour_stats` + `WeekdayHourStat` + `_validate_stats_timezone` + `GET /api/stats/heatmap`，全部历史端点接受可选 `timezone`（默认 `UTC`）。前端：`#statsTimezoneSelect`（browser/UTC）、`resolveStatsTimezone()`、change 事件、`WEEKDAY_LABELS`/`HOUR_LABELS`、`renderWeekdayHourChart(data)`、`setLoading` 与 resize 接入；`fetchStats` 给所有历史 URL 附加 `&timezone=${encodeURIComponent(resolveStatsTimezone())}`，`now-playing` 不带；新增「周时热力图」卡片。测试：`tests/test_heatmap.py` 13 项，`tests/test_static_dashboard.py` 新增 13 项源码级断言。验证：`pytest -q` 273 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 通过；无真实凭据入库。遗留：暂无。
+
+## NDS-UI-005 丰富榜单与客户端分析
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-UI-004。
+- **目标**：让热门艺人/专辑支持按播放次数或收听时长排名，并展示客户端收听时长、平均单次时长和转码率。
+- **实施步骤**：
+  1. `src/schemas.py` 增加 ranking metric 与扩展 Player/Transcoding/TopArtist/TopAlbum 响应字段。
+  2. `src/database.py` 在现有窗口/时区过滤基础上增加客户端聚合、转码百分比和榜单 `metric=plays|listen_time` 聚合；排序确定性为值降序、名称升序。
+  3. `src/main.py` 为两个榜单端点增加 metric 校验并保持旧字段；客户端与转码端点保持旧字段兼容。
+  4. `src/static/index.html` 增加榜单指标切换、榜单次要指标、客户端明细表和转码 tooltip 百分比；所有用户数据继续使用 DOM API 与 `textContent` 渲染。
+  5. 新增 `tests/test_ranking_metrics.py`，覆盖两种 metric、并列排序、空客户端名、客户端平均值/转码率、窗口传播、非法 metric 和空库；补充静态 UI 断言。
+- **验收标准**：API 返回扩展字段且旧字段保持；非法 metric 返回 422；排行榜两种 metric 排序稳定；客户端明细与转码百分比按窗口计算；前端切换只请求榜单、移动端不溢出、无用户数据 `innerHTML`；全量测试和文档检查通过。
+- **验证命令**：`pytest -q`；`pytest -q tests/test_ranking_metrics.py tests/test_static_dashboard.py`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html`、`tests/test_ranking_metrics.py`、`tests/test_main.py`、`tests/test_top_artists_albums.py`、`tests/test_stats_window.py`、`tests/test_static_dashboard.py`、`README.md`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：只读聚合查询和展示扩展，不改变会话状态机、数据库 schema 或既有播放记录；旧 API 字段保留，新增字段可选；回滚本阶段文件即可。
+- **完成记录**：2026-07-26，当前 agent 接手 OpenCode 中断后的前端收尾。新增榜单 metric 请求与切换、客户端详情表、转码播放/时长百分比 tooltip；验证：`pytest -q` 305 passed，待执行阶段提交。
+
+## NDS-DATA-002 短播放尝试与短播放率
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-UI-005。
+- **目标**：记录未达到正式播放阈值的播放尝试，支持短播放率分析，同时不污染 `play_history` 的正式播放统计。
+- **实施步骤**：新增 schema 3 的 `play_attempts` 表；会话低于 `PLAY_THRESHOLD_SEC` 结束时记录 `outcome=short_play`，达到阈值的会话仍只写入 `play_history`；新增 `get_short_play_stats()` 与 `/api/stats/short-plays`，支持统一 `days`/`timezone` 窗口；补充迁移、状态机、数据库和 API 测试。
+- **验收标准**：短播放不增加正式播放次数；正式播放不生成重复短播放尝试；短播放率按短播放尝试 /（短播放尝试 + 正式播放）计算；明确不称为跳过率；schema 迁移幂等；全量测试、链接和 diff 检查通过。
+- **验证命令**：`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/database.py`、`src/sessions.py`、`src/main.py`、`src/schemas.py`、`tests/test_database.py`、`tests/test_short_plays.py`。
+- **风险/回滚**：新增表不修改既有 `play_history` 数据；短播放尝试属于行为数据，默认与播放历史使用相同保留边界仍需后续隐私确认；回滚需恢复 schema 版本并删除本阶段代码，不能直接删除已有 `play_attempts` 数据。
+- **完成记录**：2026-07-26，当前 agent 实现。验证：`pytest -q` 313 passed；待执行阶段提交。
+
+## NDS-DATA-003 播放来源溯源层
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-DATA-002。
+- **目标**：为正式播放记录标记来源，支持轮询与 JSON 导入的统计区分，并为未来 Navidrome 原生历史适配器保留扩展点。
+- **实施步骤**：schema 4 为 `play_history` 增加 `source` 列和索引；轮询默认写入 `poller`，隐私导入写入 `import`；新增 `get_source_stats()` 与 `/api/stats/sources`；补充迁移和聚合测试。未绑定 Navidrome 私有数据库或未确认的原生历史读取 API。
+- **验收标准**：旧记录迁移为 `poller`；导入记录标为 `import`；来源统计支持窗口/时区；正式播放语义不变；无未确认上游 API 依赖；全量验证通过。
+- **验证命令**：`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/database.py`、`src/main.py`、`src/schemas.py`、`src/privacy_ops.py`、`tests/test_database.py`、`tests/test_sources.py`、文档。
+- **风险/回滚**：新增列默认 `poller`，不改变旧记录内容；来源值是内部契约，未来增加新适配器时需同步接口登记；回滚需保留数据库迁移兼容性。
+- **完成记录**：2026-07-26，当前 agent 实现。Navidrome 原生历史适配器保留为后续研究项，未将未经确认的私有 API 写入代码。

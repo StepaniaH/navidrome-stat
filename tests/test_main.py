@@ -37,11 +37,25 @@ async def test_health_ready_not_ready_when_database_unavailable(mock_ping):
 @pytest.mark.asyncio
 @patch("src.main.get_player_stats", new_callable=AsyncMock)
 async def test_api_player_stats(mock_get_stats):
-    mock_get_stats.return_value = [{"client_name": "Feishin", "count": 10}]
+    mock_get_stats.return_value = [{
+        "client_name": "Feishin",
+        "count": 10,
+        "total_listen_sec": 1500,
+        "average_listen_sec": 150.0,
+        "transcoded_count": 2,
+        "transcoding_rate_pct": 20.0,
+    }]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/players")
     assert response.status_code == 200
-    assert response.json() == [{"client_name": "Feishin", "count": 10}]
+    assert response.json() == [{
+        "client_name": "Feishin",
+        "count": 10,
+        "total_listen_sec": 1500,
+        "average_listen_sec": 150.0,
+        "transcoded_count": 2,
+        "transcoding_rate_pct": 20.0,
+    }]
 
 @pytest.mark.asyncio
 @patch("src.main.get_summary", new_callable=AsyncMock)
@@ -61,11 +75,23 @@ async def test_api_summary_stats(mock_get_summary):
 @pytest.mark.asyncio
 @patch("src.main.get_transcoding_stats", new_callable=AsyncMock)
 async def test_api_transcoding_stats(mock_get_stats):
-    mock_get_stats.return_value = [{"is_transcoding": 0, "count": 5}]
+    mock_get_stats.return_value = [{
+        "is_transcoding": 0,
+        "count": 5,
+        "total_listen_sec": 600,
+        "plays_pct": 100.0,
+        "listen_sec_pct": 100.0,
+    }]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/transcoding")
     assert response.status_code == 200
-    assert response.json() == [{"is_transcoding": 0, "count": 5}]
+    assert response.json() == [{
+        "is_transcoding": 0,
+        "count": 5,
+        "total_listen_sec": 600,
+        "plays_pct": 100.0,
+        "listen_sec_pct": 100.0,
+    }]
 
 
 @pytest.mark.asyncio
@@ -75,7 +101,7 @@ async def test_api_history_limit_default(mock_get_history):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/history")
     assert response.status_code == 200
-    mock_get_history.assert_awaited_once_with(limit=10)
+    mock_get_history.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC")
 
 
 @pytest.mark.asyncio
@@ -93,7 +119,7 @@ async def test_api_history_limit_bounds(mock_get_history, limit, expected_status
         response = await ac.get(f"/api/stats/history?limit={limit}")
     assert response.status_code == expected_status
     if expected_status == 200:
-        mock_get_history.assert_awaited_once_with(limit=limit)
+        mock_get_history.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC")
 
 
 @pytest.mark.asyncio
@@ -111,3 +137,51 @@ async def test_api_stats_database_error_returns_generic_message(mock_get_stats):
     assert response.status_code == 503
     assert response.json()["detail"] == "Stats temporarily unavailable"
     assert "db unavailable" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_api_now_playing_empty_when_no_sessions():
+    from src.main import session_tracker
+    session_tracker.active_sessions.clear()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/stats/now-playing")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_api_now_playing_returns_active_sessions():
+    from datetime import datetime, timezone, timedelta
+    from src.main import session_tracker
+    first_seen = datetime.now(timezone.utc) - timedelta(seconds=65)
+    session_tracker.active_sessions.clear()
+    session_tracker.active_sessions["player-1"] = {
+        "first_seen_at": first_seen,
+        "last_seen_at": first_seen,
+        "username": "alice",
+        "client_name": "Feishin",
+        "track_id": "t-1",
+        "title": "Song A",
+        "artist": "Artist A",
+        "album": "Album A",
+        "is_transcoding": 0,
+        "committed": False,
+    }
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.get("/api/stats/now-playing")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body) == 1
+        item = body[0]
+        assert item["username"] == "alice"
+        assert item["title"] == "Song A"
+        assert item["artist"] == "Artist A"
+        assert item["client_name"] == "Feishin"
+        assert isinstance(item["seconds_elapsed"], int)
+        assert item["seconds_elapsed"] >= 65
+        assert "first_seen_at" not in item
+        assert "last_seen_at" not in item
+        assert "committed" not in item
+    finally:
+        session_tracker.active_sessions.clear()

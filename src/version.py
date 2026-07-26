@@ -1,0 +1,4 @@
+APP_VERSION = "0.5.0"
+SCHEMA_VERSION = 5
+LICENSE = "MIT"
+PROJECT_NAME = "Navidrome Statistic"

@@ -1,12 +1,13 @@
 import asyncio
 import os
 import logging
+import uuid
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from src.auth import (
     SESSION_COOKIE_NAME,
     is_auth_enabled,
@@ -18,11 +19,27 @@ from src.client import NavidromeClient
 from src.database import (
     init_db,
     save_play_session,
+    save_play_attempt,
     get_player_stats,
     get_transcoding_stats,
+    get_hourly_stats,
+    get_daily_stats,
+    get_top_artists,
+    get_top_albums,
     get_playback_history,
     get_summary,
+    get_short_play_stats,
+    get_source_stats,
+    get_weekday_hour_stats,
+    list_servers,
+    get_server,
+    save_server,
+    delete_server,
+    get_server_stats,
+    LEGACY_SOURCE_ID,
+    LEGACY_SOURCE_NAME,
     ping_db,
+    resolve_timezone,
 )
 from src.runtime_state import runtime_state
 from src.schemas import (
@@ -30,17 +47,40 @@ from src.schemas import (
     HISTORY_LIMIT_MAX,
     HISTORY_LIMIT_MIN,
     AuthStatusResponse,
+    DAILY_DAYS_DEFAULT,
+    DAILY_DAYS_MAX,
+    RANKING_METRIC_DEFAULT,
+    RANKING_METRICS,
+    RANKING_METRIC_VALIDATION_ERROR,
+    STATS_DAYS_ALL,
+    STATS_DAYS_MAX,
+    STATS_DAYS_MIN,
+    STATS_DAYS_DEFAULT,
     HealthLiveResponse,
     HistoryItem,
+    HourlyStat,
+    DailyStat,
     LoginRequest,
+    NowPlayingItem,
     PlayerStat,
+    TopArtistItem,
+    TopAlbumItem,
+    TOP_LIMIT_DEFAULT,
+    TOP_LIMIT_MAX,
+    TOP_LIMIT_MIN,
     PrivacySettingsResponse,
     PrivacySettingsUpdate,
     ReadinessResponse,
     RetentionApplyResponse,
     RetentionPreviewResponse,
     ConfirmRequest,
+    SourceConfigResponse,
+    SourceConfigUpdate,
+    SourceTestRequest,
+    SourceTestResponse,
     StorageStatsResponse,
+    ShortPlayStats,
+    SourceStat,
     SummaryStat,
     TranscodingStat,
     UserDeletePreviewResponse,
@@ -48,6 +88,14 @@ from src.schemas import (
     UserImportRequest,
     UserImportResponse,
     UserSummary,
+    TIMEZONE_DEFAULT,
+    TIMEZONE_VALIDATION_ERROR,
+    WeekdayHourStat,
+    ServerResponse,
+    ServerRequest,
+    ServerTestResponse,
+    ServerStat,
+    AboutResponse,
 )
 from src.privacy_ops import (
     RETENTION_MAX_DAYS,
@@ -64,16 +112,34 @@ from src.privacy_ops import (
     set_retention_days,
     validate_retention_days,
 )
+from src.config import env_int
+from src.metrics import format_prometheus_metrics
 from src.sessions import PlaybackSessionTracker
+from src.version import APP_VERSION, SCHEMA_VERSION, LICENSE, PROJECT_NAME
+from src.source_config import (
+    get_saved_source_config,
+    has_full_config,
+    redacted_view,
+    resolve_effective_source_config,
+    resolve_source_config,
+    set_saved_source_config,
+    validate_source_url,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", 10))
-MAX_POLL_BACKOFF_SEC = int(os.getenv("MAX_POLL_BACKOFF_SEC", 60))
-RETENTION_MAINTENANCE_SEC = int(os.getenv("RETENTION_MAINTENANCE_SEC", 86400))
+POLL_INTERVAL = env_int("POLL_INTERVAL", default=10, min_value=5, max_value=300)
+MAX_POLL_BACKOFF_SEC = env_int("MAX_POLL_BACKOFF_SEC", default=60, min_value=1, max_value=3600)
+RETENTION_MAINTENANCE_SEC = env_int(
+    "RETENTION_MAINTENANCE_SEC", default=86400, min_value=60, max_value=604800
+)
+PLAY_THRESHOLD_SEC = env_int(
+    "PLAY_THRESHOLD_SEC", default=30, min_value=1, max_value=3600
+)
+PAUSE_GRACE_SEC = env_int("PAUSE_GRACE_SEC", default=30, min_value=0, max_value=3600)
 
 
 async def _save_play_session_with_logging(session: dict) -> None:
@@ -89,7 +155,27 @@ async def _save_play_session_with_logging(session: dict) -> None:
         logger.error("Failed to save play session: %s", e)
 
 
-session_tracker = PlaybackSessionTracker(_save_play_session_with_logging)
+async def _save_play_attempt_with_logging(attempt: dict) -> None:
+    try:
+        await save_play_attempt(attempt)
+    except Exception as e:
+        logger.error("Failed to save play attempt: %s", e)
+
+
+def _attempt_callback(source_id: str, source_name: str):
+    async def save(attempt: dict) -> None:
+        await _save_play_attempt_with_logging({
+            **attempt, "source_id": source_id, "source_name": source_name,
+        })
+    return save
+
+
+session_tracker = PlaybackSessionTracker(
+    _save_play_session_with_logging,
+    play_threshold_sec=PLAY_THRESHOLD_SEC,
+    pause_grace_sec=PAUSE_GRACE_SEC,
+    save_attempt=_save_play_attempt_with_logging,
+)
 
 
 async def finalize_session(player_id: str):
@@ -98,6 +184,10 @@ async def finalize_session(player_id: str):
 
 
 async def polling_loop(client: NavidromeClient):
+    await polling_loop_for_tracker(client, session_tracker)
+
+
+async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSessionTracker):
     logger.info("Starting polling loop with interval: %s seconds", POLL_INTERVAL)
     consecutive_failures = 0
 
@@ -120,7 +210,7 @@ async def polling_loop(client: NavidromeClient):
             else:
                 now_playing = response.get("nowPlaying", {})
                 entries = now_playing.get("entry", [])
-                await session_tracker.process_poll(entries, current_time)
+                await tracker.process_poll(entries, current_time)
                 runtime_state.record_poll_success(current_time)
                 consecutive_failures = 0
 
@@ -215,21 +305,90 @@ async def _query_stats(fetch):
         raise HTTPException(status_code=503, detail="Stats temporarily unavailable")
 
 
+def _validate_stats_days(days: int) -> int:
+    """Validate the unified ``days`` window query parameter.
+
+    Allowed values are ``STATS_DAYS_ALL`` (0, all history) and finite windows
+    in ``[STATS_DAYS_MIN, STATS_DAYS_MAX]`` (7..90). Any other value produces
+    HTTP 422. The endpoint-level ``Query`` already enforces ``ge=0, le=90`` so
+    this function focuses on the finite bound gap (1..6).
+    """
+    if days == STATS_DAYS_ALL:
+        return STATS_DAYS_ALL
+    if STATS_DAYS_MIN <= days <= STATS_DAYS_MAX:
+        return days
+    raise HTTPException(
+        status_code=422,
+        detail=f"days must be {STATS_DAYS_ALL} (all history) or between "
+        f"{STATS_DAYS_MIN} and {STATS_DAYS_MAX}",
+    )
+
+
+def _validate_stats_timezone(timezone_name: str) -> str:
+    """Validate the optional ``timezone`` query parameter.
+
+    Resolved against Python stdlib ``zoneinfo.ZoneInfo`` (no new dependency).
+    Invalid names raise HTTP 422. The validated value is only used for Python
+    date/hour/weekday bucket math and UTC cutoff computation in ``database.py``;
+    it is never string-interpolated into SQL.
+    """
+    try:
+        resolve_timezone(timezone_name)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=TIMEZONE_VALIDATION_ERROR)
+    return timezone_name
+
+
+def _validate_ranking_metric(metric: str) -> str:
+    """Validate the ranking ``metric`` query parameter for top artists/albums.
+
+    Accepted values are defined by ``src.schemas.RANKING_METRICS``. Any other
+    value produces HTTP 422 via FastAPI's request validation surface (the
+    check happens here so the error body is uniform with the other stats
+    validation errors).
+    """
+    if metric not in RANKING_METRICS:
+        raise HTTPException(status_code=422, detail=RANKING_METRIC_VALIDATION_ERROR)
+    return metric
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
     await init_db()
     await run_startup_retention_purge()
 
-    client = None
-    task = None
+    clients = []
+    tasks = []
+    trackers = []
     retention_task = None
     try:
-        client = NavidromeClient()
-        runtime_state.client_initialized = True
-        logger.info("Starting background polling task...")
-        task = asyncio.create_task(polling_loop(client))
-        runtime_state.polling_task = task
+        configured_servers = await list_servers()
+        if configured_servers:
+            server_configs = [s for s in configured_servers if s["enabled"]]
+        else:
+            legacy = await resolve_effective_source_config()
+            server_configs = [{"id": LEGACY_SOURCE_ID, "display_name": LEGACY_SOURCE_NAME, **legacy}]
+        for server in server_configs:
+            config = {"url": server.get("url"), "user": server.get("username", server.get("user")), "password": server.get("password")}
+            if not has_full_config(config):
+                continue
+            tracker = PlaybackSessionTracker(
+                lambda session, sid=server["id"], name=server["display_name"]: _save_play_session_with_logging({**session, "source_id": sid, "source_name": name}),
+                play_threshold_sec=PLAY_THRESHOLD_SEC,
+                pause_grace_sec=PAUSE_GRACE_SEC,
+                save_attempt=_attempt_callback(server["id"], server["display_name"]),
+                source_id=server["id"],
+                source_name=server["display_name"],
+            )
+            client = NavidromeClient(url=config["url"], user=config["user"], password=config["password"])
+            clients.append(client)
+            trackers.append(tracker)
+            task = asyncio.create_task(polling_loop_for_tracker(client, tracker))
+            tasks.append(task)
+        runtime_state.client_initialized = bool(clients)
+        if tasks:
+            runtime_state.polling_task = tasks[0]
         retention_task = asyncio.create_task(retention_maintenance_loop())
     except Exception as e:
         runtime_state.client_initialized = False
@@ -238,13 +397,13 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down background task...")
-    if task is not None:
+    for task in tasks:
         task.cancel()
     if retention_task is not None:
         retention_task.cancel()
-    for pid in list(session_tracker.active_sessions.keys()):
-        await finalize_session(pid)
-    if task is not None:
+    for tracker in trackers:
+        await tracker.finalize_all()
+    for task in tasks:
         try:
             await task
         except asyncio.CancelledError:
@@ -254,14 +413,14 @@ async def lifespan(app: FastAPI):
             await retention_task
         except asyncio.CancelledError:
             logger.info("Retention maintenance task cancelled.")
-    if client is not None:
+    for client in clients:
         await client.close()
     runtime_state.polling_task = None
 
 
 app = FastAPI(lifespan=lifespan)
 
-AUTH_EXEMPT_PATHS = frozenset({"/health", "/health/ready", "/api/auth/login", "/api/auth/status"})
+AUTH_EXEMPT_PATHS = frozenset({"/health", "/health/ready", "/metrics", "/api/auth/login", "/api/auth/status"})
 
 
 @app.middleware("http")
@@ -367,22 +526,226 @@ async def health_ready():
     return JSONResponse(content=report, status_code=status_code)
 
 
+@app.get("/metrics")
+async def metrics():
+    """Prometheus exposition endpoint; always anonymous."""
+    active = len(session_tracker.active_sessions)
+    return PlainTextResponse(
+        content=format_prometheus_metrics(active_sessions=active),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
+
+
 @app.get("/api/stats/summary", response_model=SummaryStat)
-async def api_summary_stats():
-    """Endpoint for aggregate listening statistics."""
-    return await _query_stats(get_summary)
+async def api_summary_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Endpoint for aggregate listening statistics over the selected window.
+
+    ``days=0`` (default) means all history; ``days=7..90`` selects a finite
+    rolling window with current-vs-previous comparison metrics. See
+    ``src.database.get_summary`` for the exact semantics.
+
+    ``timezone`` (optional, default ``UTC``) is validated against
+    ``zoneinfo.ZoneInfo`` and controls date bucket boundaries and finite-window
+    UTC cutoffs only; timestamps remain stored as UTC ISO strings.
+    """
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_summary(days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/players", response_model=list[PlayerStat])
-async def api_player_stats():
-    """Endpoint for player usage distribution."""
-    return await _query_stats(get_player_stats)
+async def api_player_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Endpoint for player usage distribution over the selected window."""
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_player_stats(days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/transcoding", response_model=list[TranscodingStat])
-async def api_transcoding_stats():
-    """Endpoint for transcoding ratio."""
-    return await _query_stats(get_transcoding_stats)
+async def api_transcoding_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Endpoint for transcoding ratio over the selected window."""
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_transcoding_stats(days=window, timezone_name=tz))
+
+
+@app.get("/api/stats/short-plays", response_model=ShortPlayStats)
+async def api_short_play_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Return short-play rate; it does not claim intentional skips."""
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_short_play_stats(days=window, timezone_name=tz))
+
+
+@app.get("/api/stats/sources", response_model=list[SourceStat])
+async def api_source_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Return formal play counts grouped by provenance source."""
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_source_stats(days=window, timezone_name=tz))
+
+
+@app.get("/api/stats/servers", response_model=list[ServerStat])
+async def api_server_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None),
+):
+    """Return formal play totals grouped by configured server identity."""
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_server_stats(days=window, timezone_name=tz, source_id=source_id))
+
+
+@app.get("/api/stats/hourly", response_model=list[HourlyStat])
+async def api_hourly_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Endpoint for play counts grouped by local hour of day (0-23) over the
+    selected window. Hours are taken in the requested timezone (default UTC).
+    """
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_hourly_stats(days=window, timezone_name=tz))
+
+
+@app.get("/api/stats/heatmap", response_model=list[WeekdayHourStat])
+async def api_weekday_hour_stats(
+    days: int = Query(default=STATS_DAYS_DEFAULT, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Endpoint for the 7x24 weekday x hour heatmap over the selected window.
+
+    Returns every cell (168 rows) of ``{weekday: 0..6, hour: 0..23, count: int}``,
+    zero-filled. Weekday convention is Python's ``date.weekday()``: 0=Monday
+    ... 6=Sunday. Hours are taken in the requested timezone (default ``UTC``).
+    Default window is ``STATS_DAYS_DEFAULT`` (30 days); ``days=0`` selects all
+    history. Finite windows must be ``0`` or ``7..90`` (1..6 returns 422 as on
+    the other historical endpoints).
+    """
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_weekday_hour_stats(days=window, timezone_name=tz))
+
+
+@app.get("/api/stats/daily", response_model=list[DailyStat])
+async def api_daily_stats(
+    days: int = Query(
+        default=DAILY_DAYS_DEFAULT,
+        ge=0,
+        le=DAILY_DAYS_MAX,
+    ),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Endpoint for play counts per local day over the last ``days`` days.
+
+    Backward compatible default is 30 days; ``days=0`` selects all history.
+    Finite windows must be 7-90 (daily does not allow intermediate values).
+    Every calendar date in the window (or all-history span) is included with
+    at least count 0, ordered ascending. Date bucket boundaries use the
+    requested timezone (default ``UTC``); timestamps are stored as UTC ISO
+    strings.
+    """
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_daily_stats(days=window, timezone_name=tz))
+
+
+@app.get("/api/stats/top-artists", response_model=list[TopArtistItem])
+async def api_top_artists(
+    limit: int = Query(
+        default=TOP_LIMIT_DEFAULT,
+        ge=TOP_LIMIT_MIN,
+        le=TOP_LIMIT_MAX,
+    ),
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+    metric: str = Query(default=RANKING_METRIC_DEFAULT),
+):
+    """Endpoint for top artists ranked by ``metric`` over the selected window.
+
+    ``metric=plays`` (default) preserves the historical ``count DESC``
+    ordering; ``metric=listen_time`` ranks by ``total_listen_sec``. Both
+    responses keep ``count`` for backward compatibility and add
+    ``total_listen_sec`` plus ``value`` (the active ranking key). Invalid
+    metric values return 422. ``days``/``timezone`` filtering matches the
+    other historical endpoints; timezone is not needed for totals but is
+    accepted to keep the API contract consistent.
+    """
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    m = _validate_ranking_metric(metric)
+    return await _query_stats(
+        lambda: get_top_artists(limit=limit, days=window, timezone_name=tz, metric=m)
+    )
+
+
+@app.get("/api/stats/top-albums", response_model=list[TopAlbumItem])
+async def api_top_albums(
+    limit: int = Query(
+        default=TOP_LIMIT_DEFAULT,
+        ge=TOP_LIMIT_MIN,
+        le=TOP_LIMIT_MAX,
+    ),
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+    metric: str = Query(default=RANKING_METRIC_DEFAULT),
+):
+    """Endpoint for top albums ranked by ``metric`` over the selected window.
+
+    Same contract as ``/api/stats/top-artists`` with ``album`` in place of
+    ``artist``.
+    """
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    m = _validate_ranking_metric(metric)
+    return await _query_stats(
+        lambda: get_top_albums(limit=limit, days=window, timezone_name=tz, metric=m)
+    )
+
+
+@app.get("/api/stats/now-playing", response_model=list[NowPlayingItem])
+async def api_now_playing():
+    """Endpoint for currently active playback sessions (in-memory, no DB access)."""
+    try:
+        now = datetime.now(timezone.utc)
+        items: list[NowPlayingItem] = []
+        for session in session_tracker.active_sessions.values():
+            first_seen_at = session.get("first_seen_at")
+            seconds_elapsed = 0
+            if first_seen_at is not None:
+                seconds_elapsed = int((now - first_seen_at).total_seconds())
+                if seconds_elapsed < 0:
+                    seconds_elapsed = 0
+            items.append(
+                NowPlayingItem(
+                    username=session.get("username"),
+                    title=session.get("title"),
+                    artist=session.get("artist"),
+                    client_name=session.get("client_name"),
+                    seconds_elapsed=seconds_elapsed,
+                )
+            )
+        return items
+    except Exception:
+        logger.error("Now playing query failed")
+        raise HTTPException(status_code=503, detail="Stats temporarily unavailable")
 
 
 @app.get("/api/stats/history", response_model=list[HistoryItem])
@@ -392,9 +755,13 @@ async def api_playback_history(
         ge=HISTORY_LIMIT_MIN,
         le=HISTORY_LIMIT_MAX,
     ),
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
 ):
-    """Endpoint for recent playback history."""
-    return await _query_stats(lambda: get_playback_history(limit=limit))
+    """Endpoint for recent playback history over the selected window."""
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_playback_history(limit=limit, days=window, timezone_name=tz))
 
 
 def _privacy_settings_response(days: int | None) -> PrivacySettingsResponse:
@@ -505,6 +872,165 @@ async def api_delete_user(username: str, body: ConfirmRequest):
     except Exception as exc:
         logger.error("User delete failed")
         raise HTTPException(status_code=503, detail="Delete failed") from exc
+
+
+@app.get("/api/source/config", response_model=SourceConfigResponse)
+async def api_source_config_get():
+    """Return non-sensitive view of the effective source config (env > saved).
+
+    Never returns the password; only reports whether one is configured.
+    """
+    saved = await get_saved_source_config()
+    config = resolve_source_config(overrides=None, saved=saved)
+    view = redacted_view(config)
+    return SourceConfigResponse(**view)
+
+
+@app.put("/api/source/config", response_model=SourceConfigResponse)
+async def api_source_config_put(body: SourceConfigUpdate):
+    """Persist GUI fallback source config. Env vars keep priority at runtime.
+
+    The password only changes when a non-empty value is supplied; the request
+    value is never echoed back. URLs are validated to http/https.
+    """
+    if body.url is not None:
+        try:
+            body.url = validate_source_url(body.url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if body.username is not None and not body.username.strip():
+        raise HTTPException(status_code=422, detail="username must not be empty")
+
+    saved = await get_saved_source_config()
+    new_url = body.url if body.url is not None else saved.get("url")
+    new_user = body.username if body.username is not None else saved.get("user")
+    if not new_url or not new_user:
+        raise HTTPException(status_code=422, detail="url and username are required")
+
+    try:
+        await set_saved_source_config(
+            url=new_url,
+            user=new_user,
+            password=body.password,
+        )
+    except Exception as exc:
+        logger.error("Source config persist failed")
+        raise HTTPException(status_code=503, detail="Failed to save source config") from exc
+
+    updated = await get_saved_source_config()
+    config = resolve_source_config(overrides=None, saved=updated)
+    view = redacted_view(config)
+    return SourceConfigResponse(**view)
+
+
+@app.post("/api/source/test", response_model=SourceTestResponse)
+async def api_source_test(body: SourceTestRequest):
+    """Test connectivity with supplied/current settings without persisting.
+
+    Returns only generic success/failure; never echoes upstream responses,
+    credentials, or passwords.
+    """
+    saved = await get_saved_source_config()
+    overrides = {
+        "url": body.url,
+        "user": body.username,
+        "password": body.password,
+    }
+    config = resolve_source_config(overrides=overrides, saved=saved)
+    if not has_full_config(config):
+        return SourceTestResponse(ok=False, message="配置不完整，缺少 URL、用户名或密码")
+
+    test_client = NavidromeClient(
+        url=config["url"],
+        user=config["user"],
+        password=config["password"],
+    )
+    try:
+        await test_client.get_now_playing()
+    except Exception:
+        return SourceTestResponse(ok=False, message="无法连接到上游 Navidrome")
+    finally:
+        try:
+            await test_client.close()
+        except Exception:
+            logger.error("Failed to close test NavidromeClient")
+    return SourceTestResponse(ok=True, message="连接成功")
+
+
+def _server_view(server: dict) -> ServerResponse:
+    return ServerResponse(
+        id=server["id"], display_name=server["display_name"], url=server["url"],
+        username=server["username"], password_configured=bool(server.get("password")),
+        enabled=bool(server.get("enabled", True)),
+    )
+
+
+@app.get("/api/servers", response_model=list[ServerResponse])
+async def api_servers_get():
+    return [_server_view(server) for server in await list_servers()]
+
+
+@app.post("/api/servers", response_model=ServerResponse)
+async def api_servers_create(body: ServerRequest):
+    if not body.display_name.strip() or not body.username.strip():
+        raise HTTPException(status_code=422, detail="display_name and username are required")
+    try:
+        url = validate_source_url(body.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not body.password:
+        raise HTTPException(status_code=422, detail="password is required")
+    server = {"id": uuid.uuid4().hex, "display_name": body.display_name.strip(), "url": url,
+              "username": body.username.strip(), "password": body.password, "enabled": body.enabled}
+    await save_server(server)
+    return _server_view(server)
+
+
+@app.put("/api/servers/{server_id}", response_model=ServerResponse)
+async def api_servers_update(server_id: str, body: ServerRequest):
+    existing = await get_server(server_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+    try:
+        url = validate_source_url(body.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    server = {"id": server_id, "display_name": body.display_name.strip(), "url": url,
+              "username": body.username.strip(), "password": body.password or existing["password"],
+              "enabled": body.enabled}
+    await save_server(server)
+    return _server_view(server)
+
+
+@app.delete("/api/servers/{server_id}")
+async def api_servers_delete(server_id: str):
+    if not await delete_server(server_id):
+        raise HTTPException(status_code=404, detail="Server not found")
+    return {"status": "ok"}
+
+
+@app.post("/api/servers/{server_id}/test", response_model=ServerTestResponse)
+async def api_servers_test(server_id: str, body: ServerRequest | None = None):
+    server = await get_server(server_id)
+    if server is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+    config = body or ServerRequest(display_name=server["display_name"], url=server["url"], username=server["username"])
+    password = config.password or server["password"]
+    test_client = NavidromeClient(url=server["url"], user=server["username"], password=password)
+    try:
+        await test_client.get_now_playing()
+    except Exception:
+        return ServerTestResponse(ok=False, message="无法连接到上游 Navidrome")
+    finally:
+        await test_client.close()
+    return ServerTestResponse(ok=True, message="连接成功")
+
+
+@app.get("/api/about", response_model=AboutResponse)
+async def api_about():
+    return AboutResponse(name=PROJECT_NAME, version=APP_VERSION, schema_version=SCHEMA_VERSION,
+                         features=["多 Navidrome 服务器", "播放历史统计", "隐私数据管理", "本地外观偏好"],
+                         license=LICENSE, project_url=None)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ services:
   navidrome-stat:
     build: .
     container_name: navidrome-stat
+    user: "1000:1000"
     ports:
       - "39421:39421"
     volumes:

@@ -27,11 +27,34 @@
         };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" integrity="sha384-o5uz97et3bErHvpKfD4Jz4n0JfhJDWABFuF4NP+iEEDxE1VwMWJ19QGR0lqFZnr6" crossorigin="anonymous"></script>
+    <script>document.documentElement.dataset.theme = localStorage.getItem('navidrome-theme') || 'frappe';</script>
     <style>
+        :root, [data-theme="frappe"] {
+            --app-bg: #303446; --app-panel: #292c3c; --app-field: #414559; --app-border: #51576d;
+            --app-text: #c6d0f5; --app-muted: #a5adce; --app-dim: #838ba7; --app-accent: #ca9ee6;
+            --app-success: #a6d189; --app-warning: #e5c890; --app-error: #e78284;
+        }
+        [data-theme="latte"] {
+            --app-bg: #eff1f5; --app-panel: #e6e9ef; --app-field: #dce0e8; --app-border: #bcc0cc;
+            --app-text: #4c4f69; --app-muted: #5c5f77; --app-dim: #7c7f93; --app-accent: #8839ef;
+            --app-success: #40a02b; --app-warning: #df8e1d; --app-error: #d20f39;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #0a0a0f;
+            background-color: var(--app-bg);
+            color: var(--app-text);
         }
+        [data-theme] .bg-ink-950 { background-color: var(--app-bg) !important; }
+        [data-theme] .bg-ink-900, [data-theme] .bg-ink-900\/80 { background-color: var(--app-panel) !important; }
+        [data-theme] .bg-ink-800, [data-theme] .bg-ink-800\/40, [data-theme] .bg-ink-800\/50 { background-color: var(--app-field) !important; }
+        [data-theme] .text-white, [data-theme] .text-slate-100, [data-theme] .text-slate-200 { color: var(--app-text) !important; }
+        [data-theme] .text-slate-300, [data-theme] .text-slate-400 { color: var(--app-muted) !important; }
+        [data-theme] .text-slate-500, [data-theme] .text-slate-600 { color: var(--app-dim) !important; }
+        [data-theme] .border-white\/5, [data-theme] .border-white\/10 { border-color: var(--app-border) !important; }
+        [data-theme] .text-accent, [data-theme] .text-accent-glow { color: var(--app-accent) !important; }
+        [data-theme] .bg-accent { background-color: var(--app-accent) !important; }
+        [data-theme] .text-mint { color: var(--app-success) !important; }
+        select { color: var(--app-text); background: var(--app-field); border-color: var(--app-border); }
         .mesh-bg {
             background-image:
                 radial-gradient(ellipse 80% 50% at 50% -20%, rgba(167, 139, 250, 0.18), transparent),
@@ -58,6 +81,106 @@
         .truncate-cell { max-width: 12rem; }
         @media (min-width: 768px) { .truncate-cell { max-width: 16rem; } }
         .stat-value { font-variant-numeric: tabular-nums; }
+
+        .ranking-table {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0.5rem;
+            align-content: start;
+        }
+        .ranking-row {
+            display: grid;
+            grid-template-columns: 1.75rem minmax(0, 42%) minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .ranking-row + .ranking-row { margin-top: 0.125rem; }
+        .ranking-rank {
+            font-family: "SF Mono", ui-monospace, monospace;
+            color: #64748b;
+            font-size: 0.75rem;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .ranking-label {
+            color: #e2e8f0;
+            font-size: 0.875rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ranking-bar-cell { min-width: 0; }
+        .ranking-track {
+            height: 0.625rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+        .ranking-bar {
+            height: 100%;
+            border-radius: 9999px;
+            min-width: 2px;
+        }
+        .ranking-bar-artists { background: linear-gradient(90deg, #7c5fd4 0%, #c4b5fd 100%); }
+        .ranking-bar-albums { background: linear-gradient(90deg, #059669 0%, #34d399 100%); }
+        .ranking-count {
+            color: #cbd5e1;
+            font-family: "SF Mono", ui-monospace, monospace;
+            font-size: 0.8125rem;
+            text-align: right;
+            min-width: 3.5rem;
+            font-variant-numeric: tabular-nums;
+            line-height: 1.1;
+        }
+        .ranking-count-primary { font-weight: 600; }
+        .ranking-count-secondary {
+            font-size: 0.6875rem;
+            color: #64748b;
+            margin-top: 0.125rem;
+        }
+        .player-legend-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .player-legend-table th, .player-legend-table td {
+            padding: 0.375rem 0.5rem;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        .player-legend-table th {
+            color: #64748b;
+            font-weight: 500;
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .player-legend-table td.client-cell {
+            text-align: left;
+            max-width: 12rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #e2e8f0;
+        }
+        .player-legend-table th:first-child,
+        .player-legend-table td:first-child { text-align: left; }
+        .source-breakdown { display: grid; gap: 0.5rem; }
+        .source-breakdown-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.75rem; align-items: center; }
+        @media (min-width: 768px) {
+            .player-legend-table td.client-cell { max-width: 16rem; }
+        }
+        .player-legend-table tr + tr td { border-top: 1px solid rgba(255,255,255,0.04); }
+        @media (max-width: 480px) {
+            .player-legend-table th.hide-mobile, .player-legend-table td.hide-mobile { display: none; }
+        }
+        @media (max-width: 480px) {
+            .ranking-row {
+                grid-template-columns: 1.5rem minmax(0, 42%) minmax(0, 1fr) auto;
+                gap: 0.5rem;
+            }
+        }
     </style>
 </head>
 <body class="mesh-bg text-slate-100 min-h-screen antialiased">
@@ -74,8 +197,8 @@
                         </div>
                         <span class="text-xs font-mono uppercase tracking-widest text-slate-500">Navidrome Stat</span>
                     </div>
-                    <h1 class="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">播放统计</h1>
-                    <p class="text-slate-400 text-sm mt-1">实时监听与收听习惯分析</p>
+                    <h1 class="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight" data-i18n="dashboard.title">播放统计</h1>
+                    <p class="text-slate-400 text-sm mt-1" data-i18n="dashboard.subtitle">实时监听与收听习惯分析</p>
                 </div>
                 <div class="flex items-center gap-3 flex-wrap">
                     <div id="statusBadge" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-ink-800 border border-white/5 text-xs text-slate-400" role="status" aria-live="polite">
@@ -83,15 +206,27 @@
                         <span id="statusText">连接中…</span>
                     </div>
                     <a href="/settings" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-xs text-slate-300 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">
-                        设置
+                        <span data-i18n="dashboard.settings">设置</span>
                     </a>
                     <button id="refreshBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-xs text-slate-300 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50" aria-label="手动刷新">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                        刷新
+                         <span data-i18n="dashboard.refresh">刷新</span>
                     </button>
                 </div>
-            </div>
-            <p id="lastUpdated" class="text-xs text-slate-600 mt-3 font-mono" aria-live="polite"></p>
+                <div role="group" aria-label="统计时间范围" id="statsWindowControl"
+                    class="inline-flex rounded-lg bg-ink-800 border border-white/5 p-0.5 text-xs">
+                    <button type="button" data-days="7"
+                        class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">7 天</button>
+                    <button type="button" data-days="30"
+                        class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">30 天</button>
+                    <button type="button" data-days="90"
+                        class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">90 天</button>
+                    <button type="button" data-days="0"
+                        class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">全部</button>
+                </div>
+             </div>
+            <p id="statsScopeLabel" class="text-xs text-slate-600 mt-3 font-mono" aria-live="polite"></p>
+            <p id="lastUpdated" class="text-xs text-slate-600 mt-1 font-mono" aria-live="polite"></p>
         </header>
 
         <!-- Error banner -->
@@ -100,26 +235,49 @@
             <span id="errorText"></span>
         </div>
 
+        <!-- Now Playing -->
+        <section class="mb-8" aria-label="正在播放">
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5 backdrop-blur-sm">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="w-2.5 h-2.5 rounded-full bg-mint pulse-dot" aria-hidden="true"></span>
+                    <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.nowPlaying">正在播放</h2>
+                    <span id="nowPlayingCount" class="text-xs text-slate-600 font-mono"></span>
+                </div>
+                <div id="nowPlayingSkeleton" class="space-y-3 hidden" aria-hidden="true">
+                    <div class="h-14 skeleton"></div>
+                    <div class="h-14 skeleton"></div>
+                </div>
+                <ul id="nowPlayingList" class="space-y-2"></ul>
+                <div id="nowPlayingEmpty" class="hidden flex flex-col items-center text-slate-600 text-sm py-6">
+                    <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
+                    <p>当前没有正在播放的曲目</p>
+                </div>
+            </div>
+        </section>
+
         <!-- Summary cards -->
         <section class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" aria-label="概览统计">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
-                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">总播放次数</p>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1" data-i18n="dashboard.totalPlays">总播放次数</p>
                 <p id="statTotalPlays" class="stat-value text-3xl font-bold text-white">—</p>
+                <p id="statTotalPlaysChange" class="text-xs text-slate-600 mt-1 stat-value"></p>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
-                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">累计收听</p>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1" data-i18n="dashboard.listen">累计收听</p>
                 <p id="statListenTime" class="stat-value text-3xl font-bold text-mint">—</p>
+                <p id="statListenTimeChange" class="text-xs text-slate-600 mt-1 stat-value"></p>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
-                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">曲目数</p>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1" data-i18n="dashboard.tracks">曲目数</p>
                 <p id="statUniqueTracks" class="stat-value text-3xl font-bold text-accent-glow">—</p>
+                <p id="statActiveDays" class="text-xs text-slate-600 mt-1 stat-value"></p>
             </div>
         </section>
 
         <!-- Charts -->
         <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label="图表">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300 mb-1">客户端分布</h2>
+                <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.clients">客户端分布</h2>
                 <p class="text-xs text-slate-600 mb-4">按播放次数统计</p>
                 <div id="playerChartWrap" class="relative">
                     <div id="playerChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
@@ -129,9 +287,10 @@
                         暂无客户端数据
                     </div>
                 </div>
+                <div id="playerChartLegend" class="mt-4 hidden text-xs" aria-live="polite"></div>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300 mb-1">转码比例</h2>
+                <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.transcoding">转码比例</h2>
                 <p class="text-xs text-slate-600 mb-4">Direct Play vs Transcoded</p>
                 <div id="transcodingChartWrap" class="relative">
                     <div id="transcodingChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
@@ -144,10 +303,104 @@
             </div>
         </section>
 
+        <!-- Hourly & Daily charts -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label="时段与每日趋势">
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.hourly">播放时段分布</h2>
+                <p class="text-xs text-slate-600 mb-4">按一天内各时段播放次数统计</p>
+                <div id="hourlyChartWrap" class="relative">
+                    <div id="hourlyChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                    <div id="hourlyChart" class="chart-container" role="img" aria-label="播放时段分布柱状图"></div>
+                    <div id="hourlyChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
+                        <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        暂无时段数据
+                    </div>
+                </div>
+            </div>
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.daily">每日播放趋势</h2>
+                <p id="dailyChartSubtitle" class="text-xs text-slate-600 mb-4">最近 30 天每日播放次数</p>
+                <div id="dailyChartWrap" class="relative">
+                    <div id="dailyChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                    <div id="dailyChart" class="chart-container" role="img" aria-label="每日播放趋势折线图"></div>
+                    <div id="dailyChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
+                        <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg>
+                        暂无每日数据
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Weekday x Hour heatmap -->
+        <section class="mb-8" aria-label="周时热力图">
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.heatmap">周时热力图</h2>
+                <p class="text-xs text-slate-600 mb-4">按星期 × 小时统计播放次数（0=周一 … 6=周日）</p>
+                <div id="weekdayHourChartWrap" class="relative">
+                    <div id="weekdayHourChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                    <div id="weekdayHourChart" class="chart-container" role="img" aria-label="周时热力图"></div>
+                    <div id="weekdayHourChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
+                        <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        暂无热力图数据
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Top Artists & Top Albums -->
+        <section class="mb-8" aria-label="热门艺人与专辑">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.rankings">热门艺人与专辑</h2>
+                <div role="group" aria-label="榜单指标" id="rankingMetricControl"
+                    class="inline-flex rounded-lg bg-ink-800 border border-white/5 p-0.5 text-xs self-start">
+                    <button type="button" data-ranking-metric="plays"
+                        class="ranking-metric-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">播放次数</button>
+                    <button type="button" data-ranking-metric="listen_time"
+                        class="ranking-metric-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">收听时长</button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.artists">热门艺人</h3>
+                    <p id="topArtistsSubtitle" class="text-xs text-slate-600 mb-4">按播放次数排名</p>
+                    <div id="topArtistsChartWrap" class="relative">
+                        <div id="topArtistsChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                        <div id="topArtistsChart" class="chart-container ranking-table" role="table" aria-label="热门艺人播放次数排行榜"></div>
+                        <div id="topArtistsChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
+                            <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
+                            暂无艺人数据
+                        </div>
+                    </div>
+                </div>
+                <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.albums">热门专辑</h3>
+                    <p id="topAlbumsSubtitle" class="text-xs text-slate-600 mb-4">按播放次数排名</p>
+                    <div id="topAlbumsChartWrap" class="relative">
+                        <div id="topAlbumsChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                        <div id="topAlbumsChart" class="chart-container ranking-table" role="table" aria-label="热门专辑播放次数排行榜"></div>
+                        <div id="topAlbumsChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
+                            <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
+                            暂无专辑数据
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- History -->
+        <section class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5 mb-8" aria-label="服务器来源分析">
+            <div class="flex items-center justify-between gap-3 mb-1">
+                <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.sources">服务器来源</h2>
+                <span class="text-xs text-slate-600">按当前统计窗口</span>
+            </div>
+            <p class="text-xs text-slate-600 mb-4">不同 Navidrome 服务器的播放次数与收听时长</p>
+            <div id="serverSourceBreakdown" class="source-breakdown text-sm"></div>
+        </section>
+
         <!-- History -->
         <section class="rounded-2xl bg-ink-900/80 shadow-card border border-white/5 overflow-hidden" aria-label="播放历史">
             <div class="px-5 sm:px-6 py-5 border-b border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300">最近播放</h2>
+                <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.history">最近播放</h2>
                 <p class="text-xs text-slate-600 mt-0.5">按最近播放时间排序，重复收听会累加 Plays</p>
             </div>
             <div class="overflow-x-auto">
@@ -199,11 +452,45 @@
 
         const playerChart = echarts.init(document.getElementById('playerChart'), null, { renderer: 'canvas' });
         const transcodingChart = echarts.init(document.getElementById('transcodingChart'), null, { renderer: 'canvas' });
+        const hourlyChart = echarts.init(document.getElementById('hourlyChart'), null, { renderer: 'canvas' });
+        const dailyChart = echarts.init(document.getElementById('dailyChart'), null, { renderer: 'canvas' });
+        const weekdayHourChart = echarts.init(document.getElementById('weekdayHourChart'), null, { renderer: 'canvas' });
+
+        // Static axis labels for the weekday x hour heatmap. Weekday order
+        // follows Python's ``date.weekday()`` (0=Monday ... 6=Sunday) which is
+        // what the backend emits; hours are 0..23 (no leading zeros).
+        const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const HOUR_LABELS = Array.from({ length: 24 }, (_, h) => String(h));
 
         let fetchInFlight = false;
         let refreshTimer = null;
         let hasLoadedOnce = false;
         let authRequired = false;
+        let statsDays = 30;
+        // Ranking metric state shared by the top artists and top albums cards.
+        // ``plays`` keeps the historical count-based ranking; ``listen_time``
+        // ranks by total observed listen seconds. Switching it only re-fetches
+        // the two ranking endpoints via ``fetchRankings`` (its own in-flight
+        // guard); a full ``fetchStats`` also forwards the current metric.
+        let rankingMetric = 'plays';
+        let rankingInFlight = false;
+
+        // Timezone control state. ``browser`` resolves to the IANA name
+        // reported by ``Intl.DateTimeFormat`` at load time and is forwarded to
+        // the API as that IANA name (the backend never accepts the literal
+        // "browser" token). ``UTC`` is forwarded verbatim.
+        let statsTimezone = 'browser';
+        const savedStatsTimezone = localStorage.getItem('navidrome-timezone');
+        if (savedStatsTimezone === 'browser' || savedStatsTimezone === 'UTC') statsTimezone = savedStatsTimezone;
+        let browserTimezone = null;
+        try {
+            browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+        } catch (e) {
+            browserTimezone = null;
+        }
+        function resolveStatsTimezone() {
+            return statsTimezone === 'browser' ? (browserTimezone || 'UTC') : statsTimezone;
+        }
 
         const fetchOptions = { credentials: 'same-origin' };
 
@@ -241,13 +528,39 @@
 
         const chartBase = {
             backgroundColor: 'transparent',
-            textStyle: { color: '#94a3b8', fontFamily: 'system-ui, sans-serif' },
+            textStyle: { color: localStorage.getItem('navidrome-theme') === 'latte' ? '#5c5f77' : '#a5adce', fontFamily: 'system-ui, sans-serif' },
             tooltip: {
-                backgroundColor: '#1a1a26',
-                borderColor: 'rgba(255,255,255,0.08)',
-                textStyle: { color: '#e2e8f0', fontSize: 12 },
+                backgroundColor: localStorage.getItem('navidrome-theme') === 'latte' ? '#e6e9ef' : '#292c3c',
+                borderColor: localStorage.getItem('navidrome-theme') === 'latte' ? '#bcc0cc' : '#51576d',
+                textStyle: { color: localStorage.getItem('navidrome-theme') === 'latte' ? '#4c4f69' : '#c6d0f5', fontSize: 12 },
             },
         };
+
+        const dashboardTranslations = {
+            'zh-CN': {
+                'dashboard.title': '播放统计', 'dashboard.subtitle': '实时监听与收听习惯分析', 'dashboard.settings': '设置', 'dashboard.refresh': '刷新',
+                'dashboard.nowPlaying': '正在播放', 'dashboard.summary': '概览统计', 'dashboard.totalPlays': '总播放次数', 'dashboard.listen': '累计收听', 'dashboard.tracks': '曲目数',
+                'dashboard.clients': '客户端分布', 'dashboard.transcoding': '转码比例', 'dashboard.hourly': '播放时段分布', 'dashboard.daily': '每日播放趋势',
+                'dashboard.heatmap': '周时热力图', 'dashboard.rankings': '热门艺人与专辑', 'dashboard.artists': '热门艺人', 'dashboard.albums': '热门专辑',
+                'dashboard.sources': '服务器来源', 'dashboard.history': '最近播放', 'dashboard.window': '统计时间范围',
+            },
+            en: {
+                'dashboard.title': 'Playback Statistics', 'dashboard.subtitle': 'Live listening and playback habits', 'dashboard.settings': 'Settings', 'dashboard.refresh': 'Refresh',
+                'dashboard.nowPlaying': 'Now Playing', 'dashboard.summary': 'Overview', 'dashboard.totalPlays': 'Total Plays', 'dashboard.listen': 'Listening Time', 'dashboard.tracks': 'Unique Tracks',
+                'dashboard.clients': 'Clients', 'dashboard.transcoding': 'Transcoding', 'dashboard.hourly': 'Playback by Hour', 'dashboard.daily': 'Daily Trend',
+                'dashboard.heatmap': 'Weekday × Hour', 'dashboard.rankings': 'Top Artists & Albums', 'dashboard.artists': 'Top Artists', 'dashboard.albums': 'Top Albums',
+                'dashboard.sources': 'Server Sources', 'dashboard.history': 'Recent Plays', 'dashboard.window': 'Statistics range',
+            },
+        };
+        function translateDashboard() {
+            const language = localStorage.getItem('navidrome-language') || 'zh-CN';
+            document.documentElement.lang = language;
+            document.querySelectorAll('[data-i18n]').forEach((element) => {
+                const value = dashboardTranslations[language]?.[element.dataset.i18n];
+                if (value) element.textContent = value;
+            });
+        }
+        translateDashboard();
 
         function setStatus(state, text) {
             const dot = document.getElementById('statusDot');
@@ -271,15 +584,30 @@
         }
 
         function setLoading(loading) {
-            ['playerChartSkeleton', 'transcodingChartSkeleton'].forEach(id => {
+            ['playerChartSkeleton', 'transcodingChartSkeleton', 'hourlyChartSkeleton', 'dailyChartSkeleton', 'weekdayHourChartSkeleton', 'topArtistsChartSkeleton', 'topAlbumsChartSkeleton'].forEach(id => {
                 document.getElementById(id).classList.toggle('hidden', !loading || hasLoadedOnce);
             });
+            document.getElementById('nowPlayingSkeleton').classList.toggle('hidden', !loading || hasLoadedOnce);
+            if (loading && !hasLoadedOnce) {
+                document.getElementById('nowPlayingList').classList.add('hidden');
+                document.getElementById('nowPlayingEmpty').classList.add('hidden');
+            }
             if (loading && !hasLoadedOnce) {
                 document.getElementById('playerChart').style.visibility = 'hidden';
                 document.getElementById('transcodingChart').style.visibility = 'hidden';
+                document.getElementById('hourlyChart').style.visibility = 'hidden';
+                document.getElementById('dailyChart').style.visibility = 'hidden';
+                document.getElementById('weekdayHourChart').style.visibility = 'hidden';
+                document.getElementById('topArtistsChart').style.visibility = 'hidden';
+                document.getElementById('topAlbumsChart').style.visibility = 'hidden';
             } else {
                 document.getElementById('playerChart').style.visibility = 'visible';
                 document.getElementById('transcodingChart').style.visibility = 'visible';
+                document.getElementById('hourlyChart').style.visibility = 'visible';
+                document.getElementById('dailyChart').style.visibility = 'visible';
+                document.getElementById('weekdayHourChart').style.visibility = 'visible';
+                document.getElementById('topArtistsChart').style.visibility = 'visible';
+                document.getElementById('topAlbumsChart').style.visibility = 'visible';
             }
         }
 
@@ -304,6 +632,128 @@
             });
         }
 
+        function formatElapsed(seconds) {
+            const total = Math.max(0, Math.floor(Number(seconds) || 0));
+            const minutes = Math.floor(total / 60);
+            const secs = total % 60;
+            return `${minutes}:${String(secs).padStart(2, '0')}`;
+        }
+
+        // Local-only elapsed ticker for "正在播放". Increments displayed
+        // elapsed seconds every second between server refreshes; the baseline
+        // is always the most recent server-provided seconds_elapsed so the
+        // authorit side stays intact. No extra API calls are made.
+        let nowPlayingTicker = null;
+        let nowPlayingRenderedAt = 0;
+        let nowPlayingEntries = []; // [{ span: HTMLSpanElement, baseline: int }]
+
+        function stopNowPlayingTicker() {
+            if (nowPlayingTicker) {
+                clearInterval(nowPlayingTicker);
+                nowPlayingTicker = null;
+            }
+        }
+
+        function startNowPlayingTicker() {
+            stopNowPlayingTicker();
+            if (!nowPlayingEntries.length || document.hidden) return;
+            nowPlayingTicker = setInterval(() => {
+                const delta = Math.floor((Date.now() - nowPlayingRenderedAt) / 1000);
+                for (const entry of nowPlayingEntries) {
+                    entry.span.textContent = formatElapsed(entry.baseline + delta);
+                }
+            }, 1000);
+        }
+
+        function renderNowPlaying(items) {
+            const list = document.getElementById('nowPlayingList');
+            const empty = document.getElementById('nowPlayingEmpty');
+            const countEl = document.getElementById('nowPlayingCount');
+            list.replaceChildren();
+            list.classList.remove('hidden');
+            empty.classList.add('hidden');
+            nowPlayingEntries = [];
+
+            if (!Array.isArray(items) || items.length === 0) {
+                list.classList.add('hidden');
+                empty.classList.remove('hidden');
+                countEl.textContent = '';
+                stopNowPlayingTicker();
+                return;
+            }
+
+            countEl.textContent = `· ${items.length}`;
+
+            items.forEach((item) => {
+                const li = document.createElement('li');
+                li.className = 'flex items-center gap-3 rounded-xl bg-ink-800/40 border border-white/5 px-4 py-3';
+
+                const icon = document.createElement('span');
+                icon.className = 'shrink-0 w-9 h-9 rounded-lg bg-mint/10 text-mint flex items-center justify-center';
+                icon.setAttribute('aria-hidden', 'true');
+                icon.textContent = '♪';
+                li.appendChild(icon);
+
+                const meta = document.createElement('div');
+                meta.className = 'min-w-0 flex-1';
+
+                const titleRow = document.createElement('div');
+                titleRow.className = 'flex items-baseline gap-2 min-w-0';
+                const title = document.createElement('span');
+                title.className = 'truncate text-white font-medium';
+                title.textContent = item.title || '-';
+                title.title = item.title || '';
+                const artist = document.createElement('span');
+                artist.className = 'truncate text-xs text-slate-500';
+                artist.textContent = item.artist ? `· ${item.artist}` : '';
+                artist.title = item.artist || '';
+                titleRow.appendChild(title);
+                titleRow.appendChild(artist);
+                meta.appendChild(titleRow);
+
+                const subRow = document.createElement('div');
+                subRow.className = 'mt-0.5 flex items-center gap-2 text-xs text-slate-500';
+                const client = document.createElement('span');
+                client.className = 'inline-flex items-center gap-1 truncate';
+                const clientGlyph = document.createElement('span');
+                clientGlyph.className = 'text-slate-600';
+                clientGlyph.textContent = '▣';
+                clientGlyph.setAttribute('aria-hidden', 'true');
+                const clientLabel = document.createElement('span');
+                clientLabel.className = 'truncate';
+                clientLabel.textContent = item.client_name || '-';
+                clientLabel.title = item.client_name || '';
+                client.appendChild(clientGlyph);
+                client.appendChild(clientLabel);
+                const sep = document.createElement('span');
+                sep.className = 'text-slate-700';
+                sep.textContent = '·';
+                const user = document.createElement('span');
+                user.className = 'truncate';
+                user.textContent = item.username || '-';
+                user.title = item.username || '';
+                subRow.appendChild(client);
+                subRow.appendChild(sep);
+                subRow.appendChild(user);
+                meta.appendChild(subRow);
+
+                li.appendChild(meta);
+
+                const elapsed = document.createElement('span');
+                elapsed.className = 'shrink-0 text-sm text-mint font-mono stat-value';
+                elapsed.textContent = formatElapsed(item.seconds_elapsed);
+                li.appendChild(elapsed);
+
+                list.appendChild(li);
+
+                const baseline = Math.max(0, Math.floor(Number(item.seconds_elapsed) || 0));
+                nowPlayingEntries.push({ span: elapsed, baseline });
+            });
+
+            nowPlayingRenderedAt = Date.now();
+            startNowPlayingTicker();
+        }
+
         function updateSummary(summary, transcoding) {
             document.getElementById('statTotalPlays').textContent =
                 (summary.total_plays ?? 0).toLocaleString();
@@ -312,13 +762,40 @@
             document.getElementById('statUniqueTracks').textContent =
                 (summary.unique_tracks ?? 0).toLocaleString();
 
+            const playsChangeEl = document.getElementById('statTotalPlaysChange');
+            const listenChangeEl = document.getElementById('statListenTimeChange');
+            const activeDaysEl = document.getElementById('statActiveDays');
+            playsChangeEl.textContent = formatChangeText(summary.plays_change_pct);
+            listenChangeEl.textContent = formatChangeText(summary.listen_change_pct);
+
+            const activeDays = Number(summary.active_days) || 0;
+            const avgPlays = summary.average_daily_plays;
+            const avgParts = [];
+            if (activeDays > 0) avgParts.push(`活跃 ${activeDays} 天`);
+            if (typeof avgPlays === 'number' && Number.isFinite(avgPlays)) {
+                avgParts.push(`日均 ${avgPlays.toFixed(1)} 次`);
+            }
+            activeDaysEl.textContent = avgParts.join(' · ');
+
             const direct = transcoding.find(t => !t.is_transcoding)?.count || 0;
             const trans = transcoding.find(t => t.is_transcoding)?.count || 0;
             const total = direct + trans;
-            const subtitle = document.getElementById('statUniqueTracks');
+            const uniqueEl = document.getElementById('statUniqueTracks');
             if (total > 0) {
-                subtitle.title = `转码占比 ${Math.round((trans / total) * 100)}% · ${summary.client_count ?? 0} 个客户端`;
+                const ratio = Math.round((trans / total) * 100);
+                uniqueEl.title = `活跃 ${activeDays} 天 · 转码占比 ${ratio}% · ${summary.client_count ?? 0} 个客户端`;
+            } else {
+                uniqueEl.title = activeDays > 0 ? `活跃 ${activeDays} 天` : '';
             }
+        }
+
+        function formatChangeText(pct) {
+            if (pct === null || pct === undefined || !Number.isFinite(pct)) {
+                return '';
+            }
+            const sign = pct > 0 ? '↑' : (pct < 0 ? '↓' : '·');
+            const absVal = Math.abs(pct).toFixed(1).replace(/\.0$/, '');
+            return `${sign} ${absVal}% vs 上周期`;
         }
 
         function toggleChartEmpty(chartId, emptyId, hasData) {
@@ -327,9 +804,57 @@
         }
 
         function renderPlayerChart(data) {
-            const hasData = data.length > 0 && data.some(d => d.count > 0);
+            const legend = document.getElementById('playerChartLegend');
+            legend.replaceChildren();
+            legend.classList.add('hidden');
+            const hasData = Array.isArray(data) && data.length > 0 && data.some(d => Number(d.count) > 0);
             toggleChartEmpty('playerChart', 'playerChartEmpty', hasData);
             if (!hasData) return;
+
+            const table = document.createElement('table');
+            table.className = 'player-legend-table';
+            const caption = document.createElement('caption');
+            caption.className = 'sr-only';
+            caption.textContent = '客户端收听详情';
+            table.appendChild(caption);
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            ['客户端', '播放', '收听时长', '平均单次', '转码率'].forEach((label, index) => {
+                const th = document.createElement('th');
+                th.scope = 'col';
+                th.textContent = label;
+                if (index === 3) th.classList.add('hide-mobile');
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            const tbody = document.createElement('tbody');
+            data.forEach((item, index) => {
+                const row = document.createElement('tr');
+                const name = document.createElement('td');
+                name.className = 'client-cell';
+                name.textContent = item.client_name || 'Unknown';
+                name.title = item.client_name || 'Unknown';
+                const count = document.createElement('td');
+                count.textContent = Number(item.count || 0).toLocaleString();
+                const total = document.createElement('td');
+                total.textContent = formatListenDuration(item.total_listen_sec);
+                const average = document.createElement('td');
+                average.className = 'hide-mobile';
+                average.textContent = formatListenDuration(item.average_listen_sec);
+                const transcode = document.createElement('td');
+                const rate = Number(item.transcoding_rate_pct);
+                transcode.textContent = Number.isFinite(rate) ? `${rate.toFixed(1)}%` : '—';
+                [name, count, total, average, transcode].forEach(cell => {
+                    cell.classList.add('text-right');
+                    row.appendChild(cell);
+                });
+                row.firstElementChild.classList.remove('text-right');
+                tbody.appendChild(row);
+            });
+            table.appendChild(tbody);
+            legend.appendChild(table);
+            legend.classList.remove('hidden');
 
             playerChart.setOption({
                 ...chartBase,
@@ -351,19 +876,29 @@
         }
 
         function renderTranscodingChart(data) {
-            const hasData = data.length > 0 && data.some(d => d.count > 0);
+            const hasData = Array.isArray(data) && data.length > 0 && data.some(d => Number(d.count) > 0);
             toggleChartEmpty('transcodingChart', 'transcodingChartEmpty', hasData);
             if (!hasData) return;
 
             const transformed = data.map(item => ({
                 name: item.is_transcoding ? 'Transcoded' : 'Direct Play',
                 value: item.count,
+                playsPct: Number(item.plays_pct) || 0,
+                listenPct: Number(item.listen_sec_pct) || 0,
+                listenSec: Number(item.total_listen_sec) || 0,
             }));
 
             transcodingChart.setOption({
                 ...chartBase,
                 color: ['#34d399', '#f472b6'],
                 legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 } },
+                tooltip: {
+                    ...chartBase.tooltip,
+                    formatter: (params) => {
+                        const item = params.data || {};
+                        return `${params.name}<br/>播放 ${Number(item.value || 0).toLocaleString()} 次 (${item.playsPct ?? 0}%)<br/>收听 ${formatListenDuration(item.listenSec)} (${item.listenPct ?? 0}%)`;
+                    },
+                },
                 series: [{
                     name: 'Playback',
                     type: 'pie',
@@ -374,6 +909,315 @@
                     data: transformed,
                 }],
             }, true);
+        }
+
+        function renderHourlyChart(data) {
+            const hasData = data.length > 0 && data.some(d => d.count > 0);
+            toggleChartEmpty('hourlyChart', 'hourlyChartEmpty', hasData);
+            if (!hasData) return;
+
+            const buckets = Array.from({ length: 24 }, (_, h) => {
+                const found = data.find(d => Number(d.hour) === h);
+                return { hour: h, count: found ? Number(found.count) : 0 };
+            });
+
+            hourlyChart.setOption({
+                ...chartBase,
+                color: ['#a78bfa'],
+                grid: { left: 40, right: 16, top: 16, bottom: 32 },
+                tooltip: {
+                    ...chartBase.tooltip,
+                    trigger: 'axis',
+                    axisPointer: { type: 'shadow' },
+                    formatter: (params) => {
+                        const p = params[0];
+                        return `${p.axisValue} 时<br/>播放 ${p.data} 次`;
+                    },
+                },
+                xAxis: {
+                    type: 'category',
+                    data: buckets.map(b => String(b.hour)),
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+                    axisLabel: { color: '#64748b', fontSize: 11 },
+                    axisTick: { show: false },
+                },
+                yAxis: {
+                    type: 'value',
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+                    axisLabel: { color: '#64748b', fontSize: 11 },
+                },
+                series: [{
+                    name: 'Plays',
+                    type: 'bar',
+                    data: buckets.map(b => b.count),
+                    itemStyle: {
+                        borderRadius: [4, 4, 0, 0],
+                        color: {
+                            type: 'linear',
+                            x: 0, y: 0, x2: 0, y2: 1,
+                            colorStops: [
+                                { offset: 0, color: '#c4b5fd' },
+                                { offset: 1, color: '#7c5fd4' },
+                            ],
+                        },
+                    },
+                }],
+            }, true);
+        }
+
+        function renderDailyChart(data) {
+            const hasData = data.length > 0 && data.some(d => d.count > 0);
+            toggleChartEmpty('dailyChart', 'dailyChartEmpty', hasData);
+            if (!hasData) return;
+
+            const sorted = [...data].sort((a, b) => a.date.localeCompare(b.date));
+            const dates = sorted.map(d => d.date);
+            const counts = sorted.map(d => Number(d.count));
+
+            dailyChart.setOption({
+                ...chartBase,
+                color: ['#34d399'],
+                grid: { left: 40, right: 16, top: 16, bottom: 32 },
+                tooltip: {
+                    ...chartBase.tooltip,
+                    trigger: 'axis',
+                    formatter: (params) => {
+                        const p = params[0];
+                        return `${p.axisValue}<br/>播放 ${p.data} 次`;
+                    },
+                },
+                xAxis: {
+                    type: 'category',
+                    boundaryGap: false,
+                    data: dates,
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+                    axisLabel: { color: '#64748b', fontSize: 11 },
+                    axisTick: { show: false },
+                },
+                yAxis: {
+                    type: 'value',
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+                    axisLabel: { color: '#64748b', fontSize: 11 },
+                },
+                series: [{
+                    name: 'Plays',
+                    type: 'line',
+                    smooth: true,
+                    symbol: 'circle',
+                    symbolSize: 6,
+                    data: counts,
+                    lineStyle: { width: 2 },
+                    areaStyle: {
+                        color: {
+                            type: 'linear',
+                            x: 0, y: 0, x2: 0, y2: 1,
+                            colorStops: [
+                                { offset: 0, color: 'rgba(52,211,153,0.35)' },
+                                { offset: 1, color: 'rgba(52,211,153,0.02)' },
+                            ],
+                        },
+                    },
+                }],
+            }, true);
+        }
+
+        function renderWeekdayHourChart(data) {
+            const hasData = Array.isArray(data) && data.some(d => Number(d.count) > 0);
+            toggleChartEmpty('weekdayHourChart', 'weekdayHourChartEmpty', hasData);
+            if (!hasData) return;
+
+            const points = data.map(item => [
+                Number(item.hour),
+                Number(item.weekday),
+                Number(item.count) || 0,
+            ]);
+            const maxCount = Math.max(1, ...points.map(p => p[2]));
+
+            weekdayHourChart.setOption({
+                ...chartBase,
+                tooltip: {
+                    ...chartBase.tooltip,
+                    formatter: (params) => {
+                        const [h, w, c] = params.value;
+                        return `${WEEKDAY_LABELS[w] || '?'} ${h} 时<br/>播放 ${c} 次`;
+                    },
+                },
+                grid: { left: 48, right: 16, top: 16, bottom: 56 },
+                xAxis: {
+                    type: 'category',
+                    data: HOUR_LABELS,
+                    splitArea: { show: true },
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+                    axisLabel: { color: '#64748b', fontSize: 11 },
+                    axisTick: { show: false },
+                },
+                yAxis: {
+                    type: 'category',
+                    data: WEEKDAY_LABELS,
+                    splitArea: { show: true },
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+                    axisLabel: { color: '#64748b', fontSize: 11 },
+                    axisTick: { show: false },
+                },
+                visualMap: {
+                    min: 0,
+                    max: maxCount,
+                    calculable: true,
+                    orient: 'horizontal',
+                    left: 'center',
+                    bottom: 0,
+                    textStyle: { color: '#64748b', fontSize: 11 },
+                    inRange: { color: ['#1a1a26', '#7c5fd4', '#c4b5fd'] },
+                },
+                series: [{
+                    name: 'Plays',
+                    type: 'heatmap',
+                    data: points,
+                    label: { show: false },
+                    emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } },
+                }],
+            }, true);
+        }
+
+        function renderRankingList({ containerId, emptyId, data, labelKey, barClass, ariaLabel, metric }) {
+            const container = document.getElementById(containerId);
+            const empty = document.getElementById(emptyId);
+            container.replaceChildren();
+            container.setAttribute('role', 'table');
+            container.setAttribute('aria-label', ariaLabel);
+
+            // HasData uses value so listen_time rankings with zero plays still
+            // render when there is real data; counts of zero with non-zero
+            // seconds are unlikely but supported.
+            const hasData = Array.isArray(data) && data.length > 0 && data.some(d => Number(d.value) > 0 || Number(d.count) > 0 || Number(d.total_listen_sec) > 0);
+            if (!hasData) {
+                empty.classList.remove('hidden');
+                container.classList.add('invisible');
+                return;
+            }
+            empty.classList.add('hidden');
+            container.classList.remove('invisible');
+
+            // Backend already returns deterministic value DESC, name ASC.
+            // Bar widths use the active ranking key (``value``) so the same
+            // renderer works for both metrics; the secondary cell always
+            // exposes the other dimension so both are visible.
+            const maxValue = Math.max(
+                1,
+                ...data.map(d => Number(d.value) || 0),
+            );
+
+            data.forEach((item, idx) => {
+                const value = Number(item.value) || 0;
+                const count = Number(item.count) || 0;
+                const totalListenSec = Number(item.total_listen_sec) || 0;
+                const pct = Math.max(0, Math.min(100, Math.round((value / maxValue) * 100)));
+                const labelValue = item[labelKey] != null ? String(item[labelKey]) : '';
+
+                const row = document.createElement('div');
+                row.className = 'ranking-row';
+                row.setAttribute('role', 'row');
+
+                const rankCell = document.createElement('div');
+                rankCell.className = 'ranking-rank stat-value';
+                rankCell.setAttribute('role', 'cell');
+                rankCell.textContent = String(idx + 1);
+
+                const labelCell = document.createElement('div');
+                labelCell.className = 'ranking-label';
+                labelCell.setAttribute('role', 'cell');
+                labelCell.textContent = labelValue || '-';
+                labelCell.title = labelValue;
+
+                const barCell = document.createElement('div');
+                barCell.className = 'ranking-bar-cell';
+                barCell.setAttribute('role', 'cell');
+                const ariaSummary = metric === 'listen_time'
+                    ? `收听 ${formatListenDuration(value)} · ${count.toLocaleString()} 次`
+                    : `播放 ${count.toLocaleString()} 次 · ${formatListenDuration(totalListenSec)}`;
+                barCell.setAttribute('aria-label', ariaSummary);
+                const track = document.createElement('div');
+                track.className = 'ranking-track';
+                const bar = document.createElement('div');
+                bar.className = `ranking-bar ${barClass}`;
+                bar.style.width = `${pct}%`;
+                track.appendChild(bar);
+                barCell.appendChild(track);
+
+                const countCell = document.createElement('div');
+                countCell.className = 'ranking-count stat-value';
+                countCell.setAttribute('role', 'cell');
+                const primary = document.createElement('div');
+                primary.className = 'ranking-count-primary';
+                primary.textContent = metric === 'listen_time'
+                    ? formatListenDuration(value)
+                    : `${count.toLocaleString()} 次`;
+                const secondary = document.createElement('div');
+                secondary.className = 'ranking-count-secondary';
+                secondary.textContent = metric === 'listen_time'
+                    ? `${count.toLocaleString()} 次`
+                    : formatListenDuration(totalListenSec);
+                countCell.appendChild(primary);
+                countCell.appendChild(secondary);
+
+                row.appendChild(rankCell);
+                row.appendChild(labelCell);
+                row.appendChild(barCell);
+                row.appendChild(countCell);
+                container.appendChild(row);
+            });
+        }
+
+        function renderTopArtistsChart(data, metric) {
+            renderRankingList({
+                containerId: 'topArtistsChart',
+                emptyId: 'topArtistsChartEmpty',
+                data: data,
+                labelKey: 'artist',
+                barClass: 'ranking-bar-artists',
+                ariaLabel: '热门艺人播放次数排行榜',
+                metric: metric || rankingMetric,
+            });
+        }
+
+        function renderTopAlbumsChart(data, metric) {
+            renderRankingList({
+                containerId: 'topAlbumsChart',
+                emptyId: 'topAlbumsChartEmpty',
+                data: data,
+                labelKey: 'album',
+                barClass: 'ranking-bar-albums',
+                ariaLabel: '热门专辑播放次数排行榜',
+                metric: metric || rankingMetric,
+            });
+        }
+
+        function renderServerSourceBreakdown(data) {
+            const container = document.getElementById('serverSourceBreakdown');
+            container.replaceChildren();
+            if (!Array.isArray(data) || data.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'text-slate-600';
+                empty.textContent = '暂无服务器来源数据';
+                container.appendChild(empty);
+                return;
+            }
+            data.forEach((item) => {
+                const row = document.createElement('div');
+                row.className = 'source-breakdown-row';
+                const name = document.createElement('span');
+                name.className = 'truncate text-slate-300';
+                name.textContent = item.source_name || item.source_id || '未知服务器';
+                name.title = name.textContent;
+                const count = document.createElement('span');
+                count.className = 'font-mono text-slate-400';
+                count.textContent = `${Number(item.count || 0).toLocaleString()} 次`;
+                const duration = document.createElement('span');
+                duration.className = 'font-mono text-slate-500';
+                duration.textContent = formatListenDuration(item.total_listen_sec);
+                row.append(name, count, duration);
+                container.appendChild(row);
+            });
         }
 
         function renderHistoryTable(data) {
@@ -470,33 +1314,56 @@
             setStatus('loading', '同步中…');
 
             try {
-                const [summaryRes, playersRes, transcodingRes, historyRes] = await Promise.all([
-                    fetch('/api/stats/summary', fetchOptions),
-                    fetch('/api/stats/players', fetchOptions),
-                    fetch('/api/stats/transcoding', fetchOptions),
-                    fetch('/api/stats/history?limit=10', fetchOptions),
+                const tzParam = encodeURIComponent(resolveStatsTimezone());
+                const [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, serverStatsRes, nowPlayingRes, topArtistsRes, topAlbumsRes] = await Promise.all([
+                    fetch(`/api/stats/summary?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/players?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/transcoding?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/hourly?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/daily?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/heatmap?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/history?limit=10&days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/servers?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch('/api/stats/now-playing', fetchOptions),
+                    fetch(`/api/stats/top-artists?limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`, fetchOptions),
+                    fetch(`/api/stats/top-albums?limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`, fetchOptions),
                 ]);
 
-                if ([summaryRes, playersRes, transcodingRes, historyRes].some(r => r.status === 401)) {
+                if ([summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, serverStatsRes, nowPlayingRes, topArtistsRes, topAlbumsRes].some(r => r.status === 401)) {
                     showLogin('访问令牌无效或已过期，请重新登录。');
                     return;
                 }
 
-                if (!summaryRes.ok || !playersRes.ok || !transcodingRes.ok || !historyRes.ok) {
-                    throw new Error('部分数据请求失败 (' + [summaryRes, playersRes, transcodingRes, historyRes].filter(r => !r.ok).map(r => r.status).join(', ') + ')');
+                const responses = [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, serverStatsRes, nowPlayingRes, topArtistsRes, topAlbumsRes];
+                if (responses.some(r => !r.ok)) {
+                    throw new Error('部分数据请求失败 (' + responses.filter(r => !r.ok).map(r => r.status).join(', ') + ')');
                 }
 
-                const [summaryData, playersData, transcodingData, historyData] = await Promise.all([
+                const [summaryData, playersData, transcodingData, hourlyData, dailyData, weekdayHourData, historyData, serverStatsData, nowPlayingData, topArtistsData, topAlbumsData] = await Promise.all([
                     summaryRes.json(),
                     playersRes.json(),
                     transcodingRes.json(),
+                    hourlyRes.json(),
+                    dailyRes.json(),
+                    weekdayHourRes.json(),
                     historyRes.json(),
+                    serverStatsRes.json(),
+                    nowPlayingRes.json(),
+                    topArtistsRes.json(),
+                    topAlbumsRes.json(),
                 ]);
 
+                renderNowPlaying(nowPlayingData);
                 updateSummary(summaryData, transcodingData);
                 renderPlayerChart(playersData);
                 renderTranscodingChart(transcodingData);
+                renderHourlyChart(hourlyData);
+                renderDailyChart(dailyData);
+                renderWeekdayHourChart(weekdayHourData);
+                renderTopArtistsChart(topArtistsData, rankingMetric);
+                renderTopAlbumsChart(topAlbumsData, rankingMetric);
                 renderHistoryTable(historyData);
+                renderServerSourceBreakdown(serverStatsData);
 
                 hasLoadedOnce = true;
                 hideError();
@@ -520,6 +1387,94 @@
             refreshTimer = setInterval(fetchStats, ms);
         }
 
+        function setActiveRankingMetric(metric) {
+            const label = metric === 'listen_time' ? '按收听时长排名' : '按播放次数排名';
+            document.querySelectorAll('.ranking-metric-btn').forEach((btn) => {
+                const active = btn.dataset.rankingMetric === metric;
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                btn.classList.toggle('bg-accent', active);
+                btn.classList.toggle('text-white', active);
+                btn.classList.toggle('text-slate-400', !active);
+            });
+            ['topArtistsSubtitle', 'topAlbumsSubtitle'].forEach((id) => {
+                const element = document.getElementById(id);
+                if (element) element.textContent = label;
+            });
+        }
+
+        async function fetchRankings() {
+            if (rankingInFlight || fetchInFlight) return;
+            rankingInFlight = true;
+            try {
+                const tzParam = encodeURIComponent(resolveStatsTimezone());
+                const query = `limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`;
+                const [artistsRes, albumsRes] = await Promise.all([
+                    fetch(`/api/stats/top-artists?${query}`, fetchOptions),
+                    fetch(`/api/stats/top-albums?${query}`, fetchOptions),
+                ]);
+                if ([artistsRes, albumsRes].some(r => r.status === 401)) {
+                    showLogin('访问令牌无效或已过期，请重新登录。');
+                    return;
+                }
+                if (!artistsRes.ok || !albumsRes.ok) throw new Error('ranking request failed');
+                const [artists, albums] = await Promise.all([artistsRes.json(), albumsRes.json()]);
+                renderTopArtistsChart(artists, rankingMetric);
+                renderTopAlbumsChart(albums, rankingMetric);
+                hideError();
+            } catch (error) {
+                showError('无法获取热门榜单数据。');
+                console.error('Error fetching rankings:', error);
+            } finally {
+                rankingInFlight = false;
+            }
+        }
+
+        // Global statistics window control. Replaces the previous daily-only range
+        // selector: changing it updates ``statsDays`` and re-fetches all
+        // historical widgets via ``fetchStats`` (which has its own in-flight
+        // guard). The "正在播放" endpoint is always fetched without a window
+        // in ``fetchStats`` so it stays real-time.
+        function statsWindowLabel() {
+            return statsDays === 0 ? '全部历史' : `最近 ${statsDays} 天`;
+        }
+
+        function setActiveStatsWindowButton(days) {
+            document.querySelectorAll('.stats-window-btn').forEach((btn) => {
+                const active = Number(btn.dataset.days) === days;
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                btn.classList.toggle('bg-accent', active);
+                btn.classList.toggle('text-white', active);
+                btn.classList.toggle('text-slate-400', !active);
+            });
+            const scope = document.getElementById('statsScopeLabel');
+            if (scope) scope.textContent = statsWindowLabel();
+            const dailySubtitle = document.getElementById('dailyChartSubtitle');
+            if (dailySubtitle) dailySubtitle.textContent = `${statsWindowLabel()}每日播放次数`;
+        }
+
+        document.querySelectorAll('.stats-window-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const days = Number(btn.dataset.days);
+                if (!Number.isFinite(days) || days === statsDays) return;
+                statsDays = days;
+                setActiveStatsWindowButton(days);
+                fetchStats();
+            });
+        });
+        setActiveStatsWindowButton(statsDays);
+
+        document.querySelectorAll('.ranking-metric-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const metric = btn.dataset.rankingMetric;
+                if (metric !== 'plays' && metric !== 'listen_time') return;
+                if (metric === rankingMetric) return;
+                rankingMetric = metric;
+                setActiveRankingMetric(metric);
+                fetchRankings();
+            });
+        });
+        setActiveRankingMetric(rankingMetric);
+
         document.getElementById('refreshBtn').addEventListener('click', fetchStats);
 
         document.getElementById('loginForm').addEventListener('submit', async (event) => {
@@ -535,12 +1490,20 @@
 
         document.addEventListener('visibilitychange', () => {
             scheduleRefresh();
-            if (!document.hidden) fetchStats();
+            if (document.hidden) {
+                stopNowPlayingTicker();
+            } else {
+                startNowPlayingTicker();
+                fetchStats();
+            }
         });
 
         window.addEventListener('resize', () => {
             playerChart.resize();
             transcodingChart.resize();
+            hourlyChart.resize();
+            dailyChart.resize();
+            weekdayHourChart.resize();
         });
 
         async function bootstrap() {
