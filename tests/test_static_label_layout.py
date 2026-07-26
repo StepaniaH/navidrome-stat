@@ -124,6 +124,12 @@ def test_ranking_row_grid_template_reserves_label_and_bar_columns(source):
     assert "auto" in css
 
 
+def test_ranking_table_is_not_locked_to_chart_height(source):
+    css = source[source.index(".chart-container.ranking-table") : source.index(".pulse-dot")]
+    assert "height: auto" in css
+    assert "min-height" in css
+
+
 def test_ranking_bar_gradients_preserved(source):
     artists_block = source[source.index(".ranking-bar-artists {") : source.index(".ranking-bar-albums {")]
     albums_block = source[source.index(".ranking-bar-albums {") : source.index(".ranking-count {")]
