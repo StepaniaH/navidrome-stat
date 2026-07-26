@@ -35,6 +35,7 @@
 | NDS-UI-004 | 时区感知的周×时热力图 | P2 | 已完成 | NDS-UI-003 |
 | NDS-UI-005 | 丰富榜单与客户端分析 | P2 | 已完成 | NDS-UI-004 |
 | NDS-DATA-002 | 短播放尝试与短播放率 | P2 | 已完成 | NDS-UI-005 |
+| NDS-DATA-003 | 播放来源溯源层 | P2 | 已完成 | NDS-DATA-002 |
 
 ## NDS-SEC-001 访问控制与部署边界
 
@@ -409,3 +410,15 @@
 - **涉及文件**：`src/database.py`、`src/sessions.py`、`src/main.py`、`src/schemas.py`、`tests/test_database.py`、`tests/test_short_plays.py`。
 - **风险/回滚**：新增表不修改既有 `play_history` 数据；短播放尝试属于行为数据，默认与播放历史使用相同保留边界仍需后续隐私确认；回滚需恢复 schema 版本并删除本阶段代码，不能直接删除已有 `play_attempts` 数据。
 - **完成记录**：2026-07-26，当前 agent 实现。验证：`pytest -q` 313 passed；待执行阶段提交。
+
+## NDS-DATA-003 播放来源溯源层
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-DATA-002。
+- **目标**：为正式播放记录标记来源，支持轮询与 JSON 导入的统计区分，并为未来 Navidrome 原生历史适配器保留扩展点。
+- **实施步骤**：schema 4 为 `play_history` 增加 `source` 列和索引；轮询默认写入 `poller`，隐私导入写入 `import`；新增 `get_source_stats()` 与 `/api/stats/sources`；补充迁移和聚合测试。未绑定 Navidrome 私有数据库或未确认的原生历史读取 API。
+- **验收标准**：旧记录迁移为 `poller`；导入记录标为 `import`；来源统计支持窗口/时区；正式播放语义不变；无未确认上游 API 依赖；全量验证通过。
+- **验证命令**：`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/database.py`、`src/main.py`、`src/schemas.py`、`src/privacy_ops.py`、`tests/test_database.py`、`tests/test_sources.py`、文档。
+- **风险/回滚**：新增列默认 `poller`，不改变旧记录内容；来源值是内部契约，未来增加新适配器时需同步接口登记；回滚需保留数据库迁移兼容性。
+- **完成记录**：2026-07-26，当前 agent 实现。Navidrome 原生历史适配器保留为后续研究项，未将未经确认的私有 API 写入代码。

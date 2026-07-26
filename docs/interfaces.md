@@ -29,6 +29,7 @@
 | `/api/stats/players` | GET | JSON 数组，元素为 `client_name`、`count`、`total_listen_sec`、`average_listen_sec`、`transcoded_count`、`transcoding_rate_pct` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；按 `count DESC, client_name ASC` 排序；启用认证时需授权 |
 | `/api/stats/transcoding` | GET | JSON 数组，元素为 `is_transcoding`、`count`、`total_listen_sec`、`plays_pct`、`listen_sec_pct` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；百分比按当前窗口计算；启用认证时需授权 |
 | `/api/stats/short-plays` | GET | JSON：`short_count`、`counted_count`、`attempt_count`、`short_listen_sec`、`short_play_rate_pct` | 受支持但可演进 | 可选 `days`/`timezone`；短播放记录独立于 `play_history`；这是短播放率，不代表用户主动跳过；启用认证时需授权 |
+| `/api/stats/sources` | GET | JSON 数组，元素为 `source`、`count`、`total_listen_sec` | 受支持但可演进 | 正式播放来源为 `poller` 或 `import`；可选 `days`/`timezone`；启用认证时需授权 |
 | `/api/stats/history` | GET | JSON 数组（见下） | 受支持但可演进 | `limit` 默认 10、范围 1–100；可选 `?days=0`（默认）或 `7–90`；启用认证时需授权 |
 | `/api/stats/hourly` | GET | JSON 数组，元素为 `hour`（0–23）、`count` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；按一天内时段聚合；启用认证时需授权 |
 | `/api/stats/heatmap` | GET | JSON 数组（168 行），元素为 `weekday`（0=周一 … 6=周日）、`hour`（0–23）、`count`（int） | 受支持但可演进 | 默认 `days=30`；接受 `0`（全部历史）或 `7–90`，中间值（1–6）返回 422；网格始终零填充为 7×24=168 单元；启用认证时需授权 |
@@ -187,7 +188,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 | `is_transcoding` | `INTEGER` | 是否存在 `transcodedContentType` | 使用行为数据 |
 | `listen_duration_sec` | `INTEGER` | 活跃观测时长向下取整（排除暂停与缺失后的挂钟时间） | 使用行为数据 |
 
-`play_attempts` 保存未达到播放阈值的短播放尝试，字段与 `play_history` 的媒体元数据相同，并额外包含 `duration_sec` 与 `outcome`（当前为 `short_play`）。它用于短播放率分析，不计入正式播放次数。
+`play_attempts` 保存未达到播放阈值的短播放尝试，字段与 `play_history` 的媒体元数据相同，并额外包含 `duration_sec` 与 `outcome`（当前为 `short_play`）。它用于短播放率分析，不计入正式播放次数。`play_history.source` 为 `poller`（轮询采集）或 `import`（JSON 导入）；旧记录迁移时默认为 `poller`。
 
 除主键外各列没有显式 `NOT NULL`、默认值、检查约束或唯一约束。迁移版本 1 创建索引 `idx_play_history_user_track`、`idx_play_history_played_at`。
 

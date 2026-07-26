@@ -301,8 +301,8 @@ async def import_user_data(
                     """
                     INSERT INTO play_history (
                         played_at, username, client_name, track_id,
-                        title, artist, album, is_transcoding, listen_duration_sec
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        title, artist, album, is_transcoding, listen_duration_sec, source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record["played_at"],
@@ -314,6 +314,7 @@ async def import_user_data(
                         record["album"],
                         record["is_transcoding"],
                         record["listen_duration_sec"],
+                        "import",
                     ),
                 )
                 inserted += 1

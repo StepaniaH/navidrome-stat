@@ -28,6 +28,7 @@ from src.database import (
     get_playback_history,
     get_summary,
     get_short_play_stats,
+    get_source_stats,
     get_weekday_hour_stats,
     ping_db,
     resolve_timezone,
@@ -71,6 +72,7 @@ from src.schemas import (
     SourceTestResponse,
     StorageStatsResponse,
     ShortPlayStats,
+    SourceStat,
     SummaryStat,
     TranscodingStat,
     UserDeletePreviewResponse,
@@ -548,6 +550,17 @@ async def api_short_play_stats(
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(lambda: get_short_play_stats(days=window, timezone_name=tz))
+
+
+@app.get("/api/stats/sources", response_model=list[SourceStat])
+async def api_source_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Return formal play counts grouped by provenance source."""
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_source_stats(days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/hourly", response_model=list[HourlyStat])

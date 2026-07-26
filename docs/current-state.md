@@ -50,7 +50,7 @@
 - `get_summary(days=0)` 返回 `/api/stats/summary` 的窗口对比字段（`active_days`、`average_daily_*`、`previous_total_*`、`*_change_pct`、`window_days`）；有限窗口按 `active_days` 平均，`days=0` 按最早至最晚播放日的包含天数平均。
 - `get_player_stats()` 返回每个客户端的播放次数、总/平均收听秒数、转码次数与转码率；`get_transcoding_stats()` 同时返回播放占比与收听时长占比。
 - `get_top_artists()` / `get_top_albums()` 支持 `metric=plays|listen_time`，返回 `value` 作为当前排序值，并保留 `count` 与 `total_listen_sec`；结果按值降序、名称升序确定性排序。
-- schema 版本为 3，新增 `play_attempts` 表记录未达到播放阈值的短播放尝试；`get_short_play_stats()` 与 `/api/stats/short-plays` 返回短播放率。短播放率不等同于跳过率，因为轮询无法证明用户是否主动跳过。
+- schema 版本为 4，新增 `play_attempts` 表记录未达到播放阈值的短播放尝试，并为正式播放增加 `source` 溯源字段；`get_short_play_stats()` 与 `/api/stats/short-plays` 返回短播放率，`get_source_stats()` 与 `/api/stats/sources` 返回 `poller`/`import` 来源分布。短播放率不等同于跳过率，因为轮询无法证明用户是否主动跳过；Navidrome 原生历史尚未绑定未确认的私有读取接口。
 - `get_weekday_hour_stats(days=30, timezone_name="UTC")` 返回 7×24=168 个 `{weekday,hour,count}` 行，始终零填充；weekday 遵循 Python `date.weekday()`（0=周一 … 6=周日），hour 与 weekday 按 `zoneinfo.ZoneInfo(timezone_name)` 转换后的本地时间取；无效时区抛 `ValueError`，从不字符串拼接进 SQL。
 - 所有聚合查询（summary/players/transcoding/hourly/heatmap/daily/top-artists/top-albums/history）都接受可选 `timezone_name` 参数（默认 `UTC`），仅用于 Python 端 bucket 边界与有限窗口的 UTC 截止计算；时间戳仍以 UTC ISO 字符串存储。
 - history 接口按 `username, track_id` 聚合；`title`/`artist`/`album` 取自最新插入行（`MAX(id)`），按最近 `played_at` 排序。

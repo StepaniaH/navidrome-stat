@@ -134,6 +134,12 @@ class ShortPlayStats(BaseModel):
     short_play_rate_pct: float
 
 
+class SourceStat(BaseModel):
+    source: str
+    count: int
+    total_listen_sec: int
+
+
 class TopArtistItem(BaseModel):
     artist: str
     count: int

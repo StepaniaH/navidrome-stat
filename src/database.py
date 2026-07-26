@@ -4,7 +4,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 DB_PATH = os.getenv("DATABASE_URL", "navidrome_stats.db")
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 TIMEZONE_DEFAULT = "UTC"
 
@@ -184,6 +184,11 @@ async def _apply_migrations(db: aiosqlite.Connection) -> None:
         """)
         await _set_schema_version(db, 3)
 
+    if version < 4:
+        await db.execute("ALTER TABLE play_history ADD COLUMN source TEXT NOT NULL DEFAULT 'poller'")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_play_history_source ON play_history(source)")
+        await _set_schema_version(db, 4)
+
 
 async def _get_meta_value(db: aiosqlite.Connection, key: str):
     await db.execute("""
@@ -238,8 +243,8 @@ async def save_play_session(session: dict, db_path: str | None = None):
         await db.execute("""
             INSERT INTO play_history (
                 played_at, username, client_name, track_id,
-                title, artist, album, is_transcoding, listen_duration_sec
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                title, artist, album, is_transcoding, listen_duration_sec, source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             session.get("last_seen_at"),
             session.get("username"),
@@ -249,7 +254,8 @@ async def save_play_session(session: dict, db_path: str | None = None):
             session.get("artist"),
             session.get("album"),
             session.get("is_transcoding"),
-            session.get("duration_sec")
+            session.get("duration_sec"),
+            session.get("source", "poller"),
         ))
         await db.commit()
 
@@ -299,6 +305,24 @@ async def get_short_play_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFA
         "short_listen_sec": int(short["short_listen_sec"] or 0),
         "short_play_rate_pct": round(short_count / attempt_count * 100, 2) if attempt_count else 0.0,
     }
+
+
+async def get_source_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
+                           db_path: str | None = None):
+    """Return formal play counts grouped by provenance source."""
+    path = _path(db_path)
+    pred, params = _window_predicate(days, timezone_name)
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"""
+            SELECT COALESCE(source, 'poller') AS source,
+                   COUNT(*) AS count,
+                   COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec
+            FROM play_history WHERE {pred}
+            GROUP BY COALESCE(source, 'poller')
+            ORDER BY count DESC, source ASC
+        """, params) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
 
 
 async def get_player_stats(
