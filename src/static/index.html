@@ -27,11 +27,34 @@
         };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" integrity="sha384-o5uz97et3bErHvpKfD4Jz4n0JfhJDWABFuF4NP+iEEDxE1VwMWJ19QGR0lqFZnr6" crossorigin="anonymous"></script>
+    <script>document.documentElement.dataset.theme = localStorage.getItem('navidrome-theme') || 'frappe';</script>
     <style>
+        :root, [data-theme="frappe"] {
+            --app-bg: #303446; --app-panel: #292c3c; --app-field: #414559; --app-border: #51576d;
+            --app-text: #c6d0f5; --app-muted: #a5adce; --app-dim: #838ba7; --app-accent: #ca9ee6;
+            --app-success: #a6d189; --app-warning: #e5c890; --app-error: #e78284;
+        }
+        [data-theme="latte"] {
+            --app-bg: #eff1f5; --app-panel: #e6e9ef; --app-field: #dce0e8; --app-border: #bcc0cc;
+            --app-text: #4c4f69; --app-muted: #5c5f77; --app-dim: #7c7f93; --app-accent: #8839ef;
+            --app-success: #40a02b; --app-warning: #df8e1d; --app-error: #d20f39;
+        }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #0a0a0f;
+            background-color: var(--app-bg);
+            color: var(--app-text);
         }
+        [data-theme] .bg-ink-950 { background-color: var(--app-bg) !important; }
+        [data-theme] .bg-ink-900, [data-theme] .bg-ink-900\/80 { background-color: var(--app-panel) !important; }
+        [data-theme] .bg-ink-800, [data-theme] .bg-ink-800\/40, [data-theme] .bg-ink-800\/50 { background-color: var(--app-field) !important; }
+        [data-theme] .text-white, [data-theme] .text-slate-100, [data-theme] .text-slate-200 { color: var(--app-text) !important; }
+        [data-theme] .text-slate-300, [data-theme] .text-slate-400 { color: var(--app-muted) !important; }
+        [data-theme] .text-slate-500, [data-theme] .text-slate-600 { color: var(--app-dim) !important; }
+        [data-theme] .border-white\/5, [data-theme] .border-white\/10 { border-color: var(--app-border) !important; }
+        [data-theme] .text-accent, [data-theme] .text-accent-glow { color: var(--app-accent) !important; }
+        [data-theme] .bg-accent { background-color: var(--app-accent) !important; }
+        [data-theme] .text-mint { color: var(--app-success) !important; }
+        select { color: var(--app-text); background: var(--app-field); border-color: var(--app-border); }
         .mesh-bg {
             background-image:
                 radial-gradient(ellipse 80% 50% at 50% -20%, rgba(167, 139, 250, 0.18), transparent),
@@ -141,6 +164,10 @@
             white-space: nowrap;
             color: #e2e8f0;
         }
+        .player-legend-table th:first-child,
+        .player-legend-table td:first-child { text-align: left; }
+        .source-breakdown { display: grid; gap: 0.5rem; }
+        .source-breakdown-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.75rem; align-items: center; }
         @media (min-width: 768px) {
             .player-legend-table td.client-cell { max-width: 16rem; }
         }
@@ -170,8 +197,8 @@
                         </div>
                         <span class="text-xs font-mono uppercase tracking-widest text-slate-500">Navidrome Stat</span>
                     </div>
-                    <h1 class="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">播放统计</h1>
-                    <p class="text-slate-400 text-sm mt-1">实时监听与收听习惯分析</p>
+                    <h1 class="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight" data-i18n="dashboard.title">播放统计</h1>
+                    <p class="text-slate-400 text-sm mt-1" data-i18n="dashboard.subtitle">实时监听与收听习惯分析</p>
                 </div>
                 <div class="flex items-center gap-3 flex-wrap">
                     <div id="statusBadge" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-ink-800 border border-white/5 text-xs text-slate-400" role="status" aria-live="polite">
@@ -179,11 +206,11 @@
                         <span id="statusText">连接中…</span>
                     </div>
                     <a href="/settings" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-xs text-slate-300 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">
-                        设置
+                        <span data-i18n="dashboard.settings">设置</span>
                     </a>
                     <button id="refreshBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-xs text-slate-300 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50" aria-label="手动刷新">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                        刷新
+                         <span data-i18n="dashboard.refresh">刷新</span>
                     </button>
                 </div>
                 <div role="group" aria-label="统计时间范围" id="statsWindowControl"
@@ -197,16 +224,7 @@
                     <button type="button" data-days="0"
                         class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">全部</button>
                 </div>
-                <label class="inline-flex items-center gap-1.5 text-xs text-slate-400" for="statsTimezoneSelect">
-                    <span class="text-slate-500">时区</span>
-                    <select id="statsTimezoneSelect"
-                        class="rounded-lg bg-ink-800 border border-white/5 px-2 py-1 text-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-accent/50"
-                        aria-label="统计时区">
-                        <option id="statsTimezoneBrowserOption" value="browser">浏览器时区</option>
-                        <option value="UTC">UTC</option>
-                    </select>
-                </label>
-            </div>
+             </div>
             <p id="statsScopeLabel" class="text-xs text-slate-600 mt-3 font-mono" aria-live="polite"></p>
             <p id="lastUpdated" class="text-xs text-slate-600 mt-1 font-mono" aria-live="polite"></p>
         </header>
@@ -222,7 +240,7 @@
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5 backdrop-blur-sm">
                 <div class="flex items-center gap-2 mb-4">
                     <span class="w-2.5 h-2.5 rounded-full bg-mint pulse-dot" aria-hidden="true"></span>
-                    <h2 class="text-sm font-semibold text-slate-300">正在播放</h2>
+                    <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.nowPlaying">正在播放</h2>
                     <span id="nowPlayingCount" class="text-xs text-slate-600 font-mono"></span>
                 </div>
                 <div id="nowPlayingSkeleton" class="space-y-3 hidden" aria-hidden="true">
@@ -240,17 +258,17 @@
         <!-- Summary cards -->
         <section class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" aria-label="概览统计">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
-                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">总播放次数</p>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1" data-i18n="dashboard.totalPlays">总播放次数</p>
                 <p id="statTotalPlays" class="stat-value text-3xl font-bold text-white">—</p>
                 <p id="statTotalPlaysChange" class="text-xs text-slate-600 mt-1 stat-value"></p>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
-                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">累计收听</p>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1" data-i18n="dashboard.listen">累计收听</p>
                 <p id="statListenTime" class="stat-value text-3xl font-bold text-mint">—</p>
                 <p id="statListenTimeChange" class="text-xs text-slate-600 mt-1 stat-value"></p>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
-                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">曲目数</p>
+                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1" data-i18n="dashboard.tracks">曲目数</p>
                 <p id="statUniqueTracks" class="stat-value text-3xl font-bold text-accent-glow">—</p>
                 <p id="statActiveDays" class="text-xs text-slate-600 mt-1 stat-value"></p>
             </div>
@@ -259,7 +277,7 @@
         <!-- Charts -->
         <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label="图表">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300 mb-1">客户端分布</h2>
+                <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.clients">客户端分布</h2>
                 <p class="text-xs text-slate-600 mb-4">按播放次数统计</p>
                 <div id="playerChartWrap" class="relative">
                     <div id="playerChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
@@ -272,7 +290,7 @@
                 <div id="playerChartLegend" class="mt-4 hidden text-xs" aria-live="polite"></div>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300 mb-1">转码比例</h2>
+                <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.transcoding">转码比例</h2>
                 <p class="text-xs text-slate-600 mb-4">Direct Play vs Transcoded</p>
                 <div id="transcodingChartWrap" class="relative">
                     <div id="transcodingChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
@@ -288,7 +306,7 @@
         <!-- Hourly & Daily charts -->
         <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label="时段与每日趋势">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300 mb-1">播放时段分布</h2>
+                <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.hourly">播放时段分布</h2>
                 <p class="text-xs text-slate-600 mb-4">按一天内各时段播放次数统计</p>
                 <div id="hourlyChartWrap" class="relative">
                     <div id="hourlyChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
@@ -300,7 +318,7 @@
                 </div>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300 mb-1">每日播放趋势</h2>
+                <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.daily">每日播放趋势</h2>
                 <p id="dailyChartSubtitle" class="text-xs text-slate-600 mb-4">最近 30 天每日播放次数</p>
                 <div id="dailyChartWrap" class="relative">
                     <div id="dailyChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
@@ -316,7 +334,7 @@
         <!-- Weekday x Hour heatmap -->
         <section class="mb-8" aria-label="周时热力图">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300 mb-1">周时热力图</h2>
+                <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.heatmap">周时热力图</h2>
                 <p class="text-xs text-slate-600 mb-4">按星期 × 小时统计播放次数（0=周一 … 6=周日）</p>
                 <div id="weekdayHourChartWrap" class="relative">
                     <div id="weekdayHourChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
@@ -332,7 +350,7 @@
         <!-- Top Artists & Top Albums -->
         <section class="mb-8" aria-label="热门艺人与专辑">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                <h2 class="text-sm font-semibold text-slate-300">热门艺人与专辑</h2>
+                <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.rankings">热门艺人与专辑</h2>
                 <div role="group" aria-label="榜单指标" id="rankingMetricControl"
                     class="inline-flex rounded-lg bg-ink-800 border border-white/5 p-0.5 text-xs self-start">
                     <button type="button" data-ranking-metric="plays"
@@ -343,7 +361,7 @@
             </div>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                    <h3 class="text-sm font-semibold text-slate-300 mb-1">热门艺人</h3>
+                    <h3 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.artists">热门艺人</h3>
                     <p id="topArtistsSubtitle" class="text-xs text-slate-600 mb-4">按播放次数排名</p>
                     <div id="topArtistsChartWrap" class="relative">
                         <div id="topArtistsChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
@@ -355,7 +373,7 @@
                     </div>
                 </div>
                 <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                    <h3 class="text-sm font-semibold text-slate-300 mb-1">热门专辑</h3>
+                    <h3 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.albums">热门专辑</h3>
                     <p id="topAlbumsSubtitle" class="text-xs text-slate-600 mb-4">按播放次数排名</p>
                     <div id="topAlbumsChartWrap" class="relative">
                         <div id="topAlbumsChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
@@ -370,9 +388,19 @@
         </section>
 
         <!-- History -->
+        <section class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5 mb-8" aria-label="服务器来源分析">
+            <div class="flex items-center justify-between gap-3 mb-1">
+                <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.sources">服务器来源</h2>
+                <span class="text-xs text-slate-600">按当前统计窗口</span>
+            </div>
+            <p class="text-xs text-slate-600 mb-4">不同 Navidrome 服务器的播放次数与收听时长</p>
+            <div id="serverSourceBreakdown" class="source-breakdown text-sm"></div>
+        </section>
+
+        <!-- History -->
         <section class="rounded-2xl bg-ink-900/80 shadow-card border border-white/5 overflow-hidden" aria-label="播放历史">
             <div class="px-5 sm:px-6 py-5 border-b border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300">最近播放</h2>
+                <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.history">最近播放</h2>
                 <p class="text-xs text-slate-600 mt-0.5">按最近播放时间排序，重复收听会累加 Plays</p>
             </div>
             <div class="overflow-x-auto">
@@ -452,25 +480,14 @@
         // the API as that IANA name (the backend never accepts the literal
         // "browser" token). ``UTC`` is forwarded verbatim.
         let statsTimezone = 'browser';
+        const savedStatsTimezone = localStorage.getItem('navidrome-timezone');
+        if (savedStatsTimezone === 'browser' || savedStatsTimezone === 'UTC') statsTimezone = savedStatsTimezone;
         let browserTimezone = null;
         try {
             browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
         } catch (e) {
             browserTimezone = null;
         }
-        const statsTimezoneBrowserOption = document.getElementById('statsTimezoneBrowserOption');
-        if (statsTimezoneBrowserOption) {
-            if (browserTimezone) {
-                statsTimezoneBrowserOption.textContent = `浏览器时区 (${browserTimezone})`;
-            } else {
-                // No readable browser timezone -> drop the option and force UTC.
-                statsTimezoneBrowserOption.remove();
-                statsTimezone = 'UTC';
-                const sel = document.getElementById('statsTimezoneSelect');
-                if (sel) sel.value = 'UTC';
-            }
-        }
-
         function resolveStatsTimezone() {
             return statsTimezone === 'browser' ? (browserTimezone || 'UTC') : statsTimezone;
         }
@@ -511,13 +528,39 @@
 
         const chartBase = {
             backgroundColor: 'transparent',
-            textStyle: { color: '#94a3b8', fontFamily: 'system-ui, sans-serif' },
+            textStyle: { color: localStorage.getItem('navidrome-theme') === 'latte' ? '#5c5f77' : '#a5adce', fontFamily: 'system-ui, sans-serif' },
             tooltip: {
-                backgroundColor: '#1a1a26',
-                borderColor: 'rgba(255,255,255,0.08)',
-                textStyle: { color: '#e2e8f0', fontSize: 12 },
+                backgroundColor: localStorage.getItem('navidrome-theme') === 'latte' ? '#e6e9ef' : '#292c3c',
+                borderColor: localStorage.getItem('navidrome-theme') === 'latte' ? '#bcc0cc' : '#51576d',
+                textStyle: { color: localStorage.getItem('navidrome-theme') === 'latte' ? '#4c4f69' : '#c6d0f5', fontSize: 12 },
             },
         };
+
+        const dashboardTranslations = {
+            'zh-CN': {
+                'dashboard.title': '播放统计', 'dashboard.subtitle': '实时监听与收听习惯分析', 'dashboard.settings': '设置', 'dashboard.refresh': '刷新',
+                'dashboard.nowPlaying': '正在播放', 'dashboard.summary': '概览统计', 'dashboard.totalPlays': '总播放次数', 'dashboard.listen': '累计收听', 'dashboard.tracks': '曲目数',
+                'dashboard.clients': '客户端分布', 'dashboard.transcoding': '转码比例', 'dashboard.hourly': '播放时段分布', 'dashboard.daily': '每日播放趋势',
+                'dashboard.heatmap': '周时热力图', 'dashboard.rankings': '热门艺人与专辑', 'dashboard.artists': '热门艺人', 'dashboard.albums': '热门专辑',
+                'dashboard.sources': '服务器来源', 'dashboard.history': '最近播放', 'dashboard.window': '统计时间范围',
+            },
+            en: {
+                'dashboard.title': 'Playback Statistics', 'dashboard.subtitle': 'Live listening and playback habits', 'dashboard.settings': 'Settings', 'dashboard.refresh': 'Refresh',
+                'dashboard.nowPlaying': 'Now Playing', 'dashboard.summary': 'Overview', 'dashboard.totalPlays': 'Total Plays', 'dashboard.listen': 'Listening Time', 'dashboard.tracks': 'Unique Tracks',
+                'dashboard.clients': 'Clients', 'dashboard.transcoding': 'Transcoding', 'dashboard.hourly': 'Playback by Hour', 'dashboard.daily': 'Daily Trend',
+                'dashboard.heatmap': 'Weekday × Hour', 'dashboard.rankings': 'Top Artists & Albums', 'dashboard.artists': 'Top Artists', 'dashboard.albums': 'Top Albums',
+                'dashboard.sources': 'Server Sources', 'dashboard.history': 'Recent Plays', 'dashboard.window': 'Statistics range',
+            },
+        };
+        function translateDashboard() {
+            const language = localStorage.getItem('navidrome-language') || 'zh-CN';
+            document.documentElement.lang = language;
+            document.querySelectorAll('[data-i18n]').forEach((element) => {
+                const value = dashboardTranslations[language]?.[element.dataset.i18n];
+                if (value) element.textContent = value;
+            });
+        }
+        translateDashboard();
 
         function setStatus(state, text) {
             const dot = document.getElementById('statusDot');
@@ -1149,6 +1192,34 @@
             });
         }
 
+        function renderServerSourceBreakdown(data) {
+            const container = document.getElementById('serverSourceBreakdown');
+            container.replaceChildren();
+            if (!Array.isArray(data) || data.length === 0) {
+                const empty = document.createElement('p');
+                empty.className = 'text-slate-600';
+                empty.textContent = '暂无服务器来源数据';
+                container.appendChild(empty);
+                return;
+            }
+            data.forEach((item) => {
+                const row = document.createElement('div');
+                row.className = 'source-breakdown-row';
+                const name = document.createElement('span');
+                name.className = 'truncate text-slate-300';
+                name.textContent = item.source_name || item.source_id || '未知服务器';
+                name.title = name.textContent;
+                const count = document.createElement('span');
+                count.className = 'font-mono text-slate-400';
+                count.textContent = `${Number(item.count || 0).toLocaleString()} 次`;
+                const duration = document.createElement('span');
+                duration.className = 'font-mono text-slate-500';
+                duration.textContent = formatListenDuration(item.total_listen_sec);
+                row.append(name, count, duration);
+                container.appendChild(row);
+            });
+        }
+
         function renderHistoryTable(data) {
             const tbody = document.getElementById('historyTable');
             tbody.replaceChildren();
@@ -1244,7 +1315,7 @@
 
             try {
                 const tzParam = encodeURIComponent(resolveStatsTimezone());
-                const [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes] = await Promise.all([
+                const [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, serverStatsRes, nowPlayingRes, topArtistsRes, topAlbumsRes] = await Promise.all([
                     fetch(`/api/stats/summary?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
                     fetch(`/api/stats/players?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
                     fetch(`/api/stats/transcoding?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
@@ -1252,22 +1323,23 @@
                     fetch(`/api/stats/daily?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
                     fetch(`/api/stats/heatmap?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
                     fetch(`/api/stats/history?limit=10&days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/servers?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
                     fetch('/api/stats/now-playing', fetchOptions),
                     fetch(`/api/stats/top-artists?limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`, fetchOptions),
                     fetch(`/api/stats/top-albums?limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`, fetchOptions),
                 ]);
 
-                if ([summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes].some(r => r.status === 401)) {
+                if ([summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, serverStatsRes, nowPlayingRes, topArtistsRes, topAlbumsRes].some(r => r.status === 401)) {
                     showLogin('访问令牌无效或已过期，请重新登录。');
                     return;
                 }
 
-                const responses = [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes];
+                const responses = [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, serverStatsRes, nowPlayingRes, topArtistsRes, topAlbumsRes];
                 if (responses.some(r => !r.ok)) {
                     throw new Error('部分数据请求失败 (' + responses.filter(r => !r.ok).map(r => r.status).join(', ') + ')');
                 }
 
-                const [summaryData, playersData, transcodingData, hourlyData, dailyData, weekdayHourData, historyData, nowPlayingData, topArtistsData, topAlbumsData] = await Promise.all([
+                const [summaryData, playersData, transcodingData, hourlyData, dailyData, weekdayHourData, historyData, serverStatsData, nowPlayingData, topArtistsData, topAlbumsData] = await Promise.all([
                     summaryRes.json(),
                     playersRes.json(),
                     transcodingRes.json(),
@@ -1275,6 +1347,7 @@
                     dailyRes.json(),
                     weekdayHourRes.json(),
                     historyRes.json(),
+                    serverStatsRes.json(),
                     nowPlayingRes.json(),
                     topArtistsRes.json(),
                     topAlbumsRes.json(),
@@ -1290,6 +1363,7 @@
                 renderTopArtistsChart(topArtistsData, rankingMetric);
                 renderTopAlbumsChart(topAlbumsData, rankingMetric);
                 renderHistoryTable(historyData);
+                renderServerSourceBreakdown(serverStatsData);
 
                 hasLoadedOnce = true;
                 hideError();
@@ -1400,20 +1474,6 @@
             });
         });
         setActiveRankingMetric(rankingMetric);
-
-        // Timezone selector. A change updates the state and re-fetches all
-        // historical widgets via ``fetchStats`` (which has its own in-flight
-        // guard). ``now-playing`` is unrelated to timezone and stays real-time.
-        const statsTimezoneSelect = document.getElementById('statsTimezoneSelect');
-        if (statsTimezoneSelect) {
-            statsTimezoneSelect.addEventListener('change', (event) => {
-                const next = event.target.value;
-                if (next !== 'browser' && next !== 'UTC') return;
-                if (next === statsTimezone) return;
-                statsTimezone = next;
-                fetchStats();
-            });
-        }
 
         document.getElementById('refreshBtn').addEventListener('click', fetchStats);
 

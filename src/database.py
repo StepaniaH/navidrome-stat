@@ -4,7 +4,9 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 DB_PATH = os.getenv("DATABASE_URL", "navidrome_stats.db")
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
+LEGACY_SOURCE_ID = "legacy"
+LEGACY_SOURCE_NAME = "Legacy environment source"
 
 TIMEZONE_DEFAULT = "UTC"
 
@@ -189,6 +191,47 @@ async def _apply_migrations(db: aiosqlite.Connection) -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_play_history_source ON play_history(source)")
         await _set_schema_version(db, 4)
 
+    if version < 5:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS servers (
+                id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                url TEXT NOT NULL,
+                username TEXT NOT NULL,
+                password TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        async with db.execute("PRAGMA table_info(play_history)") as cursor:
+            columns = {row[1] for row in await cursor.fetchall()}
+        if "source_id" not in columns:
+            await db.execute("ALTER TABLE play_history ADD COLUMN source_id TEXT")
+        if "source_name" not in columns:
+            await db.execute("ALTER TABLE play_history ADD COLUMN source_name TEXT")
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS play_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                played_at TEXT, username TEXT, client_name TEXT, track_id TEXT,
+                title TEXT, artist TEXT, album TEXT, is_transcoding INTEGER,
+                duration_sec INTEGER NOT NULL DEFAULT 0, outcome TEXT NOT NULL DEFAULT 'short_play'
+            )
+        """)
+        async with db.execute("PRAGMA table_info(play_attempts)") as cursor:
+            attempt_columns = {row[1] for row in await cursor.fetchall()}
+        if "source_id" not in attempt_columns:
+            await db.execute("ALTER TABLE play_attempts ADD COLUMN source_id TEXT")
+        if "source_name" not in attempt_columns:
+            await db.execute("ALTER TABLE play_attempts ADD COLUMN source_name TEXT")
+        await db.execute(
+            "UPDATE play_history SET source_id = ?, source_name = ? "
+            "WHERE source_id IS NULL OR source_id = ''",
+            (LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME),
+        )
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_play_history_source_id ON play_history(source_id)")
+        await _set_schema_version(db, 5)
+
 
 async def _get_meta_value(db: aiosqlite.Connection, key: str):
     await db.execute("""
@@ -243,8 +286,9 @@ async def save_play_session(session: dict, db_path: str | None = None):
         await db.execute("""
             INSERT INTO play_history (
                 played_at, username, client_name, track_id,
-                title, artist, album, is_transcoding, listen_duration_sec, source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                title, artist, album, is_transcoding, listen_duration_sec, source,
+                source_id, source_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             session.get("last_seen_at"),
             session.get("username"),
@@ -256,6 +300,8 @@ async def save_play_session(session: dict, db_path: str | None = None):
             session.get("is_transcoding"),
             session.get("duration_sec"),
             session.get("source", "poller"),
+            session.get("source_id", LEGACY_SOURCE_ID),
+            session.get("source_name", LEGACY_SOURCE_NAME),
         ))
         await db.commit()
 
@@ -267,14 +313,16 @@ async def save_play_attempt(attempt: dict, db_path: str | None = None):
         await db.execute("""
             INSERT INTO play_attempts (
                 played_at, username, client_name, track_id, title, artist,
-                album, is_transcoding, duration_sec, outcome
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                album, is_transcoding, duration_sec, outcome, source_id, source_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             attempt.get("last_seen_at"), attempt.get("username"),
             attempt.get("client_name"), attempt.get("track_id"),
             attempt.get("title"), attempt.get("artist"), attempt.get("album"),
             attempt.get("is_transcoding"), int(attempt.get("duration_sec", 0)),
             attempt.get("outcome", "short_play"),
+            attempt.get("source_id", LEGACY_SOURCE_ID),
+            attempt.get("source_name", LEGACY_SOURCE_NAME),
         ))
         await db.commit()
 
@@ -323,6 +371,66 @@ async def get_source_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
             ORDER BY count DESC, source ASC
         """, params) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_server_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
+                           source_id: str | None = None, db_path: str | None = None):
+    """Return formal play counts grouped by configured server identity."""
+    path = _path(db_path)
+    pred, params = _window_predicate(days, timezone_name)
+    where = pred
+    if source_id:
+        where += " AND source_id = ?"
+        params = [*params, source_id]
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"""
+            SELECT COALESCE(source_id, ?) AS source_id,
+                   COALESCE(source_name, ?) AS source_name,
+                   COUNT(*) AS count,
+                   COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec
+            FROM play_history WHERE {where}
+            GROUP BY COALESCE(source_id, ?), COALESCE(source_name, ?)
+            ORDER BY count DESC, source_name ASC
+        """, [LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME, *params,
+               LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME]) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def list_servers(db_path: str | None = None):
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT id, display_name, url, username, password, enabled FROM servers ORDER BY created_at, id") as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def get_server(server_id: str, db_path: str | None = None):
+    rows = await list_servers(db_path)
+    return next((row for row in rows if row["id"] == server_id), None)
+
+
+async def save_server(server: dict, db_path: str | None = None) -> None:
+    path = _path(db_path)
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(path) as db:
+        await db.execute("""
+            INSERT INTO servers (id, display_name, url, username, password, enabled, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,
+                url=excluded.url, username=excluded.username, password=excluded.password,
+                enabled=excluded.enabled, updated_at=excluded.updated_at
+        """, (server["id"], server["display_name"], server["url"], server["username"],
+              server["password"], int(server.get("enabled", True)), now, now))
+        await db.commit()
+
+
+async def delete_server(server_id: str, db_path: str | None = None) -> bool:
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
+        cursor = await db.execute("DELETE FROM servers WHERE id = ?", (server_id,))
+        await db.commit()
+        return cursor.rowcount > 0
 
 
 async def get_player_stats(

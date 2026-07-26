@@ -266,6 +266,7 @@ class NowPlayingItem(BaseModel):
     artist: Optional[str] = None
     client_name: Optional[str] = None
     seconds_elapsed: int
+    source_name: Optional[str] = None
 
 
 class SourceConfigResponse(BaseModel):
@@ -289,3 +290,41 @@ class SourceTestRequest(BaseModel):
 class SourceTestResponse(BaseModel):
     ok: bool
     message: str
+
+
+class ServerResponse(BaseModel):
+    id: str
+    display_name: str
+    url: str
+    username: str
+    password_configured: bool
+    enabled: bool = True
+
+
+class ServerRequest(BaseModel):
+    display_name: str
+    url: str
+    username: str
+    password: Optional[str] = None
+    enabled: bool = True
+
+
+class ServerTestResponse(BaseModel):
+    ok: bool
+    message: str
+
+
+class ServerStat(BaseModel):
+    source_id: str
+    source_name: str
+    count: int
+    total_listen_sec: int
+
+
+class AboutResponse(BaseModel):
+    name: str
+    version: str
+    schema_version: int
+    features: list[str]
+    license: str
+    project_url: Optional[str] = None

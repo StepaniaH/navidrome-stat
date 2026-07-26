@@ -1,6 +1,7 @@
 import asyncio
 import os
 import logging
+import uuid
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
@@ -30,6 +31,13 @@ from src.database import (
     get_short_play_stats,
     get_source_stats,
     get_weekday_hour_stats,
+    list_servers,
+    get_server,
+    save_server,
+    delete_server,
+    get_server_stats,
+    LEGACY_SOURCE_ID,
+    LEGACY_SOURCE_NAME,
     ping_db,
     resolve_timezone,
 )
@@ -83,6 +91,11 @@ from src.schemas import (
     TIMEZONE_DEFAULT,
     TIMEZONE_VALIDATION_ERROR,
     WeekdayHourStat,
+    ServerResponse,
+    ServerRequest,
+    ServerTestResponse,
+    ServerStat,
+    AboutResponse,
 )
 from src.privacy_ops import (
     RETENTION_MAX_DAYS,
@@ -102,6 +115,7 @@ from src.privacy_ops import (
 from src.config import env_int
 from src.metrics import format_prometheus_metrics
 from src.sessions import PlaybackSessionTracker
+from src.version import APP_VERSION, SCHEMA_VERSION, LICENSE, PROJECT_NAME
 from src.source_config import (
     get_saved_source_config,
     has_full_config,
@@ -148,6 +162,14 @@ async def _save_play_attempt_with_logging(attempt: dict) -> None:
         logger.error("Failed to save play attempt: %s", e)
 
 
+def _attempt_callback(source_id: str, source_name: str):
+    async def save(attempt: dict) -> None:
+        await _save_play_attempt_with_logging({
+            **attempt, "source_id": source_id, "source_name": source_name,
+        })
+    return save
+
+
 session_tracker = PlaybackSessionTracker(
     _save_play_session_with_logging,
     play_threshold_sec=PLAY_THRESHOLD_SEC,
@@ -162,6 +184,10 @@ async def finalize_session(player_id: str):
 
 
 async def polling_loop(client: NavidromeClient):
+    await polling_loop_for_tracker(client, session_tracker)
+
+
+async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSessionTracker):
     logger.info("Starting polling loop with interval: %s seconds", POLL_INTERVAL)
     consecutive_failures = 0
 
@@ -184,7 +210,7 @@ async def polling_loop(client: NavidromeClient):
             else:
                 now_playing = response.get("nowPlaying", {})
                 entries = now_playing.get("entry", [])
-                await session_tracker.process_poll(entries, current_time)
+                await tracker.process_poll(entries, current_time)
                 runtime_state.record_poll_success(current_time)
                 consecutive_failures = 0
 
@@ -332,26 +358,37 @@ async def lifespan(app: FastAPI):
     await init_db()
     await run_startup_retention_purge()
 
-    client = None
-    task = None
+    clients = []
+    tasks = []
+    trackers = []
     retention_task = None
     try:
-        config = await resolve_effective_source_config()
-        if not has_full_config(config):
-            raise ValueError(
-                "Missing Navidrome configuration. Provide via environment "
-                "variables (NAVIDROME_URL, NAVIDROME_USER, NAVIDROME_PASS) "
-                "or save a fallback in the settings UI."
+        configured_servers = await list_servers()
+        if configured_servers:
+            server_configs = [s for s in configured_servers if s["enabled"]]
+        else:
+            legacy = await resolve_effective_source_config()
+            server_configs = [{"id": LEGACY_SOURCE_ID, "display_name": LEGACY_SOURCE_NAME, **legacy}]
+        for server in server_configs:
+            config = {"url": server.get("url"), "user": server.get("username", server.get("user")), "password": server.get("password")}
+            if not has_full_config(config):
+                continue
+            tracker = PlaybackSessionTracker(
+                lambda session, sid=server["id"], name=server["display_name"]: _save_play_session_with_logging({**session, "source_id": sid, "source_name": name}),
+                play_threshold_sec=PLAY_THRESHOLD_SEC,
+                pause_grace_sec=PAUSE_GRACE_SEC,
+                save_attempt=_attempt_callback(server["id"], server["display_name"]),
+                source_id=server["id"],
+                source_name=server["display_name"],
             )
-        client = NavidromeClient(
-            url=config["url"],
-            user=config["user"],
-            password=config["password"],
-        )
-        runtime_state.client_initialized = True
-        logger.info("Starting background polling task...")
-        task = asyncio.create_task(polling_loop(client))
-        runtime_state.polling_task = task
+            client = NavidromeClient(url=config["url"], user=config["user"], password=config["password"])
+            clients.append(client)
+            trackers.append(tracker)
+            task = asyncio.create_task(polling_loop_for_tracker(client, tracker))
+            tasks.append(task)
+        runtime_state.client_initialized = bool(clients)
+        if tasks:
+            runtime_state.polling_task = tasks[0]
         retention_task = asyncio.create_task(retention_maintenance_loop())
     except Exception as e:
         runtime_state.client_initialized = False
@@ -360,13 +397,13 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down background task...")
-    if task is not None:
+    for task in tasks:
         task.cancel()
     if retention_task is not None:
         retention_task.cancel()
-    for pid in list(session_tracker.active_sessions.keys()):
-        await finalize_session(pid)
-    if task is not None:
+    for tracker in trackers:
+        await tracker.finalize_all()
+    for task in tasks:
         try:
             await task
         except asyncio.CancelledError:
@@ -376,7 +413,7 @@ async def lifespan(app: FastAPI):
             await retention_task
         except asyncio.CancelledError:
             logger.info("Retention maintenance task cancelled.")
-    if client is not None:
+    for client in clients:
         await client.close()
     runtime_state.polling_task = None
 
@@ -561,6 +598,18 @@ async def api_source_stats(
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(lambda: get_source_stats(days=window, timezone_name=tz))
+
+
+@app.get("/api/stats/servers", response_model=list[ServerStat])
+async def api_server_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None),
+):
+    """Return formal play totals grouped by configured server identity."""
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_server_stats(days=window, timezone_name=tz, source_id=source_id))
 
 
 @app.get("/api/stats/hourly", response_model=list[HourlyStat])
@@ -906,6 +955,82 @@ async def api_source_test(body: SourceTestRequest):
         except Exception:
             logger.error("Failed to close test NavidromeClient")
     return SourceTestResponse(ok=True, message="连接成功")
+
+
+def _server_view(server: dict) -> ServerResponse:
+    return ServerResponse(
+        id=server["id"], display_name=server["display_name"], url=server["url"],
+        username=server["username"], password_configured=bool(server.get("password")),
+        enabled=bool(server.get("enabled", True)),
+    )
+
+
+@app.get("/api/servers", response_model=list[ServerResponse])
+async def api_servers_get():
+    return [_server_view(server) for server in await list_servers()]
+
+
+@app.post("/api/servers", response_model=ServerResponse)
+async def api_servers_create(body: ServerRequest):
+    if not body.display_name.strip() or not body.username.strip():
+        raise HTTPException(status_code=422, detail="display_name and username are required")
+    try:
+        url = validate_source_url(body.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not body.password:
+        raise HTTPException(status_code=422, detail="password is required")
+    server = {"id": uuid.uuid4().hex, "display_name": body.display_name.strip(), "url": url,
+              "username": body.username.strip(), "password": body.password, "enabled": body.enabled}
+    await save_server(server)
+    return _server_view(server)
+
+
+@app.put("/api/servers/{server_id}", response_model=ServerResponse)
+async def api_servers_update(server_id: str, body: ServerRequest):
+    existing = await get_server(server_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+    try:
+        url = validate_source_url(body.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    server = {"id": server_id, "display_name": body.display_name.strip(), "url": url,
+              "username": body.username.strip(), "password": body.password or existing["password"],
+              "enabled": body.enabled}
+    await save_server(server)
+    return _server_view(server)
+
+
+@app.delete("/api/servers/{server_id}")
+async def api_servers_delete(server_id: str):
+    if not await delete_server(server_id):
+        raise HTTPException(status_code=404, detail="Server not found")
+    return {"status": "ok"}
+
+
+@app.post("/api/servers/{server_id}/test", response_model=ServerTestResponse)
+async def api_servers_test(server_id: str, body: ServerRequest | None = None):
+    server = await get_server(server_id)
+    if server is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+    config = body or ServerRequest(display_name=server["display_name"], url=server["url"], username=server["username"])
+    password = config.password or server["password"]
+    test_client = NavidromeClient(url=server["url"], user=server["username"], password=password)
+    try:
+        await test_client.get_now_playing()
+    except Exception:
+        return ServerTestResponse(ok=False, message="无法连接到上游 Navidrome")
+    finally:
+        await test_client.close()
+    return ServerTestResponse(ok=True, message="连接成功")
+
+
+@app.get("/api/about", response_model=AboutResponse)
+async def api_about():
+    return AboutResponse(name=PROJECT_NAME, version=APP_VERSION, schema_version=SCHEMA_VERSION,
+                         features=["多 Navidrome 服务器", "播放历史统计", "隐私数据管理", "本地外观偏好"],
+                         license=LICENSE, project_url=None)
 
 
 if __name__ == "__main__":

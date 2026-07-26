@@ -169,15 +169,12 @@ def test_historical_fetch_urls_use_stats_days(source):
     assert "now-playing?days" not in block
 
 
-def test_timezone_selector_markup_exists(source):
-    assert 'id="statsTimezoneSelect"' in source
-    assert 'id="statsTimezoneBrowserOption"' in source
-    # Only the browser and UTC options are allowed in the static markup.
-    assert 'value="browser"' in source
-    assert 'value="UTC"' in source
-    assert 'value="Asia/"' not in source
-    assert 'value="America/"' not in source
-    assert 'value="Europe/"' not in source
+def test_dashboard_header_has_no_preference_controls(source):
+    for control_id in ("dashboardLanguageSelect", "dashboardThemeSelect", "statsTimezoneSelect"):
+        assert f'id="{control_id}"' not in source
+    assert "dashboardLanguageSelect" not in source
+    assert "dashboardThemeSelect" not in source
+    assert "statsTimezoneSelect" not in source
 
 
 def test_timezone_state_and_resolver_exist(source):
@@ -196,23 +193,33 @@ def test_browser_timezone_resolved_via_intl(source):
     assert "Intl.DateTimeFormat().resolvedOptions().timeZone" in source
 
 
-def test_browser_option_label_populated_safely(source):
-    # The browser option label is updated via textContent, never innerHTML,
-    # so a malformed IANA name cannot inject markup.
-    block = source[source.index("statsTimezoneBrowserOption") :]
-    head = block[: block.index("resolveStatsTimezone")]
-    assert "textContent" in head
-    assert "innerHTML" not in head
+def test_timezone_resolution_has_no_dashboard_control_dom_dependency(source):
+    block = _function_block(source, "resolveStatsTimezone")
+    assert "browserTimezone" in block
+    assert "'UTC'" in block
+    assert "statsTimezoneSelect" not in source
 
 
 def test_timezone_change_handler_calls_fetchstats(source):
-    block = source[source.index("statsTimezoneSelect.addEventListener('change'") :]
-    end = block.index("});") + 3
-    block = block[:end]
-    assert "statsTimezone = next" in block
-    assert "fetchStats()" in block
-    # No direct fetch inside the change handler; reuse the gated fetchStats path.
-    assert "fetch(`" not in block
+    assert "statsTimezoneSelect.addEventListener('change'" not in source
+    assert "dashboardLanguageSelect.addEventListener('change'" not in source
+    assert "dashboardThemeSelect.addEventListener('change'" not in source
+
+
+def test_dashboard_reads_shared_timezone_preference(source):
+    assert "localStorage.getItem('navidrome-timezone')" in source
+    assert "localStorage.setItem('navidrome-timezone', next)" not in source
+    assert "timezone=${tzParam}" in _function_block(source, "fetchStats")
+
+
+def test_dashboard_has_local_i18n_and_theme_palette(source):
+    assert "const dashboardTranslations" in source
+    assert "function translateDashboard()" in source
+    assert "localStorage.getItem('navidrome-language')" in source
+    assert "function translateDashboard()" in source
+    assert "localStorage.getItem('navidrome-theme')" in source
+    for token in ("#303446", "#292c3c", "#ca9ee6", "#a6d189", "#eff1f5", "#e6e9ef", "#8839ef", "#40a02b"):
+        assert token in source
 
 
 def test_historical_fetch_urls_propagate_timezone(source):

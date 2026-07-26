@@ -52,6 +52,8 @@ class PlaybackSessionTracker:
         stale_threshold_sec: int = STALE_THRESHOLD_SEC,
         pause_grace_sec: int = _DEFAULT_PAUSE_GRACE_SEC,
         save_attempt: SaveSessionCallback | None = None,
+        source_id: str = "legacy",
+        source_name: str = "Legacy environment source",
     ):
         self.active_sessions: dict[str, dict] = {}
         self._save_session = save_session
@@ -59,6 +61,8 @@ class PlaybackSessionTracker:
         self.stale_threshold_sec = stale_threshold_sec
         self.pause_grace_sec = pause_grace_sec
         self._save_attempt = save_attempt
+        self.source_id = source_id
+        self.source_name = source_name
 
     async def finalize_session(self, player_id: str) -> None:
         if player_id not in self.active_sessions:
@@ -125,6 +129,8 @@ class PlaybackSessionTracker:
             "album": entry.get("album"),
             "is_transcoding": 1 if entry.get("transcodedContentType") else 0,
             "paused": False,
+            "source_id": self.source_id,
+            "source_name": self.source_name,
         }
 
     async def process_poll(self, entries, current_time: datetime) -> None:

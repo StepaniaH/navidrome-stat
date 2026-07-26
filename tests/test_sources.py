@@ -44,4 +44,4 @@ def test_schema_v4_adds_source_column_to_existing_database(db_path):
     version = conn.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()[0]
     conn.close()
     assert "source" in columns
-    assert version == "4"
+    assert version == "5"

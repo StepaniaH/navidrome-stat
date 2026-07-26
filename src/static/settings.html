@@ -19,7 +19,32 @@
         };
     </script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #0a0a0f; }
+        :root, [data-theme="frappe"] {
+            --page-bg: #303446; --panel-bg: #292c3c; --field-bg: #414559; --border: #51576d;
+            --text-main: #c6d0f5; --text-muted: #a5adce; --text-dim: #838ba7;
+            --accent: #ca9ee6; --accent-strong: #f4b8e4; --success: #a6d189; --warning: #e5c890;
+            --error: #e78284; --panel-soft: #363a4f;
+        }
+        [data-theme="latte"] {
+            --page-bg: #eff1f5; --panel-bg: #e6e9ef; --field-bg: #dce0e8; --border: #bcc0cc;
+            --text-main: #4c4f69; --text-muted: #5c5f77; --text-dim: #7c7f93;
+            --accent: #8839ef; --accent-strong: #ea76cb; --success: #40a02b; --warning: #df8e1d;
+            --error: #d20f39; --panel-soft: #dce0e8;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--page-bg); color: var(--text-main); }
+        [data-theme] .bg-ink-950 { background-color: var(--page-bg) !important; }
+        [data-theme] .bg-ink-900, [data-theme] .bg-ink-900\/60, [data-theme] .bg-ink-900\/80 { background-color: var(--panel-bg) !important; }
+        [data-theme] .bg-ink-800, [data-theme] .bg-ink-800\/40, [data-theme] .bg-ink-800\/60 { background-color: var(--field-bg) !important; }
+        [data-theme] .text-white, [data-theme] .text-slate-100, [data-theme] .text-slate-200 { color: var(--text-main) !important; }
+        [data-theme] .text-slate-300, [data-theme] .text-slate-400 { color: var(--text-muted) !important; }
+        [data-theme] .text-slate-500, [data-theme] .text-slate-600 { color: var(--text-dim) !important; }
+        [data-theme] .border-white\/5, [data-theme] .border-white\/10 { border-color: var(--border) !important; }
+        [data-theme] .text-accent, [data-theme] .text-accent-glow { color: var(--accent) !important; }
+        [data-theme] .bg-accent { background-color: var(--accent) !important; }
+        [data-theme] .text-emerald-300, [data-theme] .text-mint { color: var(--success) !important; }
+        [data-theme] .text-red-300, [data-theme] .text-red-400 { color: var(--error) !important; }
+        input, select { color: var(--text-main); background-color: var(--field-bg); border-color: var(--border); }
+        .source-message { position: static; display: block; clear: both; margin-top: 1rem; min-height: 0; }
         .mesh-bg {
             background-image:
                 radial-gradient(ellipse 80% 50% at 50% -20%, rgba(167, 139, 250, 0.18), transparent),
@@ -33,6 +58,13 @@
             background: rgba(167, 139, 250, 0.12);
             color: #e9d5ff;
             border-left-color: #34d399;
+        }
+        .settings-layout {
+            display: grid;
+            gap: 1.5rem;
+        }
+        @media (min-width: 768px) {
+            .settings-layout { grid-template-columns: 13rem minmax(0, 1fr); align-items: start; }
         }
         @media (max-width: 767px) {
             .settings-tab {
@@ -75,19 +107,30 @@
             <p class="text-sm text-slate-400 mt-1">管理隐私数据生命周期与 Navidrome 信息来源。</p>
         </header>
 
-        <div class="flex flex-col md:flex-row gap-6">
+        <div class="settings-layout">
             <!-- Left sidebar / top tab bar -->
-            <aside class="md:w-52 md:shrink-0">
-                <nav id="settingsTabBar" class="flex md:flex-col gap-1 p-2 rounded-xl bg-ink-900/80 border border-white/5 sticky top-4" role="tablist" aria-label="设置分类">
-                    <button type="button" role="tab" id="tab-privacy-btn" data-tab="privacy" aria-selected="true" aria-controls="tab-privacy"
+            <aside>
+                <nav id="settingsTabBar" class="flex md:flex-col gap-1 sticky top-4" role="tablist" aria-label="设置分类">
+                    <button type="button" role="tab" id="tab-source-btn" data-tab="source" aria-selected="true" aria-controls="tab-source"
                         class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
-                        <svg class="w-4 h-4 shrink-0 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <span>隐私与数据</span>
+                        <svg class="w-4 h-4 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span data-i18n="tab.source">服务器连接</span>
                     </button>
-                    <button type="button" role="tab" id="tab-source-btn" data-tab="source" aria-selected="false" aria-controls="tab-source"
+                    <button type="button" role="tab" id="tab-privacy-btn" data-tab="privacy" aria-selected="false" aria-controls="tab-privacy"
                         class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
-                        <svg class="w-4 h-4 shrink-0 text-accent-glow" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                        <span>信息来源</span>
+                        <svg class="w-4 h-4 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span data-i18n="tab.privacy">隐私与数据</span>
+                    </button>
+                    <button type="button" role="tab" id="tab-general-btn" data-tab="general" aria-selected="false" aria-controls="tab-general"
+                        class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
+                        <svg class="w-4 h-4 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg><span data-i18n="tab.general">常规</span>
+                    </button>
+                    <button type="button" role="tab" id="tab-appearance-btn" data-tab="appearance" aria-selected="false" aria-controls="tab-appearance"
+                        class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
+                        <svg class="w-4 h-4 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg><span data-i18n="tab.appearance">外观</span>
+                    </button>
+                    <button type="button" role="tab" id="tab-about-btn" data-tab="about" aria-selected="false" aria-controls="tab-about"
+                        class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
+                        <svg class="w-4 h-4 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 16h-1v-4h-1m1-4h.01M12 21a9 9 0 100-18 9 9 0 000 18z"/></svg><span data-i18n="tab.about">关于</span>
                     </button>
                 </nav>
             </aside>
@@ -97,7 +140,7 @@
                 <div id="errorBanner" class="hidden px-4 py-3 rounded-xl bg-red-950/50 border border-red-500/20 text-red-300 text-sm" role="alert"></div>
                 <div id="successBanner" class="hidden px-4 py-3 rounded-xl bg-emerald-950/40 border border-emerald-500/20 text-emerald-300 text-sm" role="status"></div>
 
-                <div id="tab-privacy" role="tabpanel" aria-labelledby="tab-privacy-btn" class="space-y-6">
+                <div id="tab-privacy" role="tabpanel" aria-labelledby="tab-privacy-btn" class="hidden space-y-6">
                     <!-- Current policy summary -->
                     <section class="rounded-2xl bg-ink-900/60 border border-white/5 p-4" aria-labelledby="policyTitle">
                         <p id="policyTitle" class="text-xs text-slate-500 uppercase tracking-wider mb-1">当前策略</p>
@@ -214,16 +257,23 @@
                     </details>
                 </div>
 
-                <div id="tab-source" role="tabpanel" aria-labelledby="tab-source-btn" class="hidden space-y-6">
+                <div id="tab-source" role="tabpanel" aria-labelledby="tab-source-btn" class="space-y-6">
                     <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="sourceTitle">
-                        <h2 id="sourceTitle" class="text-lg font-semibold text-white mb-2">信息来源 · Navidrome 连接</h2>
+                        <h2 id="sourceTitle" class="text-lg font-semibold text-white mb-2">服务器连接</h2>
                         <p class="text-sm text-slate-400 mb-4">配置 Navidrome 服务地址与认证账户。保存后<strong class="text-slate-200">需重启服务生效</strong>，运行中的轮询客户端不会热更新。</p>
 
                         <div id="sourceReadiness" class="mb-4 px-3 py-2 rounded-lg bg-ink-800/60 border border-white/5 text-sm text-slate-400">
                             <span>当前上游状态：</span><span id="sourceReadinessValue" class="text-slate-300">未知</span>
                         </div>
 
+                        <div id="serverList" class="space-y-2 mb-5"></div>
                         <form id="sourceForm" class="space-y-4" autocomplete="off">
+                            <div class="space-y-1">
+                                <label for="sourceName" class="text-xs text-slate-500 uppercase tracking-wider">服务器名称</label>
+                                <input id="sourceName" name="sourceName" type="text" autocomplete="off"
+                                    class="w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/40"
+                                    placeholder="例如：家庭 Navidrome">
+                            </div>
                             <div class="space-y-1">
                                 <label for="sourceUrl" class="text-xs text-slate-500 uppercase tracking-wider">Navidrome URL</label>
                                 <input id="sourceUrl" name="sourceUrl" type="text" autocomplete="off" spellcheck="false"
@@ -248,12 +298,34 @@
                             </div>
                         </form>
 
-                        <p id="sourceMessage" class="hidden px-4 py-3 rounded-xl text-sm" role="status"></p>
+                         <p id="sourceMessage" class="source-message hidden px-4 py-3 rounded-xl text-sm" role="status" aria-live="polite"></p>
 
                         <details class="mt-5 rounded-xl bg-ink-800/40 border border-white/5 p-4 text-sm text-slate-400 leading-relaxed">
                             <summary class="cursor-pointer select-none text-slate-300">环境变量优先级说明</summary>
                             <p class="mt-3">环境变量 <code class="text-slate-200">NAVIDROME_URL</code>、<code class="text-slate-200">NAVIDROME_USER</code>、<code class="text-slate-200">NAVIDROME_PASS</code> 始终拥有最高优先级。此处保存的配置仅在<strong class="text-slate-200">对应环境变量未设置时</strong>作为回退生效。即使你在 GUI 保存了新值，只要环境变量已设置，运行中的客户端仍会使用环境变量，需重启服务并移除环境变量后才会切换到 GUI 配置。</p>
                         </details>
+                    </section>
+                </div>
+
+                <div id="tab-general" role="tabpanel" aria-labelledby="tab-general-btn" class="hidden space-y-6">
+                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6 space-y-5">
+                        <div><h2 class="text-lg font-semibold text-white" data-i18n="general.heading">常规</h2><p class="text-sm text-slate-400 mt-1" data-i18n="general.description">统计时间使用的时区。</p></div>
+                        <label class="block text-sm text-slate-300"><span data-i18n="general.timezone">统计时区</span><select id="settingsTimezoneSelect" class="mt-2 w-full rounded-lg border px-3 py-2"><option value="browser" data-i18n="timezone.browser">浏览器本地时区</option><option value="UTC">UTC</option></select></label>
+                    </section>
+                </div>
+
+                <div id="tab-appearance" role="tabpanel" aria-labelledby="tab-appearance-btn" class="hidden space-y-6">
+                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6 space-y-5">
+                         <div><h2 class="text-lg font-semibold text-white" data-i18n="appearance.heading">外观</h2><p class="text-sm text-slate-400 mt-1" data-i18n="appearance.description">偏好仅保存在当前浏览器。</p></div>
+                         <label class="block text-sm text-slate-300"><span data-i18n="appearance.language">语言</span><select id="languageSelect" class="mt-2 w-full rounded-lg border px-3 py-2"><option value="zh-CN">中文</option><option value="en">English</option></select></label>
+                         <label class="block text-sm text-slate-300"><span data-i18n="appearance.theme">主题</span><select id="themeSelect" class="mt-2 w-full rounded-lg border px-3 py-2"><option value="frappe">Catppuccin Frappe</option><option value="latte">Catppuccin Latte</option></select></label>
+                    </section>
+                </div>
+
+                <div id="tab-about" role="tabpanel" aria-labelledby="tab-about-btn" class="hidden space-y-6">
+                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6">
+                        <h2 class="text-lg font-semibold text-white">关于</h2>
+                        <dl id="aboutDetails" class="mt-4 space-y-2 text-sm text-slate-400"></dl>
                     </section>
                 </div>
             </main>
@@ -270,7 +342,27 @@
     </div>
 
     <script>
-        const fetchOptions = { credentials: 'same-origin' };
+         const fetchOptions = { credentials: 'same-origin' };
+         const translations = {
+             'zh-CN': {
+                 'tab.source': '服务器连接', 'tab.privacy': '隐私与数据', 'tab.general': '常规', 'tab.appearance': '外观', 'tab.about': '关于',
+                 'general.heading': '常规', 'general.description': '统计时间使用的时区。', 'general.timezone': '统计时区', 'timezone.browser': '浏览器本地时区',
+                 'appearance.heading': '外观', 'appearance.description': '偏好仅保存在当前浏览器。', 'appearance.language': '语言', 'appearance.theme': '主题',
+             },
+             en: {
+                 'tab.source': 'Server Connection', 'tab.privacy': 'Privacy & Data', 'tab.general': 'General', 'tab.appearance': 'Appearance', 'tab.about': 'About',
+                 'general.heading': 'General', 'general.description': 'Choose the timezone used for statistics.', 'general.timezone': 'Statistics timezone', 'timezone.browser': 'Browser local timezone',
+                 'appearance.heading': 'Appearance', 'appearance.description': 'Preferences are stored in this browser only.', 'appearance.language': 'Language', 'appearance.theme': 'Theme',
+             },
+         };
+         function translatePage() {
+             const language = localStorage.getItem('navidrome-language') || 'zh-CN';
+             document.documentElement.lang = language;
+             document.querySelectorAll('[data-i18n]').forEach((element) => {
+                 const value = translations[language]?.[element.dataset.i18n];
+                 if (value) element.textContent = value;
+             });
+         }
         let previewTimer = null;
         let storageSnapshot = null;
 
@@ -646,6 +738,83 @@
             }
         }
 
+        async function loadServers() {
+            const list = document.getElementById('serverList');
+            if (!list) return;
+            try {
+                const response = await apiFetch('/api/servers');
+                const servers = await response.json();
+                list.replaceChildren();
+                servers.forEach(server => {
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center justify-between gap-3 rounded-lg bg-ink-800/60 border border-white/5 px-3 py-2';
+                    const label = document.createElement('span');
+                    label.className = 'truncate text-sm text-slate-300';
+                    label.textContent = `${server.display_name} · ${server.url}`;
+                    const remove = document.createElement('button');
+                    remove.type = 'button'; remove.className = 'text-xs text-red-300'; remove.textContent = '删除';
+                    const edit = document.createElement('button');
+                    edit.type = 'button'; edit.className = 'text-xs text-accent-glow'; edit.textContent = '编辑';
+                    edit.addEventListener('click', () => {
+                        document.getElementById('sourceName').value = server.display_name;
+                        document.getElementById('sourceUrl').value = server.url;
+                        document.getElementById('sourceUser').value = server.username;
+                        document.getElementById('sourcePass').value = '';
+                        document.getElementById('sourceForm').dataset.editingId = server.id;
+                        document.getElementById('saveSourceBtn').textContent = '更新服务器';
+                    });
+                    const test = document.createElement('button');
+                    test.type = 'button'; test.className = 'text-xs text-mint'; test.textContent = '测试';
+                    test.addEventListener('click', async () => {
+                        setSourceMessage('正在测试连接…', 'info');
+                        try {
+                            const response = await apiFetch(`/api/servers/${encodeURIComponent(server.id)}/test`, { method: 'POST' });
+                            const result = await response.json();
+                            setSourceMessage(result.message, result.ok ? 'success' : 'error');
+                        } catch (error) {
+                            if (error.message !== 'unauthorized') setSourceMessage('测试连接失败。', 'error');
+                        }
+                    });
+                    remove.addEventListener('click', async () => {
+                        if (!confirm(`删除服务器「${server.display_name}」？`)) return;
+                        await apiFetch(`/api/servers/${encodeURIComponent(server.id)}`, { method: 'DELETE' });
+                        await loadServers();
+                    });
+                    const actions = document.createElement('span');
+                    actions.className = 'flex shrink-0 gap-3';
+                    actions.append(test, edit, remove);
+                    row.append(label, actions); list.appendChild(row);
+                });
+            } catch (error) { if (error.message !== 'unauthorized') setSourceMessage('无法加载服务器列表。', 'error'); }
+        }
+
+         function applyAppearance() {
+             const theme = localStorage.getItem('navidrome-theme') || 'frappe';
+             const language = localStorage.getItem('navidrome-language') || 'zh-CN';
+            document.documentElement.dataset.theme = theme;
+            const themeSelect = document.getElementById('themeSelect');
+            const languageSelect = document.getElementById('languageSelect');
+            if (themeSelect) themeSelect.value = theme;
+             if (languageSelect) languageSelect.value = language;
+             const timezoneSelect = document.getElementById('settingsTimezoneSelect');
+             if (timezoneSelect) timezoneSelect.value = localStorage.getItem('navidrome-timezone') || 'browser';
+             translatePage();
+        }
+
+        async function loadAbout() {
+            try {
+                const data = await apiFetch('/api/about').then(r => r.json());
+                const details = document.getElementById('aboutDetails');
+                details.replaceChildren();
+                [['项目', data.name], ['版本', data.version], ['数据库 schema', data.schema_version], ['许可证', data.license]].forEach(([label, value]) => {
+                    const row = document.createElement('div'); row.className = 'flex justify-between gap-4';
+                    const key = document.createElement('dt'); key.textContent = label;
+                    const val = document.createElement('dd'); val.className = 'text-slate-200'; val.textContent = String(value);
+                    row.append(key, val); details.appendChild(row);
+                });
+            } catch (error) { if (error.message !== 'unauthorized') showError('无法加载版本信息。'); }
+        }
+
         async function loadSourceConfig() {
             try {
                 const response = await apiFetch('/api/source/config');
@@ -682,16 +851,19 @@
 
         document.getElementById('sourceForm').addEventListener('submit', async (event) => {
             event.preventDefault();
+            const display_name = document.getElementById('sourceName').value.trim();
             const url = document.getElementById('sourceUrl').value.trim();
             const username = document.getElementById('sourceUser').value.trim();
             const password = document.getElementById('sourcePass').value;
+            if (!display_name) return setSourceMessage('请填写服务器名称。', 'error');
             if (!url) return setSourceMessage('请填写 Navidrome URL。', 'error');
             if (!username) return setSourceMessage('请填写用户名。', 'error');
             try {
-                const payload = { url, username };
-                if (password) payload.password = password;
-                const response = await apiFetch('/api/source/config', {
-                    method: 'PUT',
+                const payload = { display_name, url, username, password, enabled: true };
+                const form = document.getElementById('sourceForm');
+                const editingId = form.dataset.editingId;
+                const response = await apiFetch(editingId ? `/api/servers/${encodeURIComponent(editingId)}` : '/api/servers', {
+                    method: editingId ? 'PUT' : 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 });
@@ -701,8 +873,10 @@
                     return setSourceMessage(detail, 'error');
                 }
                 document.getElementById('sourcePass').value = '';
-                await loadSourceConfig();
-                setSourceMessage('已保存，重启服务后生效。', 'success');
+                form.removeAttribute('data-editing-id');
+                document.getElementById('saveSourceBtn').textContent = '保存';
+                await loadServers();
+                setSourceMessage('服务器已保存，重启服务后生效。', 'success');
             } catch (error) {
                 if (error.message !== 'unauthorized') setSourceMessage('保存失败，请重试。', 'error');
             }
@@ -772,15 +946,26 @@
                     const status = await statusRes.json();
                     if (status.auth_required) {
                         const probe = await fetch('/api/privacy/settings', fetchOptions);
-                        if (probe.status === 401) {
-                            showLogin();
-                            return;
-                        }
+                        if (probe.status === 401) { showLogin(); return; }
                     }
                 }
                 await loadSettings();
                 await loadUsers();
                 await loadSourceConfig();
+                await loadServers();
+                await loadAbout();
+                applyAppearance();
+                document.getElementById('themeSelect').addEventListener('change', (event) => {
+                    localStorage.setItem('navidrome-theme', event.target.value);
+                    applyAppearance();
+                });
+                 document.getElementById('languageSelect').addEventListener('change', (event) => {
+                     localStorage.setItem('navidrome-language', event.target.value);
+                     translatePage();
+                 });
+                 document.getElementById('settingsTimezoneSelect').addEventListener('change', (event) => {
+                     localStorage.setItem('navidrome-timezone', event.target.value);
+                 });
             } catch (error) {
                 showError('无法加载设置，请检查服务是否运行。');
             }

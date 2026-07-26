@@ -81,6 +81,7 @@ GET /api/stats/players?days=90
 - 由 `src.database.resolve_timezone` 通过 `zoneinfo.ZoneInfo` 校验；非 IANA 名称返回 422，错误文案固定 `timezone must be a valid IANA timezone name`；
 - 时区仅用于 Python 端的 weekday/hour/date 边界与有限窗口的 UTC 截止计算，从不字符串拼接进 SQL；时间戳仍以 UTC ISO 字符串存储；
 - Dashboard 选择器仅保留 `browser`（启动时通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 解析为 IANA 名称并转发）与 `UTC` 两个选项，切换时复用 `fetchStats` 的 in-flight 防护重新拉取所有历史组件。
+- Dashboard 与 `/settings` 使用浏览器 `localStorage` 共享 `navidrome-language`（`zh-CN`/`en`）、`navidrome-theme`（`frappe`/`latte`）和 `navidrome-timezone`（`browser`/`UTC`）偏好；这些设置不写入服务端或 SQLite。切换语言和主题即时更新当前页面，统计时区变更重新请求历史统计。
 
 `/api/stats/heatmap` 调用示例：
 

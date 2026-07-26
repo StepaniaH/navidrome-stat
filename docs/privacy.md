@@ -25,6 +25,7 @@
 - 按用户导出/导入 JSON 支持数据可携带性；导入校验 `format_version` 与用户名一致性；删除与过期清理仅返回/记录条数，不记录曲目内容。
 - 启用 `STATS_API_TOKEN` 时，统计 API、隐私 API 与 OpenAPI 需 Bearer 令牌或登录会话；`/health` 探针仍匿名。未设置时仅适用于可信网络。
 - Dashboard 从公共 CDN 获取脚本；历史表格使用 `textContent` 渲染；ECharts 使用 SRI；响应含 CSP。Tailwind CDN 自托管仍待部署方决策。
+- 页面语言、主题和统计时区只保存在当前浏览器的 `localStorage`，不包含用户名、曲目或凭据；统计时区作为已登记的 IANA 名称发送到统计 API，用于日期/小时分桶。
 - `/health/ready` 仅输出聚合指标与状态枚举，不含服务器地址、用户名或曲目信息；`httpx` 请求日志级别为 WARNING。
 - `.env`、数据库文件和真实部署值是否被正确排除、备份或保护取决于实际工作区及部署流程；文档不得复制这些值。
 

@@ -36,6 +36,7 @@
 | NDS-UI-005 | 丰富榜单与客户端分析 | P2 | 已完成 | NDS-UI-004 |
 | NDS-DATA-002 | 短播放尝试与短播放率 | P2 | 已完成 | NDS-UI-005 |
 | NDS-DATA-003 | 播放来源溯源层 | P2 | 已完成 | NDS-DATA-002 |
+| NDS-UI-006 | 设置页偏好与主题本地化 | P1 | 已完成 | NDS-SRC-001、NDS-UI-004 |
 
 ## NDS-SEC-001 访问控制与部署边界
 
@@ -277,6 +278,22 @@
 - **涉及文件**：`src/source_config.py`（新增）、`src/main.py`、`src/schemas.py`、`src/static/settings.html`、`tests/test_source_config.py`（新增）、`tests/test_privacy_api.py`、`docs/interfaces.md`、`docs/current-state.md`、`docs/privacy.md`、`docs/tasks.md`。
 - **风险/回滚**：SQLite 本地明文存储 Navidrome 密码是已识别安全权衡（自托管场景可接受，但数据库文件应受部署访问控制保护）；GUI 修改不热更新运行中的客户端，需重启生效；回滚恢复 `schema_meta` 中新增键或整体恢复文件。
 - **完成记录**：2026-07-26，OpenCode (glm-5.2)。新增 `src/source_config.py` 持久化与解析；新增 GET/PUT/POST 源配置端点；lifespan 解析回退配置；设置页改为两标签（隐私与数据 / 信息来源），保留期改可见分段控件；新增 `tests/test_source_config.py`。验证：见本任务报告。遗留：密码明文存储为已知权衡；热更新未实现。
+
+## NDS-UI-006 设置页偏好与主题本地化
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-SRC-001、NDS-UI-004；不涉及真实部署或数据库内容。
+- **目标**：修复设置页消息布局重叠，统一标签图标，提供 General 时区页签，并让设置页和 Dashboard 的语言、主题及时区偏好通过浏览器本地存储即时生效。
+- **实施步骤**：
+  1. 将设置标签调整为服务器、隐私、常规、外观、关于并为每项提供可访问 SVG 图标。
+  2. 使用正常文档流消息块和 Catppuccin Frappe/Latte CSS 变量重构前端主题覆盖。
+  3. 增加本地翻译映射、`data-i18n` 更新、共享 localStorage 键和 General 时区选择。
+  4. 增加静态源码回归测试，不触碰真实数据库。
+- **验收标准**：五个标签顺序固定且均有图标；测试连接消息不覆盖表单；语言切换即时更新主要可见文案；主题、语言及时区使用共享 localStorage；Dashboard 统计请求使用保存时区；多服务器 CRUD 与密码脱敏代码保持不变。
+- **验证命令**：`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`；隐私扫描。
+- **涉及文件**：`src/static/settings.html`、`src/static/index.html`、`tests/test_static_settings.py`、`tests/test_static_dashboard.py`、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`、`docs/tasks.md`。
+- **风险/回滚**：前端 CSS 变量覆盖可能影响 CDN Tailwind 生成的类；回滚静态页面即可，不涉及数据库迁移。localStorage 仅保存非敏感显示偏好。
+- **完成记录**：2026-07-26，OpenCode。实现五标签设置导航、正常流消息、Catppuccin Frappe/Latte 变量、settings/dashboard 本地 i18n、共享语言/主题/时区偏好和 General 时区页签；新增源码级测试。验证：`pytest -q` 321 passed；`git diff --check` 通过；`python3 scripts/check_md_links.py` 通过；隐私扫描仅发现合成测试/烟雾测试占位值，未发现真实凭据。遗留：未执行浏览器自动化，CDN 策略仍由 NDS-SEC-002 人工确认。
 
 ## NDS-CI-001 持续集成质量门禁
 
