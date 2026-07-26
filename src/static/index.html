@@ -146,8 +146,20 @@
                         刷新
                     </button>
                 </div>
+                <div role="group" aria-label="统计时间范围" id="statsWindowControl"
+                    class="inline-flex rounded-lg bg-ink-800 border border-white/5 p-0.5 text-xs">
+                    <button type="button" data-days="7"
+                        class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">7 天</button>
+                    <button type="button" data-days="30"
+                        class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">30 天</button>
+                    <button type="button" data-days="90"
+                        class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">90 天</button>
+                    <button type="button" data-days="0"
+                        class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">全部</button>
+                </div>
             </div>
-            <p id="lastUpdated" class="text-xs text-slate-600 mt-3 font-mono" aria-live="polite"></p>
+            <p id="statsScopeLabel" class="text-xs text-slate-600 mt-3 font-mono" aria-live="polite"></p>
+            <p id="lastUpdated" class="text-xs text-slate-600 mt-1 font-mono" aria-live="polite"></p>
         </header>
 
         <!-- Error banner -->
@@ -181,14 +193,17 @@
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
                 <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">总播放次数</p>
                 <p id="statTotalPlays" class="stat-value text-3xl font-bold text-white">—</p>
+                <p id="statTotalPlaysChange" class="text-xs text-slate-600 mt-1 stat-value"></p>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
                 <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">累计收听</p>
                 <p id="statListenTime" class="stat-value text-3xl font-bold text-mint">—</p>
+                <p id="statListenTimeChange" class="text-xs text-slate-600 mt-1 stat-value"></p>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
                 <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">曲目数</p>
                 <p id="statUniqueTracks" class="stat-value text-3xl font-bold text-accent-glow">—</p>
+                <p id="statActiveDays" class="text-xs text-slate-600 mt-1 stat-value"></p>
             </div>
         </section>
 
@@ -235,18 +250,7 @@
                 </div>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <div class="flex items-center justify-between gap-2 mb-1">
-                    <h2 class="text-sm font-semibold text-slate-300">每日播放趋势</h2>
-                    <div role="group" aria-label="每日趋势时间范围" id="dailyDaysControl"
-                        class="inline-flex rounded-lg bg-ink-800 border border-white/5 p-0.5 text-xs">
-                        <button type="button" data-days="7"
-                            class="daily-days-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">7 天</button>
-                        <button type="button" data-days="30"
-                            class="daily-days-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">30 天</button>
-                        <button type="button" data-days="90"
-                            class="daily-days-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">90 天</button>
-                    </div>
-                </div>
+                <h2 class="text-sm font-semibold text-slate-300 mb-1">每日播放趋势</h2>
                 <p id="dailyChartSubtitle" class="text-xs text-slate-600 mb-4">最近 30 天每日播放次数</p>
                 <div id="dailyChartWrap" class="relative">
                     <div id="dailyChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
@@ -349,8 +353,7 @@
         let refreshTimer = null;
         let hasLoadedOnce = false;
         let authRequired = false;
-        let dailyDays = 30;
-        let dailyFetchInFlight = false;
+        let statsDays = 30;
 
         const fetchOptions = { credentials: 'same-origin' };
 
@@ -594,13 +597,40 @@
             document.getElementById('statUniqueTracks').textContent =
                 (summary.unique_tracks ?? 0).toLocaleString();
 
+            const playsChangeEl = document.getElementById('statTotalPlaysChange');
+            const listenChangeEl = document.getElementById('statListenTimeChange');
+            const activeDaysEl = document.getElementById('statActiveDays');
+            playsChangeEl.textContent = formatChangeText(summary.plays_change_pct);
+            listenChangeEl.textContent = formatChangeText(summary.listen_change_pct);
+
+            const activeDays = Number(summary.active_days) || 0;
+            const avgPlays = summary.average_daily_plays;
+            const avgParts = [];
+            if (activeDays > 0) avgParts.push(`活跃 ${activeDays} 天`);
+            if (typeof avgPlays === 'number' && Number.isFinite(avgPlays)) {
+                avgParts.push(`日均 ${avgPlays.toFixed(1)} 次`);
+            }
+            activeDaysEl.textContent = avgParts.join(' · ');
+
             const direct = transcoding.find(t => !t.is_transcoding)?.count || 0;
             const trans = transcoding.find(t => t.is_transcoding)?.count || 0;
             const total = direct + trans;
-            const subtitle = document.getElementById('statUniqueTracks');
+            const uniqueEl = document.getElementById('statUniqueTracks');
             if (total > 0) {
-                subtitle.title = `转码占比 ${Math.round((trans / total) * 100)}% · ${summary.client_count ?? 0} 个客户端`;
+                const ratio = Math.round((trans / total) * 100);
+                uniqueEl.title = `活跃 ${activeDays} 天 · 转码占比 ${ratio}% · ${summary.client_count ?? 0} 个客户端`;
+            } else {
+                uniqueEl.title = activeDays > 0 ? `活跃 ${activeDays} 天` : '';
             }
+        }
+
+        function formatChangeText(pct) {
+            if (pct === null || pct === undefined || !Number.isFinite(pct)) {
+                return '';
+            }
+            const sign = pct > 0 ? '↑' : (pct < 0 ? '↓' : '·');
+            const absVal = Math.abs(pct).toFixed(1).replace(/\.0$/, '');
+            return `${sign} ${absVal}% vs 上周期`;
         }
 
         function toggleChartEmpty(chartId, emptyId, hasData) {
@@ -952,15 +982,15 @@
 
             try {
                 const [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes] = await Promise.all([
-                    fetch('/api/stats/summary', fetchOptions),
-                    fetch('/api/stats/players', fetchOptions),
-                    fetch('/api/stats/transcoding', fetchOptions),
-                    fetch('/api/stats/hourly', fetchOptions),
-                    fetch(`/api/stats/daily?days=${dailyDays}`, fetchOptions),
-                    fetch('/api/stats/history?limit=10', fetchOptions),
+                    fetch(`/api/stats/summary?days=${statsDays}`, fetchOptions),
+                    fetch(`/api/stats/players?days=${statsDays}`, fetchOptions),
+                    fetch(`/api/stats/transcoding?days=${statsDays}`, fetchOptions),
+                    fetch(`/api/stats/hourly?days=${statsDays}`, fetchOptions),
+                    fetch(`/api/stats/daily?days=${statsDays}`, fetchOptions),
+                    fetch(`/api/stats/history?limit=10&days=${statsDays}`, fetchOptions),
                     fetch('/api/stats/now-playing', fetchOptions),
-                    fetch('/api/stats/top-artists?limit=10', fetchOptions),
-                    fetch('/api/stats/top-albums?limit=10', fetchOptions),
+                    fetch(`/api/stats/top-artists?limit=10&days=${statsDays}`, fetchOptions),
+                    fetch(`/api/stats/top-albums?limit=10&days=${statsDays}`, fetchOptions),
                 ]);
 
                 if ([summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes].some(r => r.status === 401)) {
@@ -1017,52 +1047,39 @@
             refreshTimer = setInterval(fetchStats, ms);
         }
 
-        // Time-range selector for the daily trend chart. Re-renders only the
-        // needed data without surfacing overlapping requests with fetchStats.
-        function setActiveDailyButton(days) {
-            document.querySelectorAll('.daily-days-btn').forEach((btn) => {
+        // Global statistics window control. Replaces the previous daily-only range
+        // selector: changing it updates ``statsDays`` and re-fetches all
+        // historical widgets via ``fetchStats`` (which has its own in-flight
+        // guard). The "正在播放" endpoint is always fetched without a window
+        // in ``fetchStats`` so it stays real-time.
+        function statsWindowLabel() {
+            return statsDays === 0 ? '全部历史' : `最近 ${statsDays} 天`;
+        }
+
+        function setActiveStatsWindowButton(days) {
+            document.querySelectorAll('.stats-window-btn').forEach((btn) => {
                 const active = Number(btn.dataset.days) === days;
                 btn.setAttribute('aria-pressed', active ? 'true' : 'false');
                 btn.classList.toggle('bg-accent', active);
                 btn.classList.toggle('text-white', active);
                 btn.classList.toggle('text-slate-400', !active);
             });
-            const subtitle = document.getElementById('dailyChartSubtitle');
-            if (subtitle) subtitle.textContent = `最近 ${days} 天每日播放次数`;
+            const scope = document.getElementById('statsScopeLabel');
+            if (scope) scope.textContent = statsWindowLabel();
+            const dailySubtitle = document.getElementById('dailyChartSubtitle');
+            if (dailySubtitle) dailySubtitle.textContent = `${statsWindowLabel()}每日播放次数`;
         }
 
-        async function fetchDaily() {
-            if (dailyFetchInFlight) return;
-            dailyFetchInFlight = true;
-            try {
-                const res = await fetch(`/api/stats/daily?days=${dailyDays}`, fetchOptions);
-                if (res.status === 401) {
-                    showLogin('访问令牌无效或已过期，请重新登录。');
-                    return;
-                }
-                if (!res.ok) throw new Error(`daily failed (${res.status})`);
-                const data = await res.json();
-                hideError();
-                renderDailyChart(data);
-            } catch (error) {
-                setStatus('error', '连接异常');
-                showError('无法获取每日趋势数据。');
-                console.error('Error fetching daily stats:', error);
-            } finally {
-                dailyFetchInFlight = false;
-            }
-        }
-
-        document.querySelectorAll('.daily-days-btn').forEach((btn) => {
+        document.querySelectorAll('.stats-window-btn').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const days = Number(btn.dataset.days);
-                if (!Number.isFinite(days) || days === dailyDays) return;
-                dailyDays = days;
-                setActiveDailyButton(days);
-                fetchDaily();
+                if (!Number.isFinite(days) || days === statsDays) return;
+                statsDays = days;
+                setActiveStatsWindowButton(days);
+                fetchStats();
             });
         });
-        setActiveDailyButton(dailyDays);
+        setActiveStatsWindowButton(statsDays);
 
         document.getElementById('refreshBtn').addEventListener('click', fetchStats);
 

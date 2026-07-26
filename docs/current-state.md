@@ -22,7 +22,7 @@
 3. 轮询循环调用上游 `/rest/getNowPlaying`，由 `PlaybackSessionTracker` 按 `playerId` 追踪会话；缺失 `playerId` 的条目被跳过。
 4. 同一播放器继续播放同一 `track_id` 时累加 `active_duration_sec`（每次活跃观测累加距上一次活跃观测的时间），更新 `last_active_at` 与 `last_seen_at`；暂停或缺失的轮询不累加时长也不更新 `last_active_at`；换曲立即结算旧会话。
 5. 结算以累计的 `active_duration_sec` 计算**活跃**观测时长（排除暂停/消失后的挂钟时间）：每次正在播放的同曲轮询累加 `current_time - last_active_at`，恢复播放后从恢复时间戳继续累加（暂停间隔被排除）。时长大于等于 `PLAY_THRESHOLD_SEC`（默认 30）才写入一条 `play_history` 记录；批处理 finalize 不再追加最终间隔。
-6. Dashboard 初次加载并每 10 秒请求四个统计 API（含 `/api/stats/summary`）；标签页隐藏时降为 30 秒；含概览卡片、加载/空/错误状态与深色响应式布局。“正在播放”列表在两次刷新之间用本地 1 秒计时器递增显示的已用秒数；服务器刷新时以 `seconds_elapsed` 重新设置基线，不发起额外 API 请求。每日趋势面板提供 7/30/90 天分段控件，切换时重新拉取 `/api/stats/daily?days=N`。
+6. Dashboard 初次加载并每 10 秒请求统计 API（含 `/api/stats/summary`）；标签页隐藏时降为 30 秒；含概览卡片、加载/空/错误状态与深色响应式布局。“正在播放”列表在两次刷新之间用本地 1 秒计时器递增显示的已用秒数；服务器刷新时以 `seconds_elapsed` 重新设置基线，不发起额外 API 请求。Dashboard 顶部有全局 `#statsWindowControl` 时间范围控件（`7 天` / `30 天` / `90 天` / `全部`，默认 `30 天`，状态变量 `statsDays`），切换时刷新所有历史窗口组件（summary/players/transcoding/hourly/daily/top-artists/top-albums/history）并复用 `fetchStats` 的 in-flight 防护；`now-playing` 不受窗口影响、始终实时。概览卡显示当前范围（`最近 30 天` 或 `全部历史`）、`active_days`、日均与环比百分比徽章。
 
 ## 2. 播放计数语义
 
@@ -45,7 +45,9 @@
 - 每次写入或查询都会打开一个新的 aiosqlite 连接。
 - `played_at` 保存结算时 `last_seen_at` 的 ISO 8601 字符串，当前由应用产生时包含 UTC 偏移。
 - 播放器和转码统计按已落库记录数聚合，不按监听秒数聚合。
-- `get_daily_stats(days=30)`（API `GET /api/stats/daily?days=`，默认 30、范围 7–90）按日聚合，使用 SQLite `date('now', '-N days')` 截止。
+- 历史窗口由 `_window_predicate(days)`/`_previous_window_predicate(days)` 输出参数化 SQL 谓词，`days<=0` 表示无过滤（全部历史），`days>0` 使用 `datetime(played_at) >= datetime('now', '-N days')`；从不字符串拼接用户值。所有聚合查询（players/transcoding/hourly/daily/top-artists/top-albums/history/summary）都接受可选 `days` 参数。
+- `get_daily_stats(days=30)`（API `GET /api/stats/daily?days=`，默认 30，接受 `0` 或 `7–90`）按日聚合，`days=0` 不附加日期过滤。
+- `get_summary(days=0)` 返回 `/api/stats/summary` 的窗口对比字段（`active_days`、`average_daily_*`、`previous_total_*`、`*_change_pct`、`window_days`）；有限窗口按 `active_days` 平均，`days=0` 按最早至最晚播放日的包含天数平均。
 - history 接口按 `username, track_id` 聚合；`title`/`artist`/`album` 取自最新插入行（`MAX(id)`），按最近 `played_at` 排序。
 - 播放历史**默认永久保留**；可通过 `/settings` 将保留期设为 1–360 天或恢复永久。
 - 后台任务按 `RETENTION_MAINTENANCE_SEC`（默认 24 小时）自动清理超出保留期的记录；启动时也会执行一次。
@@ -61,7 +63,7 @@
 - `POST /api/auth/login` 在启用认证时设置 httpOnly 会话 Cookie；Dashboard 支持令牌登录。
 - 响应附加 CSP、`nosniff`、`DENY` 框架与 `no-referrer` 策略。
 - FastAPI 自动提供默认 OpenAPI 路由（通常为 `/openapi.json`、`/docs` 和 `/redoc`），代码未显式关闭或定制。
-- history 的 `limit` 使用 FastAPI `Query` 校验，范围 1–100，默认 10。`daily` 的 `days` 使用 FastAPI `Query` 校验，范围 7–90，默认 30。
+- history 的 `limit` 使用 FastAPI `Query` 校验，范围 1–100，默认 10。统计窗口 `days` 使用 FastAPI `Query` 校验（`ge=0, le=90`）并由 `_validate_stats_days` 进一步拒绝 `1–6`；`0` 表示全部历史。`daily` 默认 `30`，其他历史端点默认 `0`（全部历史）以保留既有调用方行为；`now-playing` 不接受 `days`。
 - Dashboard 的 Tailwind CSS 和 ECharts 从公共 CDN 加载；ECharts 5.5.0 带 SRI；CSP 限制脚本来源。
 - 页面提供可见的错误横幅、手动刷新按钮和上次更新时间；历史表格用户数据用 `textContent` 渲染。
 - 设置页（`/settings`）有两个顶级标签：「隐私与数据」（策略摘要、数据保留分段控件与滑块、存储概览、按用户导出/导入/删除、可折叠隐私原则）与「信息来源」（Navidrome URL/用户名/密码表单、保存按钮、保存后提示「已保存，重启服务后生效」、「测试连接」按钮、上游就绪状态、环境变量优先级说明）。保留模式为可见的单选/分段控件而非仅靠复选框揭示滑块；密码输入为 `type=password`，GET 仅返回 `password_configured: bool`，从不渲染密码。

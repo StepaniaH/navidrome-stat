@@ -90,7 +90,7 @@ This service uses **timed polling** plus an **in-memory session tracker** (not p
 3. Once the **actively observed** listen time reaches **`PLAY_THRESHOLD_SEC` seconds or more** (default 30, clamped to 1-3600), **one** row is written to SQLite for that session. The same session is not written twice.
 4. A paused entry (`isPlaying=false`) or a briefly missing player keeps the in-memory session alive for up to `PAUSE_GRACE_SEC` seconds (default 30, clamped to 0-3600). Paused wall-clock time does **not** advance the listen duration; only observations where `isPlaying=true` do. A different actively-playing track on the same player finalizes the old session immediately.
 5. When the track changes or the player is absent beyond the grace window, the in-memory session is finalized (once) and cleared. Short listens under the threshold are discarded.
-6. The dashboard refreshes every **10 seconds** and reads aggregated stats from the local database. The "正在播放" list also runs a lightweight local 1-second elapsed ticker between refreshes.
+6. The dashboard refreshes every **10 seconds** and reads aggregated stats from the local database. The "正在播放" list also runs a lightweight local 1-second elapsed ticker between refreshes. A global statistics window control at the top of the dashboard selects `7 天` / `30 天` / `90 天` / `全部` (default `30 天`); all historical widgets (summary, players, transcoding, hourly, daily, top artists, top albums and history) honor the selected `days`, while "正在播放" stays real-time. The summary cards expose `active_days`, average-daily plays/listen and previous-window percentage-change badges. The backend window contract is documented in [`docs/interfaces.md`](docs/interfaces.md).
 
 **Caveats**
 

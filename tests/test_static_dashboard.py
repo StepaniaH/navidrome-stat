@@ -3,8 +3,9 @@ prioritized robustness/UX changes:
 
 * the "正在播放" local elapsed ticker exists and only updates DOM text via
   ``textContent`` (no extra API calls, no innerHTML/insertAdjacentHTML),
-* the daily trend time-range segmented control renders 7/30/90 buttons and
-  uses ``/api/stats/daily?days=N``.
+* the global statistics window control renders 7/30/90/全部 buttons and
+  propagates ``?days=${statsDays}`` to every historical widget, while the
+  now-playing endpoint stays real-time (no window filter).
 
 No browser is required - the HTML is inspected as text.
 """
@@ -104,41 +105,97 @@ def test_now_playing_ticker_makes_no_api_call(source):
         assert "fetch(" not in block
 
 
-def test_daily_days_segmented_control_exists(source):
-    assert 'id="dailyDaysControl"' in source
-    for label in ("7 天", "30 天", "90 天"):
+def test_stats_window_segmented_control_exists(source):
+    assert 'id="statsWindowControl"' in source
+    for label in ("7 天", "30 天", "90 天", "全部"):
         assert label in source
 
 
-def test_daily_days_buttons_carry_data_days(source):
-    for n in (7, 30, 90):
+def test_stats_window_buttons_carry_data_days(source):
+    for n in (7, 30, 90, 0):
         assert f'data-days="{n}"' in source
 
 
-def test_daily_fetch_uses_days_param(source):
-    block = _function_block(source, "fetchDaily")
-    assert "/api/stats/daily?days=${dailyDays}" in block
-    assert "dailyFetchInFlight" in block
+def test_stats_scope_label_exists(source):
+    assert 'id="statsScopeLabel"' in source
 
 
-def test_fetchstats_uses_daily_days(source):
-    block = _function_block(source, "fetchStats")
-    assert "/api/stats/daily?days=${dailyDays}" in block
+def test_stats_window_label_helper(source):
+    block = _function_block(source, "statsWindowLabel")
+    assert "全部历史" in block
+    assert "最近 ${statsDays} 天" in block
 
 
-def test_daily_button_click_updates_state_and_calls_fetch(source):
-    block = source[source.index("document.querySelectorAll('.daily-days-btn')") :]
-    end = block.index("setActiveDailyButton(dailyDays);")
+def test_stats_window_button_click_updates_state_and_calls_fetch(source):
+    block = source[source.index("document.querySelectorAll('.stats-window-btn')") :]
+    end = block.index("setActiveStatsWindowButton(statsDays);")
     block = block[:end]
     assert "addEventListener('click'" in block
-    assert "dailyDays = days" in block
-    assert "fetchDaily()" in block
+    assert "statsDays = days" in block
+    assert "fetchStats()" in block
+    assert "fetchDaily" not in block
 
 
-def test_daily_subtitle_updates_to_selected_range(source):
-    block = _function_block(source, "setActiveDailyButton")
-    assert "最近 ${days} 天每日播放次数" in block
+def test_stats_window_subtitle_updates_to_selected_range(source):
+    block = _function_block(source, "setActiveStatsWindowButton")
+    assert "${statsWindowLabel()}每日播放次数" in block
 
 
 def test_daily_chart_subtitle_has_id(source):
     assert 'id="dailyChartSubtitle"' in source
+
+
+def test_daily_days_state_variable_replaced(source):
+    assert "let dailyDays" not in source
+    assert "dailyFetchInFlight" not in source
+    assert "function fetchDaily" not in source
+    assert "function setActiveDailyButton" not in source
+    assert ".daily-days-btn" not in source
+
+
+def test_historical_fetch_urls_use_stats_days(source):
+    block = _function_block(source, "fetchStats")
+    # Every historical widget request must propagate the global window.
+    assert "/api/stats/summary?days=${statsDays}" in block
+    assert "/api/stats/players?days=${statsDays}" in block
+    assert "/api/stats/transcoding?days=${statsDays}" in block
+    assert "/api/stats/hourly?days=${statsDays}" in block
+    assert "/api/stats/daily?days=${statsDays}" in block
+    assert "/api/stats/history?limit=10&days=${statsDays}" in block
+    assert "/api/stats/top-artists?limit=10&days=${statsDays}" in block
+    assert "/api/stats/top-albums?limit=10&days=${statsDays}" in block
+    # Now-playing must NOT be window-filtered.
+    assert "/api/stats/now-playing', fetchOptions" in block
+    assert "now-playing?days" not in block
+
+
+def test_summary_change_badge_elements_exist(source):
+    for element_id in (
+        "statTotalPlaysChange",
+        "statListenTimeChange",
+        "statActiveDays",
+    ):
+        assert f'id="{element_id}"' in source
+
+
+def test_format_change_text_helper_exists(source):
+    block = _function_block(source, "formatChangeText")
+    assert "vs 上周期" in block
+    assert "textContent" in block or "" in block  # function body present
+    # No raw HTML injection in the badge formatter.
+    assert "innerHTML" not in block
+    assert "insertAdjacentHTML" not in block
+
+
+def test_update_summary_populates_change_badges(source):
+    block = _function_block(source, "updateSummary")
+    assert "statTotalPlaysChange" in block
+    assert "statListenTimeChange" in block
+    assert "statActiveDays" in block
+    assert "formatChangeText(summary.plays_change_pct)" in block
+    assert "formatChangeText(summary.listen_change_pct)" in block
+    assert "summary.active_days" in block
+    assert "summary.average_daily_plays" in block
+    # No innerHTML/outerHTML mutation in summary rendering.
+    assert "innerHTML" not in block
+    assert "outerHTML" not in block

@@ -36,7 +36,9 @@ from src.schemas import (
     AuthStatusResponse,
     DAILY_DAYS_DEFAULT,
     DAILY_DAYS_MAX,
-    DAILY_DAYS_MIN,
+    STATS_DAYS_ALL,
+    STATS_DAYS_MAX,
+    STATS_DAYS_MIN,
     HealthLiveResponse,
     HistoryItem,
     HourlyStat,
@@ -255,6 +257,25 @@ async def _query_stats(fetch):
         raise HTTPException(status_code=503, detail="Stats temporarily unavailable")
 
 
+def _validate_stats_days(days: int) -> int:
+    """Validate the unified ``days`` window query parameter.
+
+    Allowed values are ``STATS_DAYS_ALL`` (0, all history) and finite windows
+    in ``[STATS_DAYS_MIN, STATS_DAYS_MAX]`` (7..90). Any other value produces
+    HTTP 422. The endpoint-level ``Query`` already enforces ``ge=0, le=90`` so
+    this function focuses on the finite bound gap (1..6).
+    """
+    if days == STATS_DAYS_ALL:
+        return STATS_DAYS_ALL
+    if STATS_DAYS_MIN <= days <= STATS_DAYS_MAX:
+        return days
+    raise HTTPException(
+        status_code=422,
+        detail=f"days must be {STATS_DAYS_ALL} (all history) or between "
+        f"{STATS_DAYS_MIN} and {STATS_DAYS_MAX}",
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
@@ -429,39 +450,61 @@ async def metrics():
 
 
 @app.get("/api/stats/summary", response_model=SummaryStat)
-async def api_summary_stats():
-    """Endpoint for aggregate listening statistics."""
-    return await _query_stats(get_summary)
+async def api_summary_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+):
+    """Endpoint for aggregate listening statistics over the selected window.
+
+    ``days=0`` (default) means all history; ``days=7..90`` selects a finite
+    rolling window with current-vs-previous comparison metrics. See
+    ``src.database.get_summary`` for the exact semantics.
+    """
+    window = _validate_stats_days(days)
+    return await _query_stats(lambda: get_summary(days=window))
 
 
 @app.get("/api/stats/players", response_model=list[PlayerStat])
-async def api_player_stats():
-    """Endpoint for player usage distribution."""
-    return await _query_stats(get_player_stats)
+async def api_player_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+):
+    """Endpoint for player usage distribution over the selected window."""
+    window = _validate_stats_days(days)
+    return await _query_stats(lambda: get_player_stats(days=window))
 
 
 @app.get("/api/stats/transcoding", response_model=list[TranscodingStat])
-async def api_transcoding_stats():
-    """Endpoint for transcoding ratio."""
-    return await _query_stats(get_transcoding_stats)
+async def api_transcoding_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+):
+    """Endpoint for transcoding ratio over the selected window."""
+    window = _validate_stats_days(days)
+    return await _query_stats(lambda: get_transcoding_stats(days=window))
 
 
 @app.get("/api/stats/hourly", response_model=list[HourlyStat])
-async def api_hourly_stats():
-    """Endpoint for play counts grouped by hour of day (0-23)."""
-    return await _query_stats(get_hourly_stats)
+async def api_hourly_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+):
+    """Endpoint for play counts grouped by hour of day (0-23) over the selected window."""
+    window = _validate_stats_days(days)
+    return await _query_stats(lambda: get_hourly_stats(days=window))
 
 
 @app.get("/api/stats/daily", response_model=list[DailyStat])
 async def api_daily_stats(
     days: int = Query(
         default=DAILY_DAYS_DEFAULT,
-        ge=DAILY_DAYS_MIN,
+        ge=0,
         le=DAILY_DAYS_MAX,
     ),
 ):
-    """Endpoint for play counts per day over the last ``days`` days (default 30, 7-90)."""
-    return await _query_stats(lambda: get_daily_stats(days=days))
+    """Endpoint for play counts per day over the last ``days`` days.
+
+    Backward compatible default is 30 days; ``days=0`` selects all history.
+    Finite windows must be 7-90 (daily does not allow intermediate values).
+    """
+    window = _validate_stats_days(days)
+    return await _query_stats(lambda: get_daily_stats(days=window))
 
 
 @app.get("/api/stats/top-artists", response_model=list[TopArtistItem])
@@ -471,9 +514,11 @@ async def api_top_artists(
         ge=TOP_LIMIT_MIN,
         le=TOP_LIMIT_MAX,
     ),
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
 ):
-    """Endpoint for top artists by play count."""
-    return await _query_stats(lambda: get_top_artists(limit=limit))
+    """Endpoint for top artists by play count over the selected window."""
+    window = _validate_stats_days(days)
+    return await _query_stats(lambda: get_top_artists(limit=limit, days=window))
 
 
 @app.get("/api/stats/top-albums", response_model=list[TopAlbumItem])
@@ -483,9 +528,11 @@ async def api_top_albums(
         ge=TOP_LIMIT_MIN,
         le=TOP_LIMIT_MAX,
     ),
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
 ):
-    """Endpoint for top albums by play count."""
-    return await _query_stats(lambda: get_top_albums(limit=limit))
+    """Endpoint for top albums by play count over the selected window."""
+    window = _validate_stats_days(days)
+    return await _query_stats(lambda: get_top_albums(limit=limit, days=window))
 
 
 @app.get("/api/stats/now-playing", response_model=list[NowPlayingItem])
@@ -523,9 +570,11 @@ async def api_playback_history(
         ge=HISTORY_LIMIT_MIN,
         le=HISTORY_LIMIT_MAX,
     ),
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
 ):
-    """Endpoint for recent playback history."""
-    return await _query_stats(lambda: get_playback_history(limit=limit))
+    """Endpoint for recent playback history over the selected window."""
+    window = _validate_stats_days(days)
+    return await _query_stats(lambda: get_playback_history(limit=limit, days=window))
 
 
 def _privacy_settings_response(days: int | None) -> PrivacySettingsResponse:

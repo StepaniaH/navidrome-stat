@@ -31,6 +31,7 @@
 | NDS-SRC-001 | 信息来源配置与设置信息架构 | P1 | 已完成 | 无 |
 | NDS-CORE-002 | 暂停/缺失宽限与配置安全 | P1 | 已完成 | NDS-CORE-001 |
 | NDS-UI-002 | 正在播放本地计时与每日趋势时间范围选择 | P2 | 已完成 | NDS-UI-001 |
+| NDS-UI-003 | Dashboard 统一历史窗口与环比对比指标 | P2 | 已完成 | NDS-UI-002 |
 
 ## NDS-SEC-001 访问控制与部署边界
 
@@ -340,3 +341,21 @@
 - **涉及文件**：`src/database.py`、`src/schemas.py`、`src/main.py`、`src/static/index.html`、`tests/test_hourly_daily.py`、`tests/test_static_dashboard.py`（新增）、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`、`README.md`。
 - **风险/回滚**：本地计时仅用于显示，基线仍由服务器返回值决定，不会漂移超过一个刷新周期；分段控件不改变默认响应；回滚恢复 `index.html`、`schemas.py`、`database.py`、`main.py` 与文件即可。
 - **完成记录**：2026-07-26，OpenCode (glm-5.2)。`get_daily_stats` 参数化；API 增加 `days`；前端加入分段控件与本地计时器；新增 `tests/test_static_dashboard.py` 14 项与 `tests/test_hourly_daily.py` 8 项新用例。验证：`pytest -q` 182 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 全部解析。遗留：暂无。
+
+## NDS-UI-003 Dashboard 统一历史窗口与环比对比指标
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-UI-002。
+- **目标**：用一个全局统计窗口（`7` / `30` / `90` / `0`=全部）覆盖 Dashboard 所有历史组件，并提供当前窗口对比前一等长窗口的指标，作为后续热力图与更丰富排名的基础。`now-playing` 保持实时、不被窗口过滤。
+- **实施步骤**：
+  1. `src/schemas.py` 新增窗口常量（`STATS_DAYS_ALL=0`、`STATS_DAYS_MIN=7`、`STATS_DAYS_MAX=90`、`STATS_DAYS_DEFAULT=30`、`STATS_DAYS_PRESETS=(7,30,90,0)`）并扩展 `SummaryStat` 为可选对比字段（`active_days`、`average_daily_plays`、`average_daily_listen_sec`、`previous_total_plays`、`previous_total_listen_sec`、`plays_change_pct`、`listen_change_pct`、`window_days`）。保留 `DAILY_DAYS_*`。
+  2. `src/database.py` 新增 `_window_predicate`/`_previous_window_predicate` 输出参数化 SQL 谓词（`days<=0` ⇒ `1=1`，`days>0` ⇒ `datetime(played_at) >= datetime('now', ?)` 等价物），并为 `get_summary`/`get_player_stats`/`get_transcoding_stats`/`get_hourly_stats`/`get_daily_stats`/`get_top_artists`/`get_top_albums`/`get_playback_history` 增加可选 `days` 参数；从不字符串拼接用户值。
+  3. `get_summary(days)` 实现对比语义：`active_days` 按 `COUNT(DISTINCT date(played_at))`；有限窗口的 `average_daily_*` 按 `active_days` 平均（无活跃日为 `0`），`days=0` 按最早至最晚播放日的包含天数平均；`previous_total_*` 来自前一等长窗口，`*_change_pct` 在 `previous` 为 0 或 `days=0` 时为 `null`；`window_days` 在 `days=0` 时为 `null`。
+  4. `src/main.py`：summary/players/transcoding/hourly/top-artists/top-albums/history 新增 `days` 查询参数（默认 `0`=全部历史，保留旧行为）；daily 保留默认 `30`，全部接受 `0`；新增 `_validate_stats_days` 拒绝 `1–6`（422）；`now-playing` 不接受 `days`。
+  5. `src/static/index.html`：用顶部全局 `#statsWindowControl`（7/30/90/全部，默认 30 天，状态 `statsDays`）替换原每日范围控件；切换时调用 `fetchStats`（复用其 in-flight 防护）；所有历史 widget 的 fetch URL 改为 `?days=${statsDays}`（history 保留 `limit`），`now-playing` 不带 `days`；summary 卡新增 `active_days`、日均副行与 `↑↓% vs 上周期` 徽章；新增 `#statsScopeLabel` 显示 `最近 N 天` / `全部历史`；移除 `dailyDays`/`fetchDaily`/`setActiveDailyButton`/`.daily-days-btn`。
+  6. 测试与文档：新增 `tests/test_stats_window.py`（DB 对比与窗口传播、API 传播与 422 边界、now-playing 不接受 `days`）；更新既有 `tests/test_main.py`/`tests/test_top_artists_albums.py`/`tests/test_hourly_daily.py`/`tests/test_static_dashboard.py` 的新签名与控件；同步 `README.md`、`docs/interfaces.md`、`docs/current-state.md`。
+- **验收标准**：所有历史端点统一接受 `days=0` 或 `days∈[7,90]`，其他值返回 422；`days` 向数据库函数传播；`get_summary` 在空库、零前一窗口、有限窗口与 `days=0` 的对比均值/百分比字段符合本文约定；前端只剩一个全局控件且 `now-playing` 不被窗口过滤；summary 卡显示范围与环比且无用户数据 `innerHTML`；`pytest -q`、`git diff --check`、`python3 scripts/check_md_links.py` 通过。
+- **验证命令**：`pytest -q`；`pytest -q tests/test_stats_window.py tests/test_static_dashboard.py`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html`、`tests/test_stats_window.py`（新增）、`tests/test_static_dashboard.py`、`tests/test_main.py`、`tests/test_top_artists_albums.py`、`tests/test_hourly_daily.py`、`README.md`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：所有新增字段均为可选且默认 `0`/`null`，不破坏既有调用；daily 默认 30 与历史接口默认 `0` 保留旧行为；前端单路径 `fetchStats` 降低了竞态风险；回滚恢复 `src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html` 与相关测试/文档即可。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。新增统计窗口常量与 `SummaryStat` 对比字段；`_window_predicate` / `_previous_window_predicate` 参数化谓词；`get_summary` 与全部聚合查询均接受 `days`；`_validate_stats_days` 在 `main.py` 拒绝 1–6；前端以 `#statsWindowControl` 替换每日分段控件并传播 `?days=${statsDays}`、新增 `#statsScopeLabel`、环比徽章与 `active_days` 副行。验证：`pytest -q` 225 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 全部解析。遗留：暂无。

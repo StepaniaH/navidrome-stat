@@ -181,16 +181,26 @@ async def test_api_daily_stats_default_days_is_30(mock_get):
 @pytest.mark.parametrize("days,expected_status", [
     (6, 422),
     (91, 422),
-    (0, 422),
     (-1, 422),
 ])
 @patch("src.main.get_daily_stats", new_callable=AsyncMock)
-async def test_api_daily_stats_days_bounds(mock_get, days, expected_status):
+async def test_api_daily_stats_days_invalid_out_of_range(mock_get, days, expected_status):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get(f"/api/stats/daily?days={days}")
     assert response.status_code == expected_status
     mock_get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+async def test_api_daily_stats_days_zero_selects_all_history(mock_get):
+    mock_get.return_value = [{"date": "2024-01-01", "count": 5}]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/stats/daily?days=0")
+    assert response.status_code == 200
+    assert response.json() == [{"date": "2024-01-01", "count": 5}]
+    mock_get.assert_awaited_once_with(days=0)
 
 
 @pytest.mark.asyncio

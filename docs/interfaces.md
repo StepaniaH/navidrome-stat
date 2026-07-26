@@ -25,15 +25,15 @@
 | `/api/auth/status` | GET | `{"auth_required": bool}` | 受支持但可演进 | 报告是否配置了 `STATS_API_TOKEN` |
 | `/api/auth/login` | POST | `{"status":"ok"}` + 会话 Cookie | 受支持但可演进 | 请求体 `{"token":"..."}`；未启用认证时 404 |
 | `/api/auth/logout` | POST | `{"status":"ok"}` | 受支持但可演进 | 清除会话 Cookie |
-| `/api/stats/summary` | GET | JSON：`total_plays`、`total_listen_sec`、`unique_tracks`、`client_count` | 受支持但可演进 | 启用认证时需授权 |
-| `/api/stats/players` | GET | JSON 数组，元素为 `client_name`、`count` | 受支持但可演进 | 启用认证时需授权 |
-| `/api/stats/transcoding` | GET | JSON 数组，元素为 `is_transcoding`、`count` | 受支持但可演进 | 启用认证时需授权 |
-| `/api/stats/history` | GET | JSON 数组（见下） | 受支持但可演进 | `limit` 默认 10、范围 1–100；启用认证时需授权 |
-| `/api/stats/hourly` | GET | JSON 数组，元素为 `hour`（0–23）、`count` | 受支持但可演进 | 按一天内时段聚合；启用认证时需授权 |
-| `/api/stats/daily` | GET | JSON 数组，元素为 `date`（`YYYY-MM-DD`）、`count` | 受支持但可演进 | 可选 `?days=` 默认 30、范围 7–90，按日聚合，`date` 升序；启用认证时需授权 |
-| `/api/stats/top-artists` | GET | JSON 数组，元素为 `artist`（str）、`count`（int） | 受支持但可演进 | `limit` 默认 10、范围 1–50；跳过空 artist；按 `count` 降序；启用认证时需授权 |
-| `/api/stats/top-albums` | GET | JSON 数组，元素为 `album`（str）、`count`（int） | 受支持但可演进 | `limit` 默认 10、范围 1–50；跳过空 album；按 `count` 降序；启用认证时需授权 |
-| `/api/stats/now-playing` | GET | JSON 数组，元素为 `username`、`title`、`artist`、`client_name`、`seconds_elapsed`（int） | 受支持但可演进 | 来自内存 `session_tracker.active_sessions`，不访问数据库；`seconds_elapsed` 从会话首次发现时间起算；启用认证时需授权 |
+| `/api/stats/summary` | GET | JSON：`total_plays`、`total_listen_sec`、`unique_tracks`、`client_count`，以及窗口对比字段 `active_days`、`average_daily_plays`、`average_daily_listen_sec`、`previous_total_plays`、`previous_total_listen_sec`、`plays_change_pct`、`listen_change_pct`、`window_days`（见下） | 受支持但可演进 | 可选 `?days=0`（默认，全部历史）或 `7–90`；对比与日均价仅对有限窗口计算，`days=0` 时 `window_days=null` 且 `previous_*` 与百分比均为 `null`；启用认证时需授权 |
+| `/api/stats/players` | GET | JSON 数组，元素为 `client_name`、`count` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；启用认证时需授权 |
+| `/api/stats/transcoding` | GET | JSON 数组，元素为 `is_transcoding`、`count` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；启用认证时需授权 |
+| `/api/stats/history` | GET | JSON 数组（见下） | 受支持但可演进 | `limit` 默认 10、范围 1–100；可选 `?days=0`（默认）或 `7–90`；启用认证时需授权 |
+| `/api/stats/hourly` | GET | JSON 数组，元素为 `hour`（0–23）、`count` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；按一天内时段聚合；启用认证时需授权 |
+| `/api/stats/daily` | GET | JSON 数组，元素为 `date`（`YYYY-MM-DD`）、`count` | 受支持但可演进 | 可选 `?days=` 默认 30；接受 `0`（全部历史）或 `7–90`（有限窗口），中间值（1–6）返回 422；按日聚合，`date` 升序；启用认证时需授权 |
+| `/api/stats/top-artists` | GET | JSON 数组，元素为 `artist`（str）、`count`（int） | 受支持但可演进 | `limit` 默认 10、范围 1–50；可选 `?days=0`（默认）或 `7–90`；跳过空 artist；按 `count` 降序；启用认证时需授权 |
+| `/api/stats/top-albums` | GET | JSON 数组，元素为 `album`（str）、`count`（int） | 受支持但可演进 | `limit` 默认 10、范围 1–50；可选 `?days=0`（默认）或 `7–90`；跳过空 album；按 `count` 降序；启用认证时需授权 |
+| `/api/stats/now-playing` | GET | JSON 数组，元素为 `username`、`title`、`artist`、`client_name`、`seconds_elapsed`（int） | 受支持但可演进 | 来自内存 `session_tracker.active_sessions`，不访问数据库；不接受 `days`，永远是实时态；`seconds_elapsed` 从会话首次发现时间起算；启用认证时需授权 |
 | `/settings` | GET | `settings.html` 隐私与数据管理页 | 受支持但可演进 | 保留策略、按用户导出/导入/删除 |
 | `/api/privacy/settings` | GET/PUT | `retention_days`（`null`=永久）、`permanent` | 受支持但可演进 | PUT 接受 `null` 或 1–360 |
 | `/api/privacy/retention/preview` | GET | `records_to_delete`、`retention_days` | 受支持但可演进 | 可选 `?days=` 预览未保存策略 |
@@ -51,21 +51,41 @@
 
 ```text
 GET /api/stats/history?limit=10
+GET /api/stats/history?limit=10&days=30
 ```
 
-每日趋势可选 `days` 参数示例：
+每日趋势与全局统计窗口可选 `days` 参数示例（适用于 summary/players/transcoding/hourly/daily/top-artists/top-albums/history，默认值见各行）：
 
 ```text
 GET /api/stats/daily?days=7
-GET /api/stats/daily?days=30   # 默认
+GET /api/stats/daily?days=30     # daily 默认
 GET /api/stats/daily?days=90
+GET /api/stats/daily?days=0      # 全部历史
+GET /api/stats/summary?days=0    # 默认：全部历史
+GET /api/stats/players?days=90
 ```
+
+`days` 取值约定：
+
+- `0` 表示全部历史（不附加时间过滤），仅在 daily 上保留默认 `30` 以兼容现有调用；
+- `7–90` 表示有限滚动窗口；
+- `1–6`、负数或大于 90 的值返回 422；
+- `now-playing` 不接受 `days`。
+
+`/api/stats/summary` 返回的对比字段语义：
+
+- `active_days`：当前窗口内出现播放的不同日期数。
+- `average_daily_plays` / `average_daily_listen_sec`：有限窗口按 `active_days` 平均；`days=0` 时按最早播放日到最晚播放日的包含天数（`max - min + 1`）平均；无数据时为 `0`。
+- `previous_total_plays` / `previous_total_listen_sec`：与当前窗口等长的前一窗口合计；`days=0` 时为 `null`。
+- `plays_change_pct` / `listen_change_pct`：`(current - previous) / previous * 100`，`previous` 为 0 或 `days=0` 时为 `null`。
+- `window_days`：有限窗口回显请求的 `days`；`days=0` 时为 `null`。
 
 FastAPI 默认还生成 OpenAPI JSON 和交互文档路由。因为代码没有显式配置其路径或可用性，这些接口登记为“待确认”，不应在外部集成中视为稳定契约。
 
 ### 错误行为
 
-- 非整数或超出 1–100 的 `limit`（history）或 1–50 的 `limit`（top-artists/top-albums）或 7–90 的 `days`（daily）由 FastAPI 返回 422 请求验证错误。
+- 非整数或超出 1–100 的 `limit`（history）或 1–50 的 `limit`（top-artists/top-albums）由 FastAPI 返回 422 请求验证错误。
+- `days` 不是整数、小于 0、大于 90，或位于 1–6 之间（包括 daily）由 FastAPI 路由校验或 `_validate_stats_days` 返回 422 请求验证错误。
 - 统计 API 数据库异常返回 503 与固定文案 `Stats temporarily unavailable`，不泄露路径或查询细节。
 - 启用认证时未授权访问统计 API 或 OpenAPI 返回 401 与 `Unauthorized`。
 - 代码没有定义 API 级错误码、错误响应 schema 或速率限制。
@@ -160,13 +180,14 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - `src.client.NavidromeClient(...)`、`get_auth_params()`、`get_now_playing()`、`close()`
 - `src.database.init_db(db_path=...)`
 - `src.database.save_play_session(session, db_path=...)`
-- `src.database.get_player_stats(db_path=...)`
-- `src.database.get_transcoding_stats(db_path=...)`
-- `src.database.get_hourly_stats(db_path=...)`
-- `src.database.get_daily_stats(days=30, db_path=...)`
-- `src.database.get_top_artists(limit=..., db_path=...)`
-- `src.database.get_top_albums(limit=..., db_path=...)`
-- `src.database.get_playback_history(limit=..., db_path=...)`
+- `src.database.get_player_stats(days=0, db_path=...)`（`days<=0` 表示全部历史）
+- `src.database.get_transcoding_stats(days=0, db_path=...)`
+- `src.database.get_hourly_stats(days=0, db_path=...)`
+- `src.database.get_daily_stats(days=30, db_path=...)`（`days<=0` 表示全部历史）
+- `src.database.get_summary(days=0, db_path=...)`（返回窗口对比字段，见上文 API 登记）
+- `src.database.get_top_artists(limit=..., days=0, db_path=...)`
+- `src.database.get_top_albums(limit=..., days=0, db_path=...)`
+- `src.database.get_playback_history(limit=..., days=0, db_path=...)`
 - `src.sessions.PlaybackSessionTracker(...)`、`process_poll(...)`、`finalize_session(...)`、`finalize_all()`（构造参数 `play_threshold_sec`、`pause_grace_sec`、`stale_threshold_sec`）
 - `src.config.parse_clamped_int(...)`、`env_int(...)`
 - `src.main.finalize_session(player_id)`、`polling_loop(client)`
