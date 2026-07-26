@@ -30,7 +30,7 @@
 | `/api/stats/transcoding` | GET | JSON 数组，元素为 `is_transcoding`、`count` | 受支持但可演进 | 启用认证时需授权 |
 | `/api/stats/history` | GET | JSON 数组（见下） | 受支持但可演进 | `limit` 默认 10、范围 1–100；启用认证时需授权 |
 | `/api/stats/hourly` | GET | JSON 数组，元素为 `hour`（0–23）、`count` | 受支持但可演进 | 按一天内时段聚合；启用认证时需授权 |
-| `/api/stats/daily` | GET | JSON 数组，元素为 `date`（`YYYY-MM-DD`）、`count` | 受支持但可演进 | 最近 30 天按日聚合，`date` 升序；启用认证时需授权 |
+| `/api/stats/daily` | GET | JSON 数组，元素为 `date`（`YYYY-MM-DD`）、`count` | 受支持但可演进 | 可选 `?days=` 默认 30、范围 7–90，按日聚合，`date` 升序；启用认证时需授权 |
 | `/api/stats/top-artists` | GET | JSON 数组，元素为 `artist`（str）、`count`（int） | 受支持但可演进 | `limit` 默认 10、范围 1–50；跳过空 artist；按 `count` 降序；启用认证时需授权 |
 | `/api/stats/top-albums` | GET | JSON 数组，元素为 `album`（str）、`count`（int） | 受支持但可演进 | `limit` 默认 10、范围 1–50；跳过空 album；按 `count` 降序；启用认证时需授权 |
 | `/api/stats/now-playing` | GET | JSON 数组，元素为 `username`、`title`、`artist`、`client_name`、`seconds_elapsed`（int） | 受支持但可演进 | 来自内存 `session_tracker.active_sessions`，不访问数据库；`seconds_elapsed` 从会话首次发现时间起算；启用认证时需授权 |
@@ -53,11 +53,19 @@
 GET /api/stats/history?limit=10
 ```
 
+每日趋势可选 `days` 参数示例：
+
+```text
+GET /api/stats/daily?days=7
+GET /api/stats/daily?days=30   # 默认
+GET /api/stats/daily?days=90
+```
+
 FastAPI 默认还生成 OpenAPI JSON 和交互文档路由。因为代码没有显式配置其路径或可用性，这些接口登记为“待确认”，不应在外部集成中视为稳定契约。
 
 ### 错误行为
 
-- 非整数或超出 1–100 的 `limit`（history）或 1–50 的 `limit`（top-artists/top-albums）由 FastAPI 返回 422 请求验证错误。
+- 非整数或超出 1–100 的 `limit`（history）或 1–50 的 `limit`（top-artists/top-albums）或 7–90 的 `days`（daily）由 FastAPI 返回 422 请求验证错误。
 - 统计 API 数据库异常返回 503 与固定文案 `Stats temporarily unavailable`，不泄露路径或查询细节。
 - 启用认证时未授权访问统计 API 或 OpenAPI 返回 401 与 `Unauthorized`。
 - 代码没有定义 API 级错误码、错误响应 schema 或速率限制。
@@ -103,11 +111,13 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 | `NAVIDROME_URL` | 客户端初始化时必需（无 env 时回退到 GUI 保存值） | 无 | `src/source_config.py`、`src/client.py` | 稳定 | 上游基础 URL；真实值不得入库；env 优先级高于 GUI 保存值，按字段独立覆盖 |
 | `NAVIDROME_USER` | 客户端初始化时必需（无 env 时回退到 GUI 保存值） | 无 | `src/source_config.py`、`src/client.py` | 稳定 | 上游账户名，按敏感标识处理 |
 | `NAVIDROME_PASS` | 客户端初始化时必需（无 env 时回退到 GUI 保存值） | 无 | `src/source_config.py`、`src/client.py` | 稳定 | 上游密码，必须由运行环境注入；GUI 也可保存到 `schema_meta` 作为回退（见来源配置章节） |
-| `POLL_INTERVAL` | 可选 | `10` | `src/main.py` | 受支持但可演进 | 秒数；模块导入时解析为整数，当前无范围校验 |
-| `MAX_POLL_BACKOFF_SEC` | 可选 | `60` | `src/main.py` | 受支持但可演进 | 上游连续失败时轮询退避上限（秒） |
+| `POLL_INTERVAL` | 可选 | `10` | `src/main.py`、`src/config.py` | 受支持但可演进 | 秒数；模块导入时通过 `env_int` 安全解析并钳制到 5–300；非数字或缺失回退到默认 |
+| `MAX_POLL_BACKOFF_SEC` | 可选 | `60` | `src/main.py`、`src/config.py` | 受支持但可演进 | 上游连续失败时轮询退避上限（秒）；钳制到 1–3600 |
+| `PLAY_THRESHOLD_SEC` | 可选 | `30` | `src/main.py`、`src/sessions.py`、`src/config.py` | 受支持但可演进 | 计入播放的最低**活跃**观测秒数；钳制到 1–3600；非数字/缺失回退默认 |
+| `PAUSE_GRACE_SEC` | 可选 | `30` | `src/main.py`、`src/sessions.py`、`src/config.py` | 受支持但可演进 | 暂停或缺失条目保持内存会话的宽限秒数；钳制到 0–3600；`0` 表示一遇 `isPlaying=false` 或缺失即按原行为结算 |
 | `DATABASE_URL` | 可选 | `navidrome_stats.db` | `src/database.py` | 受支持但可演进 | 当前语义是 SQLite 文件路径，不是 URL |
 | `STATS_API_TOKEN` | 可选 | 无（匿名访问） | `src/auth.py` | 受支持但可演进 | 设置后保护统计 API 与 OpenAPI；`/health` 保持公开；值不得入库 |
-| `RETENTION_MAINTENANCE_SEC` | 可选 | `86400` | `src/main.py` | 内部 | 后台保留期清理间隔（秒） |
+| `RETENTION_MAINTENANCE_SEC` | 可选 | `86400` | `src/main.py` | 内部 | 后台保留期清理间隔（秒）；钳制到 60–604800 |
 
 本地开发通过 `python-dotenv` 在导入 `src/client.py` 时加载 `.env`。构造 `NavidromeClient` 时传入的非空参数优先于环境变量。
 
@@ -138,7 +148,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 | `artist` | `TEXT` | 上游 `artist` | 媒体与行为数据 |
 | `album` | `TEXT` | 上游 `album` | 媒体与行为数据 |
 | `is_transcoding` | `INTEGER` | 是否存在 `transcodedContentType` | 使用行为数据 |
-| `listen_duration_sec` | `INTEGER` | 观测时长向下取整 | 使用行为数据 |
+| `listen_duration_sec` | `INTEGER` | 活跃观测时长向下取整（排除暂停与缺失后的挂钟时间） | 使用行为数据 |
 
 除主键外各列没有显式 `NOT NULL`、默认值、检查约束或唯一约束。迁移版本 1 创建索引 `idx_play_history_user_track`、`idx_play_history_played_at`。
 
@@ -153,11 +163,12 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - `src.database.get_player_stats(db_path=...)`
 - `src.database.get_transcoding_stats(db_path=...)`
 - `src.database.get_hourly_stats(db_path=...)`
-- `src.database.get_daily_stats(db_path=...)`
+- `src.database.get_daily_stats(days=30, db_path=...)`
 - `src.database.get_top_artists(limit=..., db_path=...)`
 - `src.database.get_top_albums(limit=..., db_path=...)`
 - `src.database.get_playback_history(limit=..., db_path=...)`
-- `src.sessions.PlaybackSessionTracker(...)`、`process_poll(...)`、`finalize_session(...)`、`finalize_all()`
+- `src.sessions.PlaybackSessionTracker(...)`、`process_poll(...)`、`finalize_session(...)`、`finalize_all()`（构造参数 `play_threshold_sec`、`pause_grace_sec`、`stale_threshold_sec`）
+- `src.config.parse_clamped_int(...)`、`env_int(...)`
 - `src.main.finalize_session(player_id)`、`polling_loop(client)`
 - `src.source_config.get_saved_source_config(...)`、`set_saved_source_config(...)`、`resolve_source_config(...)`、`resolve_effective_source_config(...)`、`validate_source_url(...)`、`has_full_config(...)`、`redacted_view(...)`
 

@@ -199,19 +199,26 @@ async def get_hourly_stats(db_path: str | None = None):
             return [dict(row) for row in rows]
 
 
-async def get_daily_stats(db_path: str | None = None):
-    """Returns play counts per day for the last 30 days, ordered by date ASC."""
+async def get_daily_stats(days: int = 30, db_path: str | None = None):
+    """Returns play counts per day for the last ``days`` days, ordered by date ASC.
+
+    ``days`` is clamped by the API layer (FastAPI Query) to 7-90; the function
+    itself accepts any int for direct internal use.
+    """
     path = _path(db_path)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("""
+        async with db.execute(
+            """
             SELECT date(played_at) AS date,
                    COUNT(*) AS count
             FROM play_history
-            WHERE date(played_at) >= date('now', '-30 days')
+            WHERE date(played_at) >= date('now', ?)
             GROUP BY date
             ORDER BY date ASC
-        """) as cursor:
+            """,
+            (f"-{int(days)} days",),
+        ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 

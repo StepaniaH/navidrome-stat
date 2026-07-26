@@ -235,8 +235,19 @@
                 </div>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300 mb-1">每日播放趋势</h2>
-                <p class="text-xs text-slate-600 mb-4">最近 30 天每日播放次数</p>
+                <div class="flex items-center justify-between gap-2 mb-1">
+                    <h2 class="text-sm font-semibold text-slate-300">每日播放趋势</h2>
+                    <div role="group" aria-label="每日趋势时间范围" id="dailyDaysControl"
+                        class="inline-flex rounded-lg bg-ink-800 border border-white/5 p-0.5 text-xs">
+                        <button type="button" data-days="7"
+                            class="daily-days-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">7 天</button>
+                        <button type="button" data-days="30"
+                            class="daily-days-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">30 天</button>
+                        <button type="button" data-days="90"
+                            class="daily-days-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">90 天</button>
+                    </div>
+                </div>
+                <p id="dailyChartSubtitle" class="text-xs text-slate-600 mb-4">最近 30 天每日播放次数</p>
                 <div id="dailyChartWrap" class="relative">
                     <div id="dailyChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
                     <div id="dailyChart" class="chart-container" role="img" aria-label="每日播放趋势折线图"></div>
@@ -338,6 +349,8 @@
         let refreshTimer = null;
         let hasLoadedOnce = false;
         let authRequired = false;
+        let dailyDays = 30;
+        let dailyFetchInFlight = false;
 
         const fetchOptions = { credentials: 'same-origin' };
 
@@ -458,6 +471,32 @@
             return `${minutes}:${String(secs).padStart(2, '0')}`;
         }
 
+        // Local-only elapsed ticker for "正在播放". Increments displayed
+        // elapsed seconds every second between server refreshes; the baseline
+        // is always the most recent server-provided seconds_elapsed so the
+        // authorit side stays intact. No extra API calls are made.
+        let nowPlayingTicker = null;
+        let nowPlayingRenderedAt = 0;
+        let nowPlayingEntries = []; // [{ span: HTMLSpanElement, baseline: int }]
+
+        function stopNowPlayingTicker() {
+            if (nowPlayingTicker) {
+                clearInterval(nowPlayingTicker);
+                nowPlayingTicker = null;
+            }
+        }
+
+        function startNowPlayingTicker() {
+            stopNowPlayingTicker();
+            if (!nowPlayingEntries.length || document.hidden) return;
+            nowPlayingTicker = setInterval(() => {
+                const delta = Math.floor((Date.now() - nowPlayingRenderedAt) / 1000);
+                for (const entry of nowPlayingEntries) {
+                    entry.span.textContent = formatElapsed(entry.baseline + delta);
+                }
+            }, 1000);
+        }
+
         function renderNowPlaying(items) {
             const list = document.getElementById('nowPlayingList');
             const empty = document.getElementById('nowPlayingEmpty');
@@ -465,11 +504,13 @@
             list.replaceChildren();
             list.classList.remove('hidden');
             empty.classList.add('hidden');
+            nowPlayingEntries = [];
 
             if (!Array.isArray(items) || items.length === 0) {
                 list.classList.add('hidden');
                 empty.classList.remove('hidden');
                 countEl.textContent = '';
+                stopNowPlayingTicker();
                 return;
             }
 
@@ -536,7 +577,13 @@
                 li.appendChild(elapsed);
 
                 list.appendChild(li);
+
+                const baseline = Math.max(0, Math.floor(Number(item.seconds_elapsed) || 0));
+                nowPlayingEntries.push({ span: elapsed, baseline });
             });
+
+            nowPlayingRenderedAt = Date.now();
+            startNowPlayingTicker();
         }
 
         function updateSummary(summary, transcoding) {
@@ -909,7 +956,7 @@
                     fetch('/api/stats/players', fetchOptions),
                     fetch('/api/stats/transcoding', fetchOptions),
                     fetch('/api/stats/hourly', fetchOptions),
-                    fetch('/api/stats/daily', fetchOptions),
+                    fetch(`/api/stats/daily?days=${dailyDays}`, fetchOptions),
                     fetch('/api/stats/history?limit=10', fetchOptions),
                     fetch('/api/stats/now-playing', fetchOptions),
                     fetch('/api/stats/top-artists?limit=10', fetchOptions),
@@ -970,6 +1017,53 @@
             refreshTimer = setInterval(fetchStats, ms);
         }
 
+        // Time-range selector for the daily trend chart. Re-renders only the
+        // needed data without surfacing overlapping requests with fetchStats.
+        function setActiveDailyButton(days) {
+            document.querySelectorAll('.daily-days-btn').forEach((btn) => {
+                const active = Number(btn.dataset.days) === days;
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                btn.classList.toggle('bg-accent', active);
+                btn.classList.toggle('text-white', active);
+                btn.classList.toggle('text-slate-400', !active);
+            });
+            const subtitle = document.getElementById('dailyChartSubtitle');
+            if (subtitle) subtitle.textContent = `最近 ${days} 天每日播放次数`;
+        }
+
+        async function fetchDaily() {
+            if (dailyFetchInFlight) return;
+            dailyFetchInFlight = true;
+            try {
+                const res = await fetch(`/api/stats/daily?days=${dailyDays}`, fetchOptions);
+                if (res.status === 401) {
+                    showLogin('访问令牌无效或已过期，请重新登录。');
+                    return;
+                }
+                if (!res.ok) throw new Error(`daily failed (${res.status})`);
+                const data = await res.json();
+                hideError();
+                renderDailyChart(data);
+            } catch (error) {
+                setStatus('error', '连接异常');
+                showError('无法获取每日趋势数据。');
+                console.error('Error fetching daily stats:', error);
+            } finally {
+                dailyFetchInFlight = false;
+            }
+        }
+
+        document.querySelectorAll('.daily-days-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const days = Number(btn.dataset.days);
+                if (!Number.isFinite(days) || days === dailyDays) return;
+                dailyDays = days;
+                setActiveDailyButton(days);
+                fetchDaily();
+            });
+        });
+        setActiveDailyButton(dailyDays);
+
         document.getElementById('refreshBtn').addEventListener('click', fetchStats);
 
         document.getElementById('loginForm').addEventListener('submit', async (event) => {
@@ -985,7 +1079,12 @@
 
         document.addEventListener('visibilitychange', () => {
             scheduleRefresh();
-            if (!document.hidden) fetchStats();
+            if (document.hidden) {
+                stopNowPlayingTicker();
+            } else {
+                startNowPlayingTicker();
+                fetchStats();
+            }
         });
 
         window.addEventListener('resize', () => {

@@ -20,18 +20,21 @@
 1. FastAPI lifespan 调用 `init_db()`，随后创建 `polling_loop()` 后台任务。
 2. lifespan 调用 `resolve_effective_source_config()`（环境变量 > 已保存 DB 值）解析连接信息，再构造 `NavidromeClient`；不齐全则记录错误且不启动轮询。`NavidromeClient` 每次请求生成六位 salt 和 MD5 token。
 3. 轮询循环调用上游 `/rest/getNowPlaying`，由 `PlaybackSessionTracker` 按 `playerId` 追踪会话；缺失 `playerId` 的条目被跳过。
-4. 同一播放器继续播放同一 `track_id` 时只更新 `last_seen_at`；换曲、停止后超过 30 秒或应用关闭时尝试结算。
-5. 结算以 `last_seen_at - first_seen_at` 计算观测时长。时长大于等于 30 秒才写入一条 `play_history` 记录。
-6. Dashboard 初次加载并每 10 秒请求四个统计 API（含 `/api/stats/summary`）；标签页隐藏时降为 30 秒；含概览卡片、加载/空/错误状态与深色响应式布局。
+4. 同一播放器继续播放同一 `track_id` 时累加 `active_duration_sec`（每次活跃观测累加距上一次活跃观测的时间），更新 `last_active_at` 与 `last_seen_at`；暂停或缺失的轮询不累加时长也不更新 `last_active_at`；换曲立即结算旧会话。
+5. 结算以累计的 `active_duration_sec` 计算**活跃**观测时长（排除暂停/消失后的挂钟时间）：每次正在播放的同曲轮询累加 `current_time - last_active_at`，恢复播放后从恢复时间戳继续累加（暂停间隔被排除）。时长大于等于 `PLAY_THRESHOLD_SEC`（默认 30）才写入一条 `play_history` 记录；批处理 finalize 不再追加最终间隔。
+6. Dashboard 初次加载并每 10 秒请求四个统计 API（含 `/api/stats/summary`）；标签页隐藏时降为 30 秒；含概览卡片、加载/空/错误状态与深色响应式布局。“正在播放”列表在两次刷新之间用本地 1 秒计时器递增显示的已用秒数；服务器刷新时以 `seconds_elapsed` 重新设置基线，不发起额外 API 请求。每日趋势面板提供 7/30/90 天分段控件，切换时重新拉取 `/api/stats/daily?days=N`。
 
 ## 2. 播放计数语义
 
-- 默认上游轮询间隔是 10 秒，可通过 `POLL_INTERVAL` 改变；环境变量在模块导入时使用 `int()` 解析。
-- 播放阈值固定为 30 秒，不可配置，代码判断为 `duration >= 30`。
-- 达到 30 秒观测时长时立即写入一条 `play_history` 记录（同一曲目会话不重复写入）；`isPlaying=false` 时结算当前曲目会话；换曲、停止或关闭时清理内存会话。
-- 上游连续失败时轮询间隔指数退避，上限由 `MAX_POLL_BACKOFF_SEC` 控制（默认 60 秒）。
-- `isPlaying` 缺失时按正在播放处理；明确为假时该条目被跳过。
-- 消失或暂停的播放器只有在距最后一次观测至少 30 秒后结算；换曲会立即结算旧会话。
+- 默认上游轮询间隔是 10 秒，可通过 `POLL_INTERVAL` 改变；环境变量在模块导入时通过 `src.config.env_int` 安全解析并钳制到 5–300，非数字或缺失回退到默认。
+- 播放阈值可通过 `PLAY_THRESHOLD_SEC` 配置（默认 30，钳制 1–3600）；代码判断为 `duration >= play_threshold_sec`。有效值通过 `PlaybackSessionTracker` 构造参数注入。
+- 暂停/缺失宽限期可通过 `PAUSE_GRACE_SEC` 配置（默认 30，钳制 0–3600）。
+- 达到阈值活跃观测时长时立即写入一条 `play_history` 记录（同一曲目会话不重复写入）；`isPlaying=false` 的同曲条目保持内存会话不结算也不累加 `active_duration_sec`；换曲会立即结算旧会话。
+- 上游连续失败时轮询间隔指数退避，上限由 `MAX_POLL_BACKOFF_SEC` 控制（默认 60 秒，钳制 1–3600）。
+- `isPlaying` 缺失时按正在播放处理；明确为假且与内存会话同曲时进入暂停状态，否则该条目被跳过。
+- 消失或暂停的播放器在距最后一次**活跃**观测超过 `PAUSE_GRACE_SEC` 后清理；超期未结算会话 finalize 一次，已结算会话直接移除不重复写入。超期前会话保留在内存中（无论是否已结算）。
+- 切换为不同的活跃曲目会立即结算旧会话。
+- `listen_duration_sec` 为活跃观测时长（向下取整），不含暂停后的挂钟时间。
 - 活跃会话由 `PlaybackSessionTracker` 维护，只存在于单个进程内。异常退出会丢失未结算会话；多 worker 或多副本之间不共享状态。
 - `NavidromeClient` 在 lifespan 中创建并在关闭时 `close()`；轮询失败时指数退避后继续下一轮，上限由 `MAX_POLL_BACKOFF_SEC` 控制。
 
@@ -42,6 +45,7 @@
 - 每次写入或查询都会打开一个新的 aiosqlite 连接。
 - `played_at` 保存结算时 `last_seen_at` 的 ISO 8601 字符串，当前由应用产生时包含 UTC 偏移。
 - 播放器和转码统计按已落库记录数聚合，不按监听秒数聚合。
+- `get_daily_stats(days=30)`（API `GET /api/stats/daily?days=`，默认 30、范围 7–90）按日聚合，使用 SQLite `date('now', '-N days')` 截止。
 - history 接口按 `username, track_id` 聚合；`title`/`artist`/`album` 取自最新插入行（`MAX(id)`），按最近 `played_at` 排序。
 - 播放历史**默认永久保留**；可通过 `/settings` 将保留期设为 1–360 天或恢复永久。
 - 后台任务按 `RETENTION_MAINTENANCE_SEC`（默认 24 小时）自动清理超出保留期的记录；启动时也会执行一次。
@@ -57,7 +61,7 @@
 - `POST /api/auth/login` 在启用认证时设置 httpOnly 会话 Cookie；Dashboard 支持令牌登录。
 - 响应附加 CSP、`nosniff`、`DENY` 框架与 `no-referrer` 策略。
 - FastAPI 自动提供默认 OpenAPI 路由（通常为 `/openapi.json`、`/docs` 和 `/redoc`），代码未显式关闭或定制。
-- history 的 `limit` 使用 FastAPI `Query` 校验，范围 1–100，默认 10。
+- history 的 `limit` 使用 FastAPI `Query` 校验，范围 1–100，默认 10。`daily` 的 `days` 使用 FastAPI `Query` 校验，范围 7–90，默认 30。
 - Dashboard 的 Tailwind CSS 和 ECharts 从公共 CDN 加载；ECharts 5.5.0 带 SRI；CSP 限制脚本来源。
 - 页面提供可见的错误横幅、手动刷新按钮和上次更新时间；历史表格用户数据用 `textContent` 渲染。
 - 设置页（`/settings`）有两个顶级标签：「隐私与数据」（策略摘要、数据保留分段控件与滑块、存储概览、按用户导出/导入/删除、可折叠隐私原则）与「信息来源」（Navidrome URL/用户名/密码表单、保存按钮、保存后提示「已保存，重启服务后生效」、「测试连接」按钮、上游就绪状态、环境变量优先级说明）。保留模式为可见的单选/分段控件而非仅靠复选框揭示滑块；密码输入为 `type=password`，GET 仅返回 `password_configured: bool`，从不渲染密码。
@@ -79,7 +83,7 @@
 - `/health`、`/health/ready`、认证与四个统计 API；history `limit` 边界；可选 `STATS_API_TOKEN` 授权；安全响应头。
 - Subsonic token/salt 的长度及 `getNowPlaying` 请求参数。
 - SQLite 建表、迁移、聚合查询与 summary。
-- 播放会话状态机：同曲续播、换曲结算、暂停跳过、缺失 `playerId`、30 秒阈值、陈旧会话与关闭批量结算。
+- 播放会话状态机：同曲续播、换曲结算、暂停进入宽限、缺失 `playerId`、配置阈值与宽限期、暂停恢复续接、缺失恢复续接、宽限超期结算、不同活跃曲目立即结算、阈值前后不重复写入、关闭批量结算 (`tests/test_sessions.py`)。配置安全解析与钳制由 `tests/test_config.py` 覆盖。
 - lifespan 启动/关闭、轮询退避、认证与会话 Cookie、合成恶意元数据 API 返回。
 - 隐私：保留预览/清理、按用户导出/导入/删除（`tests/test_privacy_ops.py`、`tests/test_privacy_api.py`）。
 

@@ -29,6 +29,8 @@
 | NDS-ARCH-001 | 多进程/多副本架构决策 | P2 | 待办 | NDS-CORE-001、用户人工确认部署拓扑 |
 | NDS-CI-001 | 持续集成质量门禁 | P2 | 已完成 | NDS-TEST-001、NDS-DEP-001 |
 | NDS-SRC-001 | 信息来源配置与设置信息架构 | P1 | 已完成 | 无 |
+| NDS-CORE-002 | 暂停/缺失宽限与配置安全 | P1 | 已完成 | NDS-CORE-001 |
+| NDS-UI-002 | 正在播放本地计时与每日趋势时间范围选择 | P2 | 已完成 | NDS-UI-001 |
 
 ## NDS-SEC-001 访问控制与部署边界
 
@@ -287,3 +289,54 @@
 - **涉及文件**：CI 配置、测试/开发依赖、文档链接脚本（如提取）、README、`AGENTS.md`。
 - **风险/回滚**：门禁不稳定会阻塞交付。先以非阻断模式观察，稳定后由管理员启用必需检查；不得通过删除测试长期绕过。
 - **完成记录**：2026-07-16，Cursor Agent。新增 `.github/workflows/ci.yml`（pytest、compose config、Markdown 链接）；`scripts/check_md_links.py` 可本地复现。2026-07-16 续：CI 增加 `docker-smoke` job 执行 `scripts/docker_smoke_test.sh`。验证：`pytest -q` 36 passed；`python3 scripts/check_md_links.py`；`docker compose config`。遗留：分支保护、依赖漏洞扫描由仓库管理员启用。
+
+## NDS-CORE-002 暂停/缺失宽限与配置安全
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-CORE-001。
+- **目标**：在 `PlaybackSessionTracker` 中为暂停/缺失观测引入可配置宽限，避免“正在播放”短暂暂停/曲目切换导致过早结算与闪烁；统一 `POLL_INTERVAL`、`PLAY_THRESHOLD_SEC`、`PAUSE_GRACE_SEC` 的安全解析与钳制，无效值回退默认而非崩溃导入。
+- **实施步骤**：
+  1. 新增 `src/config.py` 提供 `parse_clamped_int` 与 `env_int`：非数字/缺失回退默认，数字越界钳制到上下界。
+  2. `src/sessions.py` 引入 `PAUSE_GRACE_SEC` 常量与构造参数；会话字典新增 `last_active_at` 与 `paused`，结算/早提交按 `last_active_at - first_seen_at` 计算活跃时长，排除暂停后的挂钟时间。
+  3. `process_poll` 区分活跃播放、暂停条目与缺失播放器：暂停同曲保持内存会话且不延长活跃时长；缺失播放器在距最后活跃观测超过 `pause_grace_sec` 后结算一次并清理；不同活跃曲目立即结算旧会话并开始新会话。
+  4. `src/main.py` 使用 `env_int` 解析 `POLL_INTERVAL`（5–300）、`MAX_POLL_BACKOFF_SEC`（1–3600）、`RETENTION_MAINTENANCE_SEC`（60–604800）、`PLAY_THRESHOLD_SEC`（1–3600）、`PAUSE_GRACE_SEC`（0–3600），并通过 `PlaybackSessionTracker` 构造参数注入阈值与宽限。
+  5. 新增/更新测试覆盖配置解析与状态机（暂停恢复、缺失恢复、宽限超期、不重复提交、不同活跃曲目立即结算）；同步 `README.md`、`docs/interfaces.md`、`docs/current-state.md`。
+- **验收标准**：暂停/缺失在宽限内不结算、不重复写入、不延长活跃时长；超期结算只发生一次；不同活跃曲目立即结算旧会话；非数字 `POLL_INTERVAL` 不崩溃导入；`PLAY_THRESHOLD_SEC=5` 生效；`pytest -q` 通过；`git diff --check` 通过；`python3 scripts/check_md_links.py` 通过。
+- **验证命令**：`pytest -q tests/test_sessions.py tests/test_config.py`；`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/config.py`（新增）、`src/sessions.py`、`src/main.py`、`tests/test_sessions.py`、`tests/test_config.py`（新增）、`README.md`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：默认值与原行为一致（30s 阈值、30s 宽限）；`PAUSE_GRACE_SEC=0` 恢复“一遇 `isPlaying=false`/缺失即结算”的近似旧行为；`played_at` 由 `last_seen_at` 改为 `last_active_at` 的 ISO 字符串，已落库记录不受影响；回滚恢复 `src/sessions.py`、`src/main.py` 与文件即可。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。新增 `src/config.py`；`src/sessions.py` 增加 `last_active_at`/`paused` 与宽限状态机；`src/main.py` 用 `env_int` 解析并注入阈值/宽限；新增 `tests/test_config.py` 与 `tests/test_sessions.py` 11 项新测试。验证：`pytest -q` 158 passed（含新测试）；`git diff --check` 干净；`python3 scripts/check_md_links.py` 全部解析。遗留：暂无。
+
+## NDS-CORE-003 pause-duration accounting 与宽限逻辑修正
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-CORE-002。
+- **目标**：修正 `src/sessions.py` 中的两个语义缺陷：会话时长按 `last_active_at - first_seen_at` 计算仍包含会话中部暂停的挂钟时间；缺失会话的过期处理在 `elif session.get("committed")` 分支下于宽限期内即被丢弃，与“宽限期内保留”的文档不符。
+- **实施步骤**：
+  1. 会话字典新增 `active_duration_sec`（float，初值 0）；`_session_from_entry` 不再以 `last_active_at - first_seen_at` 推导时长。
+  2. `process_poll` 同曲活跃分支：若上次状态为 `paused=True`（暂停或缺失后续），仅将 `last_active_at` 重置到恢复时间戳，不计入间隔；否则累计 `current_time - last_active_at` 到 `active_duration_sec` 并更新 `last_active_at`。暂停同曲条目或缺失轮询不累计时长也不更新 `last_active_at`。
+  3. `finalize_session` 与 `_maybe_commit_active_session` 改用 `active_duration_sec` 判断 `>= play_threshold_sec`；批处理 finalize 不再追加最终间隔。`_commit_session` 仍以 `last_active_at` 作为 `played_at` 来源。
+  4. 重写 stale 循环：缺失/暂停会话在 `current_time - last_active_at < pause_grace_sec` 时一律保留（无论是否已结算）并标记 `paused=True`、更新 `last_seen_at`；超期时只对未结算会话调用 `finalize_session` 一次，已结算会话直接从内存移除不重复写入。
+  5. 更新 `tests/test_sessions.py`：保留并修正 `test_pause_resume_same_track_continues_session` 以反映“恢复后从恢复时间戳继续累加”的语义；新增 `test_mid_session_pause_excluded_from_duration`（t0/t10/t20/t50/t60 => 20 而非 60）与 `test_committed_missing_within_grace_remains_beyond_grace_dropped`（已结算缺失在宽限内保留、超期移除且不重复写入）；新增 `test_pause_does_not_advance_listen_duration` 对 `active_duration_sec == 0` 的断言。
+  6. 同步 `docs/current-state.md` 第 4、5、32、35 条更新为按活跃累计的语义。
+- **验收标准**：会话中部暂停不补偿挂钟时长（恢复继续从恢复时间戳累加、最终间隔仅由活跃轮询累计）；`t0 active, t1 active` 仍得到 `t1-t0`；不同活跃曲目立即结算旧会话且不重复写入；已结算会话缺失在宽限内保留、超期移除不重复写入；`pytest -q` 通过；`git diff --check` 干净；`python3 scripts/check_md_links.py` 通过。
+- **验证命令**：`pytest -q tests/test_sessions.py`；`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/sessions.py`、`tests/test_sessions.py`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：仅 `src/sessions.py` 计算口径变化，未触及 schema 与已落库记录；`played_at` 仍由 `last_active_at` 产生；回滚恢复 `src/sessions.py`、`tests/test_sessions.py`、`docs/current-state.md`、`docs/tasks.md` 即可。`PAUSE_GRACE_SEC=0` 仍保持“一遇缺失即超期”语义；既有的 `paused`/`last_active_at`/`last_seen_at` 字段含义未变，新增 `active_duration_sec` 仅供内存使用、不写入 DB。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。`src/sessions.py` 改用累计 `active_duration_sec`；stale 循环重写以保留宽限内会话、超期对未结算 finalize 一次、已结算直接移除；`tests/test_sessions.py` 修正 1 项、新增 3 项测试。验证：`pytest -q` 184 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 通过。遗留：暂无。
+
+## NDS-UI-002 正在播放本地计时与每日趋势时间范围选择
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-UI-001。
+- **目标**：在“正在播放”列表加入本地 1 秒计时器，在两次 API 刷新之间本地递增显示的已用秒数，并以服务器返回的 `seconds_elapsed` 重新设置基线且不发起额外请求；为“每日播放趋势”加入 7/30/90 天分段控件，切换时仅重新拉取 `/api/stats/daily?days=N`。
+- **实施步骤**：
+  1. `src/database.py`：`get_daily_stats(days=30)` 使用参数化 SQLite 截止 `date('now', '-N days')`。
+  2. `src/schemas.py`：新增 `DAILY_DAYS_*` 常量；`src/main.py` 的 `GET /api/stats/daily` 新增 `days` 查询参数（FastAPI `Query` 7–90，默认 30），保持默认响应兼容。
+  3. `src/static/index.html`：在“每日播放趋势”加入 3 个按钮的可见分段控件；新增 `dailyDays` 状态、`fetchDaily()`（独立飞行标志防重叠）与 `setActiveDailyButton`；`fetchStats` 中的 daily 请求改用 `${dailyDays}`；为“正在播放”加入 `nowPlayingTicker`/`nowPlayingEntries` 与 `startNowPlayingTicker`/`stopNowPlayingTicker`，渲染时以 `seconds_elapsed` 设基线，`visibilitychange` 隐藏时停止、可见时恢复，空列表清空计时器。
+  4. 新增源码级静态测试 `tests/test_static_dashboard.py`；为后端 `days` 参数与数据库窗口新增 `tests/test_hourly_daily.py` 用例；同步文档。
+- **验收标准**：7/30/90 与非法 `days` 的 API/database 行为符合边界；本地计时器仅用 `textContent` 更新、不发起额外 API 调用，页面隐藏时停止、可见时恢复；分段控件切换调用 `fetchDaily` 且与自动刷新不重叠；`pytest -q`、`git diff --check`、`python3 scripts/check_md_links.py` 通过。
+- **验证命令**：`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`；`pytest -q tests/test_static_dashboard.py tests/test_hourly_daily.py`。
+- **涉及文件**：`src/database.py`、`src/schemas.py`、`src/main.py`、`src/static/index.html`、`tests/test_hourly_daily.py`、`tests/test_static_dashboard.py`（新增）、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`、`README.md`。
+- **风险/回滚**：本地计时仅用于显示，基线仍由服务器返回值决定，不会漂移超过一个刷新周期；分段控件不改变默认响应；回滚恢复 `index.html`、`schemas.py`、`database.py`、`main.py` 与文件即可。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。`get_daily_stats` 参数化；API 增加 `days`；前端加入分段控件与本地计时器；新增 `tests/test_static_dashboard.py` 14 项与 `tests/test_hourly_daily.py` 8 项新用例。验证：`pytest -q` 182 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 全部解析。遗留：暂无。

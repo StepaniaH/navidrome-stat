@@ -11,6 +11,10 @@ TOP_LIMIT_DEFAULT = 10
 TOP_LIMIT_MIN = 1
 TOP_LIMIT_MAX = 50
 
+DAILY_DAYS_DEFAULT = 30
+DAILY_DAYS_MIN = 7
+DAILY_DAYS_MAX = 90
+
 
 class PlayerStat(BaseModel):
     client_name: Optional[str] = None

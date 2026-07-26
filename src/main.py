@@ -34,6 +34,9 @@ from src.schemas import (
     HISTORY_LIMIT_MAX,
     HISTORY_LIMIT_MIN,
     AuthStatusResponse,
+    DAILY_DAYS_DEFAULT,
+    DAILY_DAYS_MAX,
+    DAILY_DAYS_MIN,
     HealthLiveResponse,
     HistoryItem,
     HourlyStat,
@@ -80,6 +83,7 @@ from src.privacy_ops import (
     set_retention_days,
     validate_retention_days,
 )
+from src.config import env_int
 from src.metrics import format_prometheus_metrics
 from src.sessions import PlaybackSessionTracker
 from src.source_config import (
@@ -97,9 +101,15 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", 10))
-MAX_POLL_BACKOFF_SEC = int(os.getenv("MAX_POLL_BACKOFF_SEC", 60))
-RETENTION_MAINTENANCE_SEC = int(os.getenv("RETENTION_MAINTENANCE_SEC", 86400))
+POLL_INTERVAL = env_int("POLL_INTERVAL", default=10, min_value=5, max_value=300)
+MAX_POLL_BACKOFF_SEC = env_int("MAX_POLL_BACKOFF_SEC", default=60, min_value=1, max_value=3600)
+RETENTION_MAINTENANCE_SEC = env_int(
+    "RETENTION_MAINTENANCE_SEC", default=86400, min_value=60, max_value=604800
+)
+PLAY_THRESHOLD_SEC = env_int(
+    "PLAY_THRESHOLD_SEC", default=30, min_value=1, max_value=3600
+)
+PAUSE_GRACE_SEC = env_int("PAUSE_GRACE_SEC", default=30, min_value=0, max_value=3600)
 
 
 async def _save_play_session_with_logging(session: dict) -> None:
@@ -115,7 +125,11 @@ async def _save_play_session_with_logging(session: dict) -> None:
         logger.error("Failed to save play session: %s", e)
 
 
-session_tracker = PlaybackSessionTracker(_save_play_session_with_logging)
+session_tracker = PlaybackSessionTracker(
+    _save_play_session_with_logging,
+    play_threshold_sec=PLAY_THRESHOLD_SEC,
+    pause_grace_sec=PAUSE_GRACE_SEC,
+)
 
 
 async def finalize_session(player_id: str):
@@ -439,9 +453,15 @@ async def api_hourly_stats():
 
 
 @app.get("/api/stats/daily", response_model=list[DailyStat])
-async def api_daily_stats():
-    """Endpoint for play counts per day over the last 30 days."""
-    return await _query_stats(get_daily_stats)
+async def api_daily_stats(
+    days: int = Query(
+        default=DAILY_DAYS_DEFAULT,
+        ge=DAILY_DAYS_MIN,
+        le=DAILY_DAYS_MAX,
+    ),
+):
+    """Endpoint for play counts per day over the last ``days`` days (default 30, 7-90)."""
+    return await _query_stats(lambda: get_daily_stats(days=days))
 
 
 @app.get("/api/stats/top-artists", response_model=list[TopArtistItem])
