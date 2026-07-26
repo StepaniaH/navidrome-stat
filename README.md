@@ -50,6 +50,31 @@ services:
 
 Compose reads a local `.env` for `${VAR}` substitution when present; CI validates config without that file.
 
+### Docker Hub 发布
+
+仓库通过 `.github/workflows/docker-publish.yml` 在版本 tag 推送时发布多架构镜像。先在 GitHub 仓库配置以下 Actions secrets：
+
+- `DOCKERHUB_USERNAME`：Docker Hub 用户名
+- `DOCKERHUB_TOKEN`：Docker Hub Access Token，不要使用账户密码
+
+发布流程：
+
+```bash
+git checkout main
+git pull origin main
+git tag v0.5.0
+git push origin v0.5.0
+```
+
+tag 必须使用 `v` 前缀。Action 会构建 `linux/amd64` 与 `linux/arm64`，并推送：
+
+```text
+stepaniah/navidrome-statistic:v0.5.0
+stepaniah/navidrome-statistic:latest
+```
+
+不要在 `dev` 分支上直接创建发布 tag；只有已经同步到 GitHub `main` 的版本才应发布到 Docker Hub。
+
 **.env** (placeholders only):
 
 ```env
