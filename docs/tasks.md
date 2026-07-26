@@ -34,6 +34,7 @@
 | NDS-UI-003 | Dashboard 统一历史窗口与环比对比指标 | P2 | 已完成 | NDS-UI-002 |
 | NDS-UI-004 | 时区感知的周×时热力图 | P2 | 已完成 | NDS-UI-003 |
 | NDS-UI-005 | 丰富榜单与客户端分析 | P2 | 已完成 | NDS-UI-004 |
+| NDS-DATA-002 | 短播放尝试与短播放率 | P2 | 已完成 | NDS-UI-005 |
 
 ## NDS-SEC-001 访问控制与部署边界
 
@@ -396,3 +397,15 @@
 - **涉及文件**：`src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html`、`tests/test_ranking_metrics.py`、`tests/test_main.py`、`tests/test_top_artists_albums.py`、`tests/test_stats_window.py`、`tests/test_static_dashboard.py`、`README.md`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
 - **风险/回滚**：只读聚合查询和展示扩展，不改变会话状态机、数据库 schema 或既有播放记录；旧 API 字段保留，新增字段可选；回滚本阶段文件即可。
 - **完成记录**：2026-07-26，当前 agent 接手 OpenCode 中断后的前端收尾。新增榜单 metric 请求与切换、客户端详情表、转码播放/时长百分比 tooltip；验证：`pytest -q` 305 passed，待执行阶段提交。
+
+## NDS-DATA-002 短播放尝试与短播放率
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-UI-005。
+- **目标**：记录未达到正式播放阈值的播放尝试，支持短播放率分析，同时不污染 `play_history` 的正式播放统计。
+- **实施步骤**：新增 schema 3 的 `play_attempts` 表；会话低于 `PLAY_THRESHOLD_SEC` 结束时记录 `outcome=short_play`，达到阈值的会话仍只写入 `play_history`；新增 `get_short_play_stats()` 与 `/api/stats/short-plays`，支持统一 `days`/`timezone` 窗口；补充迁移、状态机、数据库和 API 测试。
+- **验收标准**：短播放不增加正式播放次数；正式播放不生成重复短播放尝试；短播放率按短播放尝试 /（短播放尝试 + 正式播放）计算；明确不称为跳过率；schema 迁移幂等；全量测试、链接和 diff 检查通过。
+- **验证命令**：`pytest -q`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/database.py`、`src/sessions.py`、`src/main.py`、`src/schemas.py`、`tests/test_database.py`、`tests/test_short_plays.py`。
+- **风险/回滚**：新增表不修改既有 `play_history` 数据；短播放尝试属于行为数据，默认与播放历史使用相同保留边界仍需后续隐私确认；回滚需恢复 schema 版本并删除本阶段代码，不能直接删除已有 `play_attempts` 数据。
+- **完成记录**：2026-07-26，当前 agent 实现。验证：`pytest -q` 313 passed；待执行阶段提交。

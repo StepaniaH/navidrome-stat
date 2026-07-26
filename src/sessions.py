@@ -51,12 +51,14 @@ class PlaybackSessionTracker:
         play_threshold_sec: int = _DEFAULT_PLAY_THRESHOLD_SEC,
         stale_threshold_sec: int = STALE_THRESHOLD_SEC,
         pause_grace_sec: int = _DEFAULT_PAUSE_GRACE_SEC,
+        save_attempt: SaveSessionCallback | None = None,
     ):
         self.active_sessions: dict[str, dict] = {}
         self._save_session = save_session
         self.play_threshold_sec = play_threshold_sec
         self.stale_threshold_sec = stale_threshold_sec
         self.pause_grace_sec = pause_grace_sec
+        self._save_attempt = save_attempt
 
     async def finalize_session(self, player_id: str) -> None:
         if player_id not in self.active_sessions:
@@ -69,6 +71,13 @@ class PlaybackSessionTracker:
         duration = session.get("active_duration_sec", 0.0)
         if duration >= self.play_threshold_sec:
             await self._commit_session(session, int(duration))
+        elif self._save_attempt is not None:
+            await self._save_attempt({
+                **session,
+                "duration_sec": int(duration),
+                "outcome": "short_play",
+                "last_seen_at": (session.get("last_active_at") or session["last_seen_at"]).isoformat(),
+            })
 
     async def _commit_session(self, session: dict, duration_sec: int) -> None:
         # ``played_at`` is anchored to the last actively-playing observation,

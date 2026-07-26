@@ -126,6 +126,14 @@ class WeekdayHourStat(BaseModel):
     count: int
 
 
+class ShortPlayStats(BaseModel):
+    short_count: int
+    counted_count: int
+    attempt_count: int
+    short_listen_sec: int
+    short_play_rate_pct: float
+
+
 class TopArtistItem(BaseModel):
     artist: str
     count: int

@@ -14,6 +14,7 @@ It runs as a background service, passively monitoring your Navidrome server's Su
 - **Repeat Plays**: Listening to the same track again adds another row and increases aggregated play counts.
 - **Client & Transcoding Stats**: Records which app/client you are using (e.g., Amperfy, Feishin) and whether the stream is being transcoded. The dashboard also shows per-client listen time, average session length, and transcoding rate.
 - **Flexible Rankings**: Top artists and albums can be ranked by play count or observed listen time within the selected statistics window.
+- **Short-play Analysis**: Below-threshold attempts are stored separately and exposed as a short-play rate; this is not presented as an intentional skip rate.
 - **Privacy Controls**: Default **permanent** retention with a settings page (`/settings`) to choose 1–360 days or permanent; per-user JSON export/import and deletion with preview-before-confirm.
 - **Built-in Dashboard**: A responsive single-page dashboard built with TailwindCSS and ECharts (loaded from public CDNs).
 - **Lightweight**: Async Python (FastAPI + SQLite) with a small CPU/RAM footprint.

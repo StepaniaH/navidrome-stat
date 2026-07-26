@@ -18,6 +18,7 @@ from src.client import NavidromeClient
 from src.database import (
     init_db,
     save_play_session,
+    save_play_attempt,
     get_player_stats,
     get_transcoding_stats,
     get_hourly_stats,
@@ -26,6 +27,7 @@ from src.database import (
     get_top_albums,
     get_playback_history,
     get_summary,
+    get_short_play_stats,
     get_weekday_hour_stats,
     ping_db,
     resolve_timezone,
@@ -68,6 +70,7 @@ from src.schemas import (
     SourceTestRequest,
     SourceTestResponse,
     StorageStatsResponse,
+    ShortPlayStats,
     SummaryStat,
     TranscodingStat,
     UserDeletePreviewResponse,
@@ -136,10 +139,18 @@ async def _save_play_session_with_logging(session: dict) -> None:
         logger.error("Failed to save play session: %s", e)
 
 
+async def _save_play_attempt_with_logging(attempt: dict) -> None:
+    try:
+        await save_play_attempt(attempt)
+    except Exception as e:
+        logger.error("Failed to save play attempt: %s", e)
+
+
 session_tracker = PlaybackSessionTracker(
     _save_play_session_with_logging,
     play_threshold_sec=PLAY_THRESHOLD_SEC,
     pause_grace_sec=PAUSE_GRACE_SEC,
+    save_attempt=_save_play_attempt_with_logging,
 )
 
 
@@ -526,6 +537,17 @@ async def api_transcoding_stats(
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(lambda: get_transcoding_stats(days=window, timezone_name=tz))
+
+
+@app.get("/api/stats/short-plays", response_model=ShortPlayStats)
+async def api_short_play_stats(
+    days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Return short-play rate; it does not claim intentional skips."""
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_short_play_stats(days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/hourly", response_model=list[HourlyStat])

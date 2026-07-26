@@ -4,7 +4,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 DB_PATH = os.getenv("DATABASE_URL", "navidrome_stats.db")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 TIMEZONE_DEFAULT = "UTC"
 
@@ -162,6 +162,28 @@ async def _apply_migrations(db: aiosqlite.Connection) -> None:
             await _set_meta_value(db, "retention_days", "permanent")
         await _set_schema_version(db, 2)
 
+    if version < 3:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS play_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                played_at TEXT,
+                username TEXT,
+                client_name TEXT,
+                track_id TEXT,
+                title TEXT,
+                artist TEXT,
+                album TEXT,
+                is_transcoding INTEGER,
+                duration_sec INTEGER NOT NULL,
+                outcome TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_attempts_played_at
+            ON play_attempts(played_at DESC)
+        """)
+        await _set_schema_version(db, 3)
+
 
 async def _get_meta_value(db: aiosqlite.Connection, key: str):
     await db.execute("""
@@ -230,6 +252,53 @@ async def save_play_session(session: dict, db_path: str | None = None):
             session.get("duration_sec")
         ))
         await db.commit()
+
+
+async def save_play_attempt(attempt: dict, db_path: str | None = None):
+    """Save a below-threshold playback attempt without counting it as a play."""
+    path = _path(db_path)
+    async with aiosqlite.connect(path) as db:
+        await db.execute("""
+            INSERT INTO play_attempts (
+                played_at, username, client_name, track_id, title, artist,
+                album, is_transcoding, duration_sec, outcome
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            attempt.get("last_seen_at"), attempt.get("username"),
+            attempt.get("client_name"), attempt.get("track_id"),
+            attempt.get("title"), attempt.get("artist"), attempt.get("album"),
+            attempt.get("is_transcoding"), int(attempt.get("duration_sec", 0)),
+            attempt.get("outcome", "short_play"),
+        ))
+        await db.commit()
+
+
+async def get_short_play_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
+                               db_path: str | None = None):
+    """Return short-play counts and rate; this is not a skip-rate claim."""
+    path = _path(db_path)
+    pred, params = _window_predicate(days, timezone_name)
+    async with aiosqlite.connect(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(f"""
+            SELECT COUNT(*) AS short_count, COALESCE(SUM(duration_sec), 0) AS short_listen_sec
+            FROM play_attempts WHERE {pred} AND outcome = 'short_play'
+        """, params) as cursor:
+            short = await cursor.fetchone()
+        async with db.execute(f"""
+            SELECT COUNT(*) AS counted_count FROM play_history WHERE {pred}
+        """, params) as cursor:
+            counted = await cursor.fetchone()
+    short_count = int(short["short_count"] or 0)
+    counted_count = int(counted["counted_count"] or 0)
+    attempt_count = short_count + counted_count
+    return {
+        "short_count": short_count,
+        "counted_count": counted_count,
+        "attempt_count": attempt_count,
+        "short_listen_sec": int(short["short_listen_sec"] or 0),
+        "short_play_rate_pct": round(short_count / attempt_count * 100, 2) if attempt_count else 0.0,
+    }
 
 
 async def get_player_stats(

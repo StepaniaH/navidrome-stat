@@ -191,6 +191,10 @@ async def apply_retention_purge(db_path: str | None = None) -> dict[str, int]:
             "DELETE FROM play_history WHERE played_at < ?",
             (cutoff,),
         )
+        await db.execute(
+            "DELETE FROM play_attempts WHERE played_at < ?",
+            (cutoff,),
+        )
         await db.commit()
         deleted = cursor.rowcount
     return {"deleted": deleted, "retention_days": days}
@@ -329,7 +333,12 @@ async def preview_delete_user(username: str, db_path: str | None = None) -> dict
             (username,),
         ) as cursor:
             row = await cursor.fetchone()
-    return {"records_to_delete": int(row[0])}
+        async with db.execute(
+            "SELECT COUNT(*) FROM play_attempts WHERE username = ?",
+            (username,),
+        ) as cursor:
+            attempt_row = await cursor.fetchone()
+    return {"records_to_delete": int(row[0]) + int(attempt_row[0])}
 
 
 async def delete_user_data(username: str, db_path: str | None = None) -> dict[str, int]:
@@ -343,6 +352,10 @@ async def delete_user_data(username: str, db_path: str | None = None) -> dict[st
             "DELETE FROM play_history WHERE username = ?",
             (username,),
         )
+        attempt_cursor = await db.execute(
+            "DELETE FROM play_attempts WHERE username = ?",
+            (username,),
+        )
         await db.commit()
-        deleted = cursor.rowcount
+        deleted = cursor.rowcount + attempt_cursor.rowcount
     return {"deleted": deleted}
