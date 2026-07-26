@@ -32,6 +32,7 @@
 | NDS-CORE-002 | 暂停/缺失宽限与配置安全 | P1 | 已完成 | NDS-CORE-001 |
 | NDS-UI-002 | 正在播放本地计时与每日趋势时间范围选择 | P2 | 已完成 | NDS-UI-001 |
 | NDS-UI-003 | Dashboard 统一历史窗口与环比对比指标 | P2 | 已完成 | NDS-UI-002 |
+| NDS-UI-004 | 时区感知的周×时热力图 | P2 | 已完成 | NDS-UI-003 |
 
 ## NDS-SEC-001 访问控制与部署边界
 
@@ -359,3 +360,21 @@
 - **涉及文件**：`src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html`、`tests/test_stats_window.py`（新增）、`tests/test_static_dashboard.py`、`tests/test_main.py`、`tests/test_top_artists_albums.py`、`tests/test_hourly_daily.py`、`README.md`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
 - **风险/回滚**：所有新增字段均为可选且默认 `0`/`null`，不破坏既有调用；daily 默认 30 与历史接口默认 `0` 保留旧行为；前端单路径 `fetchStats` 降低了竞态风险；回滚恢复 `src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html` 与相关测试/文档即可。
 - **完成记录**：2026-07-26，OpenCode (glm-5.2)。新增统计窗口常量与 `SummaryStat` 对比字段；`_window_predicate` / `_previous_window_predicate` 参数化谓词；`get_summary` 与全部聚合查询均接受 `days`；`_validate_stats_days` 在 `main.py` 拒绝 1–6；前端以 `#statsWindowControl` 替换每日分段控件并传播 `?days=${statsDays}`、新增 `#statsScopeLabel`、环比徽章与 `active_days` 副行。验证：`pytest -q` 225 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 全部解析。遗留：暂无。
+
+## NDS-UI-004 时区感知的周×时热力图
+
+- **优先级/状态**：P2 / 已完成
+- **依赖**：NDS-UI-003（全局统计窗口与 `fetchStats` 聚合入口）。
+- **目标**：在 Dashboard 新增一个 weekday×hour 热力图（7×24=168 单元），并让所有历史组件按用户选择的时区分组（`browser` 解析为 IANA 名称，`UTC` 直传），`now-playing` 仍保持实时且不受时区影响。
+- **实施步骤**：
+  1. `src/schemas.py` 新增 `TIMEZONE_DEFAULT="UTC"`、`TIMEZONE_VALIDATION_ERROR` 与 `WeekdayHourStat{weekday,hour,count}`；`src/database.py` 新增 `resolve_timezone`（`zoneinfo.ZoneInfo` 校验，无效抛 `ValueError`）与 `get_weekday_hour_stats(days=30, timezone_name="UTC", db_path=...)`，返回 168 行零填充网格，bucket 边界与有限窗口的 UTC 截止都按 `timezone_name` 计算，从不字符串拼接进 SQL。
+  2. `src/main.py` 新增 `_validate_stats_timezone`（422 on `ValueError`）与 `GET /api/stats/heatmap?days=&timezone=`（默认 `days=30`，`days=0` 全部历史，`1–6` 返回 422）；summary/players/transcoding/hourly/heatmap/daily/top-artists/top-albums/history 全部接受可选 `timezone` 查询参数（默认 `UTC`），`now-playing` 不接受。
+  3. `src/static/index.html`：在顶部新增 `#statsTimezoneSelect`（选项 `browser` 与 `UTC`，状态变量 `statsTimezone`），启动时通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 解析 `browser` 为 IANA 名称并以 `textContent` 安全写入选项标签，无法解析时移除选项并退回 `UTC`；新增 `resolveStatsTimezone()` 与 change 事件，切换时调用 `fetchStats()`（复用其 in-flight 防护）。
+  4. 在 hourly/daily 下方新增「周时热力图」卡片（`#weekdayHourChart` + `#weekdayHourChartSkeleton` + `#weekdayHourChartEmpty` + `#weekdayHourChartWrap`，`aria-label="周时热力图"`），包含 ECharts `weekdayHourChart` 实例与 `renderWeekdayHourChart(data)`：168 个 `{weekday,hour,count}` 单元，X 轴为静态 0–23 小时、Y 轴为静态 Mon–Sun（与 Python `date.weekday()` 对齐），含 `visualMap`、空状态、tooltip，无 `innerHTML`/`insertAdjacentHTML`。
+  5. `fetchStats` 中所有历史请求 URL 附加 `&timezone=${encodeURIComponent(resolveStatsTimezone())}`（`now-playing` 不带），将 heatmap 请求加入 `Promise.all`，参与 401/ok 状态检查、JSON 解析与 `renderWeekdayHourChart(weekdayHourData)` 渲染；`setLoading` 加入 `weekdayHourChartSkeleton` 与 `weekdayHourChart` 可见性切换，`window resize` 调用 `weekdayHourChart.resize()`。
+  6. 测试与文档：新增 `tests/test_heatmap.py`（DB 168 网格、UTC/Shanghai/New York 边界、有限窗口、无效时区、API 传播与 422 边界、503、认证保护、daily 跨午夜零填充）；在 `tests/test_static_dashboard.py` 增加时区选择器、状态、resolver、change handler、时区查询传播、heatmap 卡片/init/render/fetch/resize/setLoading 源码级断言；同步 `docs/interfaces.md` 与 `docs/current-state.md`。
+- **验收标准**：`get_weekday_hour_stats` 在空库与任意时区返回 168 个零填充行，bucket 边界与 Python `date.weekday()` 一致；`/api/stats/heatmap` 接受 `days=0` 或 `7–90`，`1–6`/`91`/负数返回 422，非法 `timezone` 返回 422，数据库异常 503，启用认证时未授权 401；Dashboard 时区选择只保留 `browser`/`UTC` 两个选项，`browser` 标签安全写入 IANA 名称，切换时复用 `fetchStats` 防护并重拉所有历史组件，`now-playing` 不被时区过滤；heatmap 卡片含静态 Mon–Sun 与 0–23 轴、168 单元、`visualMap`、空状态、`resize`；无用户数据 `innerHTML`；`pytest -q`、`git diff --check`、`python3 scripts/check_md_links.py` 通过，无真实凭据。
+- **验证命令**：`pytest -q`；`pytest -q tests/test_heatmap.py tests/test_static_dashboard.py`；`git diff --check`；`python3 scripts/check_md_links.py`。
+- **涉及文件**：`src/schemas.py`、`src/database.py`、`src/main.py`、`src/static/index.html`、`tests/test_heatmap.py`（新增）、`tests/test_static_dashboard.py`、`docs/interfaces.md`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：所有历史端点的 `timezone` 参数可选且默认 `UTC`，既有调用方行为保持；`browser` 在不支持 `Intl.DateTimeFormat` 的环境中退回 `UTC`，不影响后端；`get_weekday_hour_stats` 是新增只读查询，不修改既有数据；回滚恢复 `src/main.py`、`src/database.py`、`src/schemas.py`、`src/static/index.html`、`tests/` 与相关文档即可。
+- **完成记录**：2026-07-26，OpenCode (glm-5.2)。后端：`resolve_timezone` + `get_weekday_hour_stats` + `WeekdayHourStat` + `_validate_stats_timezone` + `GET /api/stats/heatmap`，全部历史端点接受可选 `timezone`（默认 `UTC`）。前端：`#statsTimezoneSelect`（browser/UTC）、`resolveStatsTimezone()`、change 事件、`WEEKDAY_LABELS`/`HOUR_LABELS`、`renderWeekdayHourChart(data)`、`setLoading` 与 resize 接入；`fetchStats` 给所有历史 URL 附加 `&timezone=${encodeURIComponent(resolveStatsTimezone())}`，`now-playing` 不带；新增「周时热力图」卡片。测试：`tests/test_heatmap.py` 13 项，`tests/test_static_dashboard.py` 新增 13 项源码级断言。验证：`pytest -q` 273 passed；`git diff --check` 干净；`python3 scripts/check_md_links.py` 通过；无真实凭据入库。遗留：暂无。

@@ -75,7 +75,7 @@ async def test_api_history_limit_default(mock_get_history):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/history")
     assert response.status_code == 200
-    mock_get_history.assert_awaited_once_with(limit=10, days=0)
+    mock_get_history.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC")
 
 
 @pytest.mark.asyncio
@@ -93,7 +93,7 @@ async def test_api_history_limit_bounds(mock_get_history, limit, expected_status
         response = await ac.get(f"/api/stats/history?limit={limit}")
     assert response.status_code == expected_status
     if expected_status == 200:
-        mock_get_history.assert_awaited_once_with(limit=limit, days=0)
+        mock_get_history.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC")
 
 
 @pytest.mark.asyncio

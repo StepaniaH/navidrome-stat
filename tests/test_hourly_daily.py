@@ -56,19 +56,32 @@ def test_get_daily_stats_aggregates_recent_days(db_path):
     asyncio.run(save_play_session(_session(recent_b, "t3"), db_path=db_path))
     asyncio.run(save_play_session(_session(old, "t4"), db_path=db_path))
 
+    # Default days=30 zero-fills every calendar date in the UTC window.
     rows = asyncio.run(get_daily_stats(db_path=db_path))
 
-    assert len(rows) == 2
+    assert len(rows) == 30
     by_date = {row["date"]: row["count"] for row in rows}
     assert by_date[recent_a[:10]] == 2
     assert by_date[recent_b[:10]] == 1
+    assert by_date.get(old[:10], 0) == 0  # outside the window
+    # All counts sum to the plays inside the window.
+    assert sum(r["count"] for r in rows) == 3
     assert rows == sorted(rows, key=lambda r: r["date"])
     assert all(row["date"][:4].isdigit() for row in rows)
 
 
-def test_get_daily_stats_counts_only(db_path):
+def test_get_daily_stats_counts_only_zero_fills_window(db_path):
+    """For finite windows, every calendar date is present even with no data."""
     asyncio.run(init_db(db_path))
-    rows = asyncio.run(get_daily_stats(db_path=db_path))
+    rows = asyncio.run(get_daily_stats(days=30, db_path=db_path))
+    assert len(rows) == 30
+    assert all(row["count"] == 0 for row in rows)
+    assert rows == sorted(rows, key=lambda r: r["date"])
+
+
+def test_get_daily_stats_all_history_empty(db_path):
+    asyncio.run(init_db(db_path))
+    rows = asyncio.run(get_daily_stats(days=0, db_path=db_path))
     assert rows == []
 
 
@@ -84,13 +97,27 @@ def test_get_daily_stats_respects_days_window(db_path):
     asyncio.run(save_play_session(_session(old, "t3"), db_path=db_path))
 
     rows_30 = asyncio.run(get_daily_stats(days=30, db_path=db_path))
-    assert {r["date"] for r in rows_30} == {recent[:10], mid[:10]}
+    # Finite window zero-fills every date from today-29 through today.
+    assert len(rows_30) == 30
+    by_date_30 = {r["date"]: r["count"] for r in rows_30}
+    assert by_date_30[recent[:10]] == 1
+    assert by_date_30[mid[:10]] == 1
+    assert by_date_30.get(old[:10], 0) == 0  # outside the window
+    assert sum(r["count"] for r in rows_30) == 2
 
     rows_90 = asyncio.run(get_daily_stats(days=90, db_path=db_path))
-    assert {r["date"] for r in rows_90} == {recent[:10], mid[:10], old[:10]}
+    assert len(rows_90) == 90
+    by_date_90 = {r["date"]: r["count"] for r in rows_90}
+    assert by_date_90.get(recent[:10]) == 1
+    assert by_date_90.get(mid[:10]) == 1
+    assert by_date_90.get(old[:10]) == 1
+    assert sum(r["count"] for r in rows_90) == 3
 
     rows_7 = asyncio.run(get_daily_stats(days=7, db_path=db_path))
-    assert {r["date"] for r in rows_7} == {recent[:10]}
+    assert len(rows_7) == 7
+    by_date_7 = {r["date"]: r["count"] for r in rows_7}
+    assert by_date_7[recent[:10]] == 1
+    assert sum(r["count"] for r in rows_7) == 1
 
 
 @pytest.mark.asyncio
@@ -164,7 +191,7 @@ async def test_api_daily_stats_days_param(mock_get, days):
         response = await ac.get(f"/api/stats/daily?days={days}")
     assert response.status_code == 200
     assert response.json() == [{"date": "2024-03-24", "count": 3}]
-    mock_get.assert_awaited_once_with(days=days)
+    mock_get.assert_awaited_once_with(days=days, timezone_name="UTC")
 
 
 @pytest.mark.asyncio
@@ -174,7 +201,26 @@ async def test_api_daily_stats_default_days_is_30(mock_get):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/daily")
     assert response.status_code == 200
-    mock_get.assert_awaited_once_with(days=30)
+    mock_get.assert_awaited_once_with(days=30, timezone_name="UTC")
+
+
+@pytest.mark.asyncio
+@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+async def test_api_daily_stats_propagates_timezone(mock_get):
+    mock_get.return_value = []
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/stats/daily?days=7&timezone=Asia/Shanghai")
+    assert response.status_code == 200
+    mock_get.assert_awaited_once_with(days=7, timezone_name="Asia/Shanghai")
+
+
+@pytest.mark.asyncio
+@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+async def test_api_daily_stats_rejects_invalid_timezone(mock_get):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/stats/daily?days=7&timezone=NotAReal/Zone")
+    assert response.status_code == 422
+    mock_get.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -200,7 +246,7 @@ async def test_api_daily_stats_days_zero_selects_all_history(mock_get):
         response = await ac.get("/api/stats/daily?days=0")
     assert response.status_code == 200
     assert response.json() == [{"date": "2024-01-01", "count": 5}]
-    mock_get.assert_awaited_once_with(days=0)
+    mock_get.assert_awaited_once_with(days=0, timezone_name="UTC")
 
 
 @pytest.mark.asyncio

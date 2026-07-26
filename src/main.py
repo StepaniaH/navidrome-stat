@@ -26,7 +26,9 @@ from src.database import (
     get_top_albums,
     get_playback_history,
     get_summary,
+    get_weekday_hour_stats,
     ping_db,
+    resolve_timezone,
 )
 from src.runtime_state import runtime_state
 from src.schemas import (
@@ -39,6 +41,7 @@ from src.schemas import (
     STATS_DAYS_ALL,
     STATS_DAYS_MAX,
     STATS_DAYS_MIN,
+    STATS_DAYS_DEFAULT,
     HealthLiveResponse,
     HistoryItem,
     HourlyStat,
@@ -69,6 +72,9 @@ from src.schemas import (
     UserImportRequest,
     UserImportResponse,
     UserSummary,
+    TIMEZONE_DEFAULT,
+    TIMEZONE_VALIDATION_ERROR,
+    WeekdayHourStat,
 )
 from src.privacy_ops import (
     RETENTION_MAX_DAYS,
@@ -276,6 +282,21 @@ def _validate_stats_days(days: int) -> int:
     )
 
 
+def _validate_stats_timezone(timezone_name: str) -> str:
+    """Validate the optional ``timezone`` query parameter.
+
+    Resolved against Python stdlib ``zoneinfo.ZoneInfo`` (no new dependency).
+    Invalid names raise HTTP 422. The validated value is only used for Python
+    date/hour/weekday bucket math and UTC cutoff computation in ``database.py``;
+    it is never string-interpolated into SQL.
+    """
+    try:
+        resolve_timezone(timezone_name)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=TIMEZONE_VALIDATION_ERROR)
+    return timezone_name
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
@@ -452,42 +473,75 @@ async def metrics():
 @app.get("/api/stats/summary", response_model=SummaryStat)
 async def api_summary_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
 ):
     """Endpoint for aggregate listening statistics over the selected window.
 
     ``days=0`` (default) means all history; ``days=7..90`` selects a finite
     rolling window with current-vs-previous comparison metrics. See
     ``src.database.get_summary`` for the exact semantics.
+
+    ``timezone`` (optional, default ``UTC``) is validated against
+    ``zoneinfo.ZoneInfo`` and controls date bucket boundaries and finite-window
+    UTC cutoffs only; timestamps remain stored as UTC ISO strings.
     """
     window = _validate_stats_days(days)
-    return await _query_stats(lambda: get_summary(days=window))
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_summary(days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/players", response_model=list[PlayerStat])
 async def api_player_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
 ):
     """Endpoint for player usage distribution over the selected window."""
     window = _validate_stats_days(days)
-    return await _query_stats(lambda: get_player_stats(days=window))
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_player_stats(days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/transcoding", response_model=list[TranscodingStat])
 async def api_transcoding_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
 ):
     """Endpoint for transcoding ratio over the selected window."""
     window = _validate_stats_days(days)
-    return await _query_stats(lambda: get_transcoding_stats(days=window))
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_transcoding_stats(days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/hourly", response_model=list[HourlyStat])
 async def api_hourly_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
 ):
-    """Endpoint for play counts grouped by hour of day (0-23) over the selected window."""
+    """Endpoint for play counts grouped by local hour of day (0-23) over the
+    selected window. Hours are taken in the requested timezone (default UTC).
+    """
     window = _validate_stats_days(days)
-    return await _query_stats(lambda: get_hourly_stats(days=window))
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_hourly_stats(days=window, timezone_name=tz))
+
+
+@app.get("/api/stats/heatmap", response_model=list[WeekdayHourStat])
+async def api_weekday_hour_stats(
+    days: int = Query(default=STATS_DAYS_DEFAULT, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+):
+    """Endpoint for the 7x24 weekday x hour heatmap over the selected window.
+
+    Returns every cell (168 rows) of ``{weekday: 0..6, hour: 0..23, count: int}``,
+    zero-filled. Weekday convention is Python's ``date.weekday()``: 0=Monday
+    ... 6=Sunday. Hours are taken in the requested timezone (default ``UTC``).
+    Default window is ``STATS_DAYS_DEFAULT`` (30 days); ``days=0`` selects all
+    history. Finite windows must be ``0`` or ``7..90`` (1..6 returns 422 as on
+    the other historical endpoints).
+    """
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_weekday_hour_stats(days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/daily", response_model=list[DailyStat])
@@ -497,14 +551,20 @@ async def api_daily_stats(
         ge=0,
         le=DAILY_DAYS_MAX,
     ),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
 ):
-    """Endpoint for play counts per day over the last ``days`` days.
+    """Endpoint for play counts per local day over the last ``days`` days.
 
     Backward compatible default is 30 days; ``days=0`` selects all history.
     Finite windows must be 7-90 (daily does not allow intermediate values).
+    Every calendar date in the window (or all-history span) is included with
+    at least count 0, ordered ascending. Date bucket boundaries use the
+    requested timezone (default ``UTC``); timestamps are stored as UTC ISO
+    strings.
     """
     window = _validate_stats_days(days)
-    return await _query_stats(lambda: get_daily_stats(days=window))
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_daily_stats(days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/top-artists", response_model=list[TopArtistItem])
@@ -515,10 +575,12 @@ async def api_top_artists(
         le=TOP_LIMIT_MAX,
     ),
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
 ):
     """Endpoint for top artists by play count over the selected window."""
     window = _validate_stats_days(days)
-    return await _query_stats(lambda: get_top_artists(limit=limit, days=window))
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_top_artists(limit=limit, days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/top-albums", response_model=list[TopAlbumItem])
@@ -529,10 +591,12 @@ async def api_top_albums(
         le=TOP_LIMIT_MAX,
     ),
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
 ):
     """Endpoint for top albums by play count over the selected window."""
     window = _validate_stats_days(days)
-    return await _query_stats(lambda: get_top_albums(limit=limit, days=window))
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_top_albums(limit=limit, days=window, timezone_name=tz))
 
 
 @app.get("/api/stats/now-playing", response_model=list[NowPlayingItem])
@@ -571,10 +635,12 @@ async def api_playback_history(
         le=HISTORY_LIMIT_MAX,
     ),
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
 ):
     """Endpoint for recent playback history over the selected window."""
     window = _validate_stats_days(days)
-    return await _query_stats(lambda: get_playback_history(limit=limit, days=window))
+    tz = _validate_stats_timezone(timezone)
+    return await _query_stats(lambda: get_playback_history(limit=limit, days=window, timezone_name=tz))
 
 
 def _privacy_settings_response(days: int | None) -> PrivacySettingsResponse:

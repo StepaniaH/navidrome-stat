@@ -169,6 +169,138 @@ def test_historical_fetch_urls_use_stats_days(source):
     assert "now-playing?days" not in block
 
 
+def test_timezone_selector_markup_exists(source):
+    assert 'id="statsTimezoneSelect"' in source
+    assert 'id="statsTimezoneBrowserOption"' in source
+    # Only the browser and UTC options are allowed in the static markup.
+    assert 'value="browser"' in source
+    assert 'value="UTC"' in source
+    assert 'value="Asia/"' not in source
+    assert 'value="America/"' not in source
+    assert 'value="Europe/"' not in source
+
+
+def test_timezone_state_and_resolver_exist(source):
+    # Global state declared near the other dashboard state variables.
+    assert "let statsTimezone = 'browser';" in source
+    assert "let browserTimezone = null;" in source
+    block = _function_block(source, "resolveStatsTimezone")
+    # The browser token is never sent to the API verbatim; it is resolved to
+    # the IANA name reported by Intl.DateTimeFormat (falling back to UTC).
+    assert "browserTimezone" in block
+    assert "'UTC'" in block
+    assert "statsTimezone" in block
+
+
+def test_browser_timezone_resolved_via_intl(source):
+    assert "Intl.DateTimeFormat().resolvedOptions().timeZone" in source
+
+
+def test_browser_option_label_populated_safely(source):
+    # The browser option label is updated via textContent, never innerHTML,
+    # so a malformed IANA name cannot inject markup.
+    block = source[source.index("statsTimezoneBrowserOption") :]
+    head = block[: block.index("resolveStatsTimezone")]
+    assert "textContent" in head
+    assert "innerHTML" not in head
+
+
+def test_timezone_change_handler_calls_fetchstats(source):
+    block = source[source.index("statsTimezoneSelect.addEventListener('change'") :]
+    end = block.index("});") + 3
+    block = block[:end]
+    assert "statsTimezone = next" in block
+    assert "fetchStats()" in block
+    # No direct fetch inside the change handler; reuse the gated fetchStats path.
+    assert "fetch(`" not in block
+
+
+def test_historical_fetch_urls_propagate_timezone(source):
+    block = _function_block(source, "fetchStats")
+    assert "encodeURIComponent(resolveStatsTimezone())" in block
+    assert "timezone=${tzParam}" in block
+    # Every historical endpoint must carry the timezone parameter. The
+    # history/top-* endpoints prepend ``limit=`` before ``days=``, so we just
+    # assert that ``&timezone=${tzParam}`` follows the ``days=${statsDays}``
+    # token on the same line.
+    assert "summary?days=${statsDays}&timezone=${tzParam}" in block
+    assert "players?days=${statsDays}&timezone=${tzParam}" in block
+    assert "transcoding?days=${statsDays}&timezone=${tzParam}" in block
+    assert "hourly?days=${statsDays}&timezone=${tzParam}" in block
+    assert "daily?days=${statsDays}&timezone=${tzParam}" in block
+    assert "heatmap?days=${statsDays}&timezone=${tzParam}" in block
+    assert "history?limit=10&days=${statsDays}&timezone=${tzParam}" in block
+    assert "top-artists?limit=10&days=${statsDays}&timezone=${tzParam}" in block
+    assert "top-albums?limit=10&days=${statsDays}&timezone=${tzParam}" in block
+    # Now-playing must NOT carry the timezone parameter.
+    assert "/api/stats/now-playing', fetchOptions" in block
+    assert "now-playing?timezone" not in block
+    assert "now-playing?days" not in block
+
+
+def test_heatmap_card_markup_exists(source):
+    assert 'id="weekdayHourChart"' in source
+    assert 'id="weekdayHourChartSkeleton"' in source
+    assert 'id="weekdayHourChartEmpty"' in source
+    assert 'id="weekdayHourChartWrap"' in source
+    assert 'aria-label="周时热力图"' in source
+
+
+def test_heatmap_echarts_init_exists(source):
+    assert "weekdayHourChart = echarts.init(" in source
+
+
+def test_heatmap_static_axis_labels_exist(source):
+    assert "WEEKDAY_LABELS" in source
+    assert "HOUR_LABELS" in source
+    # Static Mon..Sun labels must be present (no API-derived labels).
+    for label in ("'Mon'", "'Tue'", "'Wed'", "'Thu'", "'Fri'", "'Sat'", "'Sun'"):
+        assert label in source
+    # 24 hour categories 0..23 generated as strings.
+    assert "Array.from({ length: 24 }, (_, h) => String(h))" in source
+
+
+def test_heatmap_render_function_exists(source):
+    block = _function_block(source, "renderWeekdayHourChart")
+    assert "type: 'heatmap'" in block
+    assert "visualMap" in block
+    assert "Number(item.hour)" in block
+    assert "Number(item.weekday)" in block
+    assert "Number(item.count)" in block
+    assert "weekdayHourChart.setOption" in block
+    assert "toggleChartEmpty" in block
+    # No raw HTML injection in the heatmap renderer.
+    assert "innerHTML" not in block
+    assert "insertAdjacentHTML" not in block
+
+
+def test_heatmap_included_in_fetchstats_promise_all(source):
+    block = _function_block(source, "fetchStats")
+    # The heatmap request is part of the historical Promise.all batch.
+    assert "/api/stats/heatmap?days=${statsDays}&timezone=${tzParam}" in block
+    # Response variable is declared alongside the other historical responses.
+    assert "weekdayHourRes" in block
+    # Parsed alongside the other JSON payloads and rendered.
+    assert "weekdayHourRes.json()" in block
+    assert "renderWeekdayHourChart(weekdayHourData)" in block
+    # Auth and ok-status checks include the heatmap response.
+    assert "weekdayHourRes" in block
+
+
+def test_heatmap_skeleton_in_set_loading(source):
+    block = _function_block(source, "setLoading")
+    assert "'weekdayHourChartSkeleton'" in block
+    assert "'weekdayHourChart'" in block
+    assert "weekdayHourChart" in block
+
+
+def test_heatmap_resize_in_window_resize_handler(source):
+    block = source[source.index("window.addEventListener('resize'") :]
+    end = block.index("});") + 3
+    block = block[:end]
+    assert "weekdayHourChart.resize()" in block
+
+
 def test_summary_change_badge_elements_exist(source):
     for element_id in (
         "statTotalPlaysChange",

@@ -104,7 +104,7 @@ async def test_api_top_artists(mock_get):
         response = await ac.get("/api/stats/top-artists")
     assert response.status_code == 200
     assert response.json() == [{"artist": "Alpha", "count": 5}]
-    mock_get.assert_awaited_once_with(limit=10, days=0)
+    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC")
 
 
 @pytest.mark.asyncio
@@ -115,7 +115,7 @@ async def test_api_top_albums(mock_get):
         response = await ac.get("/api/stats/top-albums")
     assert response.status_code == 200
     assert response.json() == [{"album": "Record A", "count": 3}]
-    mock_get.assert_awaited_once_with(limit=10, days=0)
+    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC")
 
 
 @pytest.mark.asyncio
@@ -133,7 +133,7 @@ async def test_api_top_artists_limit_bounds(mock_get, limit, expected_status):
         response = await ac.get(f"/api/stats/top-artists?limit={limit}")
     assert response.status_code == expected_status
     if expected_status == 200:
-        mock_get.assert_awaited_once_with(limit=limit, days=0)
+        mock_get.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC")
 
 
 @pytest.mark.asyncio
@@ -151,7 +151,7 @@ async def test_api_top_albums_limit_bounds(mock_get, limit, expected_status):
         response = await ac.get(f"/api/stats/top-albums?limit={limit}")
     assert response.status_code == expected_status
     if expected_status == 200:
-        mock_get.assert_awaited_once_with(limit=limit, days=0)
+        mock_get.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC")
 
 
 @pytest.mark.asyncio

@@ -157,6 +157,15 @@
                     <button type="button" data-days="0"
                         class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">全部</button>
                 </div>
+                <label class="inline-flex items-center gap-1.5 text-xs text-slate-400" for="statsTimezoneSelect">
+                    <span class="text-slate-500">时区</span>
+                    <select id="statsTimezoneSelect"
+                        class="rounded-lg bg-ink-800 border border-white/5 px-2 py-1 text-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-accent/50"
+                        aria-label="统计时区">
+                        <option id="statsTimezoneBrowserOption" value="browser">浏览器时区</option>
+                        <option value="UTC">UTC</option>
+                    </select>
+                </label>
             </div>
             <p id="statsScopeLabel" class="text-xs text-slate-600 mt-3 font-mono" aria-live="polite"></p>
             <p id="lastUpdated" class="text-xs text-slate-600 mt-1 font-mono" aria-live="polite"></p>
@@ -263,6 +272,22 @@
             </div>
         </section>
 
+        <!-- Weekday x Hour heatmap -->
+        <section class="mb-8" aria-label="周时热力图">
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                <h2 class="text-sm font-semibold text-slate-300 mb-1">周时热力图</h2>
+                <p class="text-xs text-slate-600 mb-4">按星期 × 小时统计播放次数（0=周一 … 6=周日）</p>
+                <div id="weekdayHourChartWrap" class="relative">
+                    <div id="weekdayHourChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                    <div id="weekdayHourChart" class="chart-container" role="img" aria-label="周时热力图"></div>
+                    <div id="weekdayHourChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
+                        <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        暂无热力图数据
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Top Artists & Top Albums -->
         <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" aria-label="热门艺人与专辑">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
@@ -348,12 +373,47 @@
         const transcodingChart = echarts.init(document.getElementById('transcodingChart'), null, { renderer: 'canvas' });
         const hourlyChart = echarts.init(document.getElementById('hourlyChart'), null, { renderer: 'canvas' });
         const dailyChart = echarts.init(document.getElementById('dailyChart'), null, { renderer: 'canvas' });
+        const weekdayHourChart = echarts.init(document.getElementById('weekdayHourChart'), null, { renderer: 'canvas' });
+
+        // Static axis labels for the weekday x hour heatmap. Weekday order
+        // follows Python's ``date.weekday()`` (0=Monday ... 6=Sunday) which is
+        // what the backend emits; hours are 0..23 (no leading zeros).
+        const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const HOUR_LABELS = Array.from({ length: 24 }, (_, h) => String(h));
 
         let fetchInFlight = false;
         let refreshTimer = null;
         let hasLoadedOnce = false;
         let authRequired = false;
         let statsDays = 30;
+
+        // Timezone control state. ``browser`` resolves to the IANA name
+        // reported by ``Intl.DateTimeFormat`` at load time and is forwarded to
+        // the API as that IANA name (the backend never accepts the literal
+        // "browser" token). ``UTC`` is forwarded verbatim.
+        let statsTimezone = 'browser';
+        let browserTimezone = null;
+        try {
+            browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+        } catch (e) {
+            browserTimezone = null;
+        }
+        const statsTimezoneBrowserOption = document.getElementById('statsTimezoneBrowserOption');
+        if (statsTimezoneBrowserOption) {
+            if (browserTimezone) {
+                statsTimezoneBrowserOption.textContent = `浏览器时区 (${browserTimezone})`;
+            } else {
+                // No readable browser timezone -> drop the option and force UTC.
+                statsTimezoneBrowserOption.remove();
+                statsTimezone = 'UTC';
+                const sel = document.getElementById('statsTimezoneSelect');
+                if (sel) sel.value = 'UTC';
+            }
+        }
+
+        function resolveStatsTimezone() {
+            return statsTimezone === 'browser' ? (browserTimezone || 'UTC') : statsTimezone;
+        }
 
         const fetchOptions = { credentials: 'same-origin' };
 
@@ -421,7 +481,7 @@
         }
 
         function setLoading(loading) {
-            ['playerChartSkeleton', 'transcodingChartSkeleton', 'hourlyChartSkeleton', 'dailyChartSkeleton', 'topArtistsChartSkeleton', 'topAlbumsChartSkeleton'].forEach(id => {
+            ['playerChartSkeleton', 'transcodingChartSkeleton', 'hourlyChartSkeleton', 'dailyChartSkeleton', 'weekdayHourChartSkeleton', 'topArtistsChartSkeleton', 'topAlbumsChartSkeleton'].forEach(id => {
                 document.getElementById(id).classList.toggle('hidden', !loading || hasLoadedOnce);
             });
             document.getElementById('nowPlayingSkeleton').classList.toggle('hidden', !loading || hasLoadedOnce);
@@ -434,6 +494,7 @@
                 document.getElementById('transcodingChart').style.visibility = 'hidden';
                 document.getElementById('hourlyChart').style.visibility = 'hidden';
                 document.getElementById('dailyChart').style.visibility = 'hidden';
+                document.getElementById('weekdayHourChart').style.visibility = 'hidden';
                 document.getElementById('topArtistsChart').style.visibility = 'hidden';
                 document.getElementById('topAlbumsChart').style.visibility = 'hidden';
             } else {
@@ -441,6 +502,7 @@
                 document.getElementById('transcodingChart').style.visibility = 'visible';
                 document.getElementById('hourlyChart').style.visibility = 'visible';
                 document.getElementById('dailyChart').style.visibility = 'visible';
+                document.getElementById('weekdayHourChart').style.visibility = 'visible';
                 document.getElementById('topArtistsChart').style.visibility = 'visible';
                 document.getElementById('topAlbumsChart').style.visibility = 'visible';
             }
@@ -798,6 +860,64 @@
             }, true);
         }
 
+        function renderWeekdayHourChart(data) {
+            const hasData = Array.isArray(data) && data.some(d => Number(d.count) > 0);
+            toggleChartEmpty('weekdayHourChart', 'weekdayHourChartEmpty', hasData);
+            if (!hasData) return;
+
+            const points = data.map(item => [
+                Number(item.hour),
+                Number(item.weekday),
+                Number(item.count) || 0,
+            ]);
+            const maxCount = Math.max(1, ...points.map(p => p[2]));
+
+            weekdayHourChart.setOption({
+                ...chartBase,
+                tooltip: {
+                    ...chartBase.tooltip,
+                    formatter: (params) => {
+                        const [h, w, c] = params.value;
+                        return `${WEEKDAY_LABELS[w] || '?'} ${h} 时<br/>播放 ${c} 次`;
+                    },
+                },
+                grid: { left: 48, right: 16, top: 16, bottom: 56 },
+                xAxis: {
+                    type: 'category',
+                    data: HOUR_LABELS,
+                    splitArea: { show: true },
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+                    axisLabel: { color: '#64748b', fontSize: 11 },
+                    axisTick: { show: false },
+                },
+                yAxis: {
+                    type: 'category',
+                    data: WEEKDAY_LABELS,
+                    splitArea: { show: true },
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+                    axisLabel: { color: '#64748b', fontSize: 11 },
+                    axisTick: { show: false },
+                },
+                visualMap: {
+                    min: 0,
+                    max: maxCount,
+                    calculable: true,
+                    orient: 'horizontal',
+                    left: 'center',
+                    bottom: 0,
+                    textStyle: { color: '#64748b', fontSize: 11 },
+                    inRange: { color: ['#1a1a26', '#7c5fd4', '#c4b5fd'] },
+                },
+                series: [{
+                    name: 'Plays',
+                    type: 'heatmap',
+                    data: points,
+                    label: { show: false },
+                    emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } },
+                }],
+            }, true);
+        }
+
         function renderRankingList({ containerId, emptyId, data, labelKey, barClass, ariaLabel }) {
             const container = document.getElementById(containerId);
             const empty = document.getElementById(emptyId);
@@ -981,34 +1101,37 @@
             setStatus('loading', '同步中…');
 
             try {
-                const [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes] = await Promise.all([
-                    fetch(`/api/stats/summary?days=${statsDays}`, fetchOptions),
-                    fetch(`/api/stats/players?days=${statsDays}`, fetchOptions),
-                    fetch(`/api/stats/transcoding?days=${statsDays}`, fetchOptions),
-                    fetch(`/api/stats/hourly?days=${statsDays}`, fetchOptions),
-                    fetch(`/api/stats/daily?days=${statsDays}`, fetchOptions),
-                    fetch(`/api/stats/history?limit=10&days=${statsDays}`, fetchOptions),
+                const tzParam = encodeURIComponent(resolveStatsTimezone());
+                const [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes] = await Promise.all([
+                    fetch(`/api/stats/summary?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/players?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/transcoding?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/hourly?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/daily?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/heatmap?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/history?limit=10&days=${statsDays}&timezone=${tzParam}`, fetchOptions),
                     fetch('/api/stats/now-playing', fetchOptions),
-                    fetch(`/api/stats/top-artists?limit=10&days=${statsDays}`, fetchOptions),
-                    fetch(`/api/stats/top-albums?limit=10&days=${statsDays}`, fetchOptions),
+                    fetch(`/api/stats/top-artists?limit=10&days=${statsDays}&timezone=${tzParam}`, fetchOptions),
+                    fetch(`/api/stats/top-albums?limit=10&days=${statsDays}&timezone=${tzParam}`, fetchOptions),
                 ]);
 
-                if ([summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes].some(r => r.status === 401)) {
+                if ([summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes].some(r => r.status === 401)) {
                     showLogin('访问令牌无效或已过期，请重新登录。');
                     return;
                 }
 
-                const responses = [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes];
+                const responses = [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, nowPlayingRes, topArtistsRes, topAlbumsRes];
                 if (responses.some(r => !r.ok)) {
                     throw new Error('部分数据请求失败 (' + responses.filter(r => !r.ok).map(r => r.status).join(', ') + ')');
                 }
 
-                const [summaryData, playersData, transcodingData, hourlyData, dailyData, historyData, nowPlayingData, topArtistsData, topAlbumsData] = await Promise.all([
+                const [summaryData, playersData, transcodingData, hourlyData, dailyData, weekdayHourData, historyData, nowPlayingData, topArtistsData, topAlbumsData] = await Promise.all([
                     summaryRes.json(),
                     playersRes.json(),
                     transcodingRes.json(),
                     hourlyRes.json(),
                     dailyRes.json(),
+                    weekdayHourRes.json(),
                     historyRes.json(),
                     nowPlayingRes.json(),
                     topArtistsRes.json(),
@@ -1021,6 +1144,7 @@
                 renderTranscodingChart(transcodingData);
                 renderHourlyChart(hourlyData);
                 renderDailyChart(dailyData);
+                renderWeekdayHourChart(weekdayHourData);
                 renderTopArtistsChart(topArtistsData);
                 renderTopAlbumsChart(topAlbumsData);
                 renderHistoryTable(historyData);
@@ -1081,6 +1205,20 @@
         });
         setActiveStatsWindowButton(statsDays);
 
+        // Timezone selector. A change updates the state and re-fetches all
+        // historical widgets via ``fetchStats`` (which has its own in-flight
+        // guard). ``now-playing`` is unrelated to timezone and stays real-time.
+        const statsTimezoneSelect = document.getElementById('statsTimezoneSelect');
+        if (statsTimezoneSelect) {
+            statsTimezoneSelect.addEventListener('change', (event) => {
+                const next = event.target.value;
+                if (next !== 'browser' && next !== 'UTC') return;
+                if (next === statsTimezone) return;
+                statsTimezone = next;
+                fetchStats();
+            });
+        }
+
         document.getElementById('refreshBtn').addEventListener('click', fetchStats);
 
         document.getElementById('loginForm').addEventListener('submit', async (event) => {
@@ -1109,6 +1247,7 @@
             transcodingChart.resize();
             hourlyChart.resize();
             dailyChart.resize();
+            weekdayHourChart.resize();
         });
 
         async function bootstrap() {

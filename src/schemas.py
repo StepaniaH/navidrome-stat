@@ -27,6 +27,15 @@ STATS_DAYS_MAX = 90
 STATS_DAYS_DEFAULT = 30
 STATS_DAYS_PRESETS = (7, 30, 90, 0)
 
+# Timezone query parameter contract. The default ``UTC`` matches the historical
+# backend behavior, so existing callers that omit ``timezone`` keep seeing the
+# same window/bucket boundaries. The value is validated against Python's
+# stdlib ``zoneinfo.ZoneInfo`` (no new dependency); invalid names return 422.
+# Timezone only controls date/hour/weekday bucket boundaries and finite-window
+# UTC cutoff computation; timestamps are always stored as UTC ISO strings.
+TIMEZONE_DEFAULT = "UTC"
+TIMEZONE_VALIDATION_ERROR = "timezone must be a valid IANA timezone name"
+
 
 class PlayerStat(BaseModel):
     client_name: Optional[str] = None
@@ -67,6 +76,14 @@ class HourlyStat(BaseModel):
 
 class DailyStat(BaseModel):
     date: str
+    count: int
+
+
+class WeekdayHourStat(BaseModel):
+    # Weekday convention follows Python ``date.weekday()``: 0=Monday .. 6=Sunday.
+    weekday: int
+    # Hour of local time in the requested timezone, 0..23 (no leading zeros).
+    hour: int
     count: int
 
 

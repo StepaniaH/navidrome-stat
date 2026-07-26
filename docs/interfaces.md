@@ -30,6 +30,7 @@
 | `/api/stats/transcoding` | GET | JSON 数组，元素为 `is_transcoding`、`count` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；启用认证时需授权 |
 | `/api/stats/history` | GET | JSON 数组（见下） | 受支持但可演进 | `limit` 默认 10、范围 1–100；可选 `?days=0`（默认）或 `7–90`；启用认证时需授权 |
 | `/api/stats/hourly` | GET | JSON 数组，元素为 `hour`（0–23）、`count` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；按一天内时段聚合；启用认证时需授权 |
+| `/api/stats/heatmap` | GET | JSON 数组（168 行），元素为 `weekday`（0=周一 … 6=周日）、`hour`（0–23）、`count`（int） | 受支持但可演进 | 默认 `days=30`；接受 `0`（全部历史）或 `7–90`，中间值（1–6）返回 422；网格始终零填充为 7×24=168 单元；启用认证时需授权 |
 | `/api/stats/daily` | GET | JSON 数组，元素为 `date`（`YYYY-MM-DD`）、`count` | 受支持但可演进 | 可选 `?days=` 默认 30；接受 `0`（全部历史）或 `7–90`（有限窗口），中间值（1–6）返回 422；按日聚合，`date` 升序；启用认证时需授权 |
 | `/api/stats/top-artists` | GET | JSON 数组，元素为 `artist`（str）、`count`（int） | 受支持但可演进 | `limit` 默认 10、范围 1–50；可选 `?days=0`（默认）或 `7–90`；跳过空 artist；按 `count` 降序；启用认证时需授权 |
 | `/api/stats/top-albums` | GET | JSON 数组，元素为 `album`（str）、`count`（int） | 受支持但可演进 | `limit` 默认 10、范围 1–50；可选 `?days=0`（默认）或 `7–90`；跳过空 album；按 `count` 降序；启用认证时需授权 |
@@ -71,6 +72,21 @@ GET /api/stats/players?days=90
 - `7–90` 表示有限滚动窗口；
 - `1–6`、负数或大于 90 的值返回 422；
 - `now-playing` 不接受 `days`。
+
+`timezone` 取值约定（适用于 summary/players/transcoding/hourly/heatmap/daily/top-artists/top-albums/history；`now-playing` 不接受）：
+
+- 可选 `?timezone=IANANAME`，默认 `UTC`；
+- 由 `src.database.resolve_timezone` 通过 `zoneinfo.ZoneInfo` 校验；非 IANA 名称返回 422，错误文案固定 `timezone must be a valid IANA timezone name`；
+- 时区仅用于 Python 端的 weekday/hour/date 边界与有限窗口的 UTC 截止计算，从不字符串拼接进 SQL；时间戳仍以 UTC ISO 字符串存储；
+- Dashboard 选择器仅保留 `browser`（启动时通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 解析为 IANA 名称并转发）与 `UTC` 两个选项，切换时复用 `fetchStats` 的 in-flight 防护重新拉取所有历史组件。
+
+`/api/stats/heatmap` 调用示例：
+
+```text
+GET /api/stats/heatmap?days=30
+GET /api/stats/heatmap?days=7&timezone=Asia/Shanghai
+GET /api/stats/heatmap?days=0&timezone=America/New_York
+```
 
 `/api/stats/summary` 返回的对比字段语义：
 
@@ -188,6 +204,8 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - `src.database.get_top_artists(limit=..., days=0, db_path=...)`
 - `src.database.get_top_albums(limit=..., days=0, db_path=...)`
 - `src.database.get_playback_history(limit=..., days=0, db_path=...)`
+- `src.database.get_weekday_hour_stats(days=30, timezone_name="UTC", db_path=...)`（返回 168 个零填充 `{weekday,hour,count}` 行）
+- `src.database.resolve_timezone(timezone_name)`（通过 `zoneinfo.ZoneInfo` 校验 IANA 名称；无效则 `ValueError`）
 - `src.sessions.PlaybackSessionTracker(...)`、`process_poll(...)`、`finalize_session(...)`、`finalize_all()`（构造参数 `play_threshold_sec`、`pause_grace_sec`、`stale_threshold_sec`）
 - `src.config.parse_clamped_int(...)`、`env_int(...)`
 - `src.main.finalize_session(player_id)`、`polling_loop(client)`
