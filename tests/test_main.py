@@ -185,3 +185,56 @@ async def test_api_now_playing_returns_active_sessions():
         assert "committed" not in item
     finally:
         session_tracker.active_sessions.clear()
+
+
+@pytest.mark.asyncio
+async def test_api_now_playing_aggregates_runtime_trackers_and_excludes_paused(
+    monkeypatch,
+):
+    from datetime import datetime, timezone
+
+    import src.main as main
+    from src.sessions import PlaybackSessionTracker
+
+    async def save_session(_session):
+        return None
+
+    first_tracker = PlaybackSessionTracker(save_session)
+    second_tracker = PlaybackSessionTracker(save_session)
+    now = datetime.now(timezone.utc)
+    first_tracker.active_sessions["player-1"] = {
+        "first_seen_at": now,
+        "username": "synthetic-user-1",
+        "client_name": "Synthetic Client 1",
+        "title": "Synthetic Track 1",
+        "artist": "Synthetic Artist 1",
+        "paused": False,
+    }
+    second_tracker.active_sessions["player-2"] = {
+        "first_seen_at": now,
+        "username": "synthetic-user-2",
+        "client_name": "Synthetic Client 2",
+        "title": "Synthetic Track 2",
+        "artist": "Synthetic Artist 2",
+        "paused": False,
+    }
+    second_tracker.active_sessions["paused-player"] = {
+        "first_seen_at": now,
+        "username": "synthetic-paused-user",
+        "client_name": "Synthetic Paused Client",
+        "title": "Synthetic Paused Track",
+        "artist": "Synthetic Paused Artist",
+        "paused": True,
+    }
+    monkeypatch.setattr(
+        main, "_runtime_trackers", [first_tracker, second_tracker], raising=False
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/stats/now-playing")
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()] == [
+        "Synthetic Track 1",
+        "Synthetic Track 2",
+    ]

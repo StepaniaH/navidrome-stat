@@ -1,173 +1,206 @@
 # Navidrome Statistic
 
-> 本文档保留项目概览与快速启动说明。项目事实、稳定接口、隐私确认和后续任务请从 [AGENTS.md](AGENTS.md) 与 [docs/README.md](docs/README.md) 进入。
+[简体中文](README.zh-CN.md)
 
-> 🤖 **Built with Vibe Coding**: This entire project, from design specs to backend logic and frontend UI, was generated and orchestrated entirely through AI (Gemini CLI) in an autonomous "Vibe Coding" workflow. 
+Navidrome Statistic is a self-hosted service that polls the Subsonic `getNowPlaying` API, tracks listening sessions, stores qualified plays in SQLite, and presents the results in a web dashboard.
 
-Navidrome Statistic is a lightweight, standalone monitoring and analytics dashboard designed specifically for [Navidrome](https://www.navidrome.org/) music servers.
-
-It runs as a background service, passively monitoring your Navidrome server's Subsonic API to keep an accurate count of your song plays. It features an integrated web dashboard to visualize your listening habits, client distribution, and transcoding ratios.
+It is designed for a single application instance. Multiple Navidrome servers can be configured, but running multiple Navidrome Statistic replicas against the same sources is not supported and may double-count plays.
 
 ## Features
 
-- **Zero-Friction Tracking**: Polls Navidrome `getNowPlaying` and tracks listening sessions in memory. A song counts as one play once it has been **observed actively playing for at least 30 seconds** (`>= 30`, configurable via `PLAY_THRESHOLD_SEC`); the write happens during playback, not only after a track ends. A brief pause or missing observation (up to `PAUSE_GRACE_SEC`, default 30s) keeps the in-memory session alive without counting paused wall-clock time.
-- **Repeat Plays**: Listening to the same track again adds another row and increases aggregated play counts.
-- **Client & Transcoding Stats**: Records which app/client you are using (e.g., Amperfy, Feishin) and whether the stream is being transcoded. The dashboard also shows per-client listen time, average session length, and transcoding rate.
-- **Flexible Rankings**: Top artists and albums can be ranked by play count or observed listen time within the selected statistics window.
-- **Short-play Analysis**: Below-threshold attempts are stored separately and exposed as a short-play rate; this is not presented as an intentional skip rate.
-- **Privacy Controls**: Default **permanent** retention with a settings page (`/settings`) to choose 1–360 days or permanent; per-user JSON export/import and deletion with preview-before-confirm.
-- **Built-in Dashboard**: A responsive single-page dashboard built with TailwindCSS and ECharts (loaded from public CDNs).
-- **Lightweight**: Async Python (FastAPI + SQLite) with a small CPU/RAM footprint.
+- Tracks active playback with a configurable threshold and pause grace period.
+- Supports multiple Navidrome servers from one dashboard.
+- Shows current playback, listening history, clients, transcoding, time trends, and artist or album rankings.
+- Records below-threshold attempts separately from counted plays.
+- Provides configurable retention and per-user JSON export, import, and deletion.
+- Offers optional dashboard and API authentication through `STATS_API_TOKEN`.
+- Runs as a non-root user in a multi-stage Python 3.11 container.
 
-## Quick Start (Docker)
+## Docker Deployment
 
-The easiest way to run Navidrome Statistic is via Docker Compose. The example below matches this repository's [`docker-compose.yml`](docker-compose.yml) service name (`navidrome-stat`).
+### Requirements
 
-1. Clone the repository and create a `.env` file in the project root (never commit it).
+- Docker Engine with Docker Compose v2
+- Network access from the container to each Navidrome server
+- A Navidrome account that can call the Subsonic API
 
-**docker-compose.yml** (already in the repo):
+### 1. Create a deployment directory
+
+```bash
+mkdir navidrome-stat
+cd navidrome-stat
+```
+
+### 2. Create `.env`
+
+Use a long, random value for `STATS_API_TOKEN`. Do not commit this file or include it in support logs.
+
+```dotenv
+NAVIDROME_URL=https://navidrome.example.invalid
+NAVIDROME_USER=example_user
+NAVIDROME_PASS=<navidrome-password>
+STATS_API_TOKEN=<long-random-token>
+
+POLL_INTERVAL=10
+PLAY_THRESHOLD_SEC=30
+PAUSE_GRACE_SEC=30
+```
+
+These three `NAVIDROME_*` variables configure the initial or legacy source. Additional servers can be added from **Settings > Server Connections** after startup. Values saved through the settings page are stored in plaintext in the application database; prefer environment variables when that storage model is unsuitable.
+
+### 3. Create `compose.yaml`
+
+Pin a version tag instead of `latest` when deployment reproducibility is more important than automatic access to the newest release.
 
 ```yaml
 services:
   navidrome-stat:
-    build: .
+    image: stepaniah/navidrome-statistic:latest
     container_name: navidrome-stat
+    user: "1000:1000"
     ports:
       - "39421:39421"
     volumes:
-      - ./navidrome_stats.db:/app/navidrome_stats.db
+      - navidrome-stat-data:/data
     environment:
-      NAVIDROME_URL: ${NAVIDROME_URL:-http://navidrome.example.invalid:4533}
-      NAVIDROME_USER: ${NAVIDROME_USER:-example_user}
-      NAVIDROME_PASS: ${NAVIDROME_PASS:-placeholder_pass}
+      NAVIDROME_URL: ${NAVIDROME_URL}
+      NAVIDROME_USER: ${NAVIDROME_USER}
+      NAVIDROME_PASS: ${NAVIDROME_PASS}
+      STATS_API_TOKEN: ${STATS_API_TOKEN}
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
       PLAY_THRESHOLD_SEC: ${PLAY_THRESHOLD_SEC:-30}
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
-      DATABASE_URL: ${DATABASE_URL:-/app/navidrome_stats.db}
-      STATS_API_TOKEN: ${STATS_API_TOKEN:-}
+      DATABASE_URL: /data/navidrome_stats.db
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:39421/health')"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  navidrome-stat-data:
 ```
 
-Compose reads a local `.env` for `${VAR}` substitution when present; CI validates config without that file.
-
-### Docker Hub 发布
-
-仓库通过 `.github/workflows/docker-publish.yml` 在版本 tag 推送时发布多架构镜像。先在 GitHub 仓库配置以下 Actions secrets：
-
-- `DOCKERHUB_USERNAME`：Docker Hub 用户名
-- `DOCKERHUB_TOKEN`：Docker Hub Access Token，不要使用账户密码
-
-发布流程：
-
-```bash
-git checkout main
-git pull origin main
-git tag v0.5.0
-git push origin v0.5.0
-```
-
-tag 必须使用 `v` 前缀。Action 会构建 `linux/amd64` 与 `linux/arm64`，并推送：
-
-```text
-stepaniah/navidrome-statistic:v0.5.0
-stepaniah/navidrome-statistic:latest
-```
-
-不要在 `dev` 分支上直接创建发布 tag；只有已经同步到 GitHub `main` 的版本才应发布到 Docker Hub。
-
-**.env** (placeholders only):
-
-```env
-NAVIDROME_URL=http://navidrome.example.invalid:4533
-NAVIDROME_USER=example_user
-NAVIDROME_PASS=<set-in-runtime-environment>
-POLL_INTERVAL=10
-# Optional tuning (defaults shown); invalid/non-numeric values fall back to defaults.
-PLAY_THRESHOLD_SEC=30
-PAUSE_GRACE_SEC=30
-DATABASE_URL=/app/navidrome_stats.db
-# Optional: protect dashboard and stats APIs (recommended if not behind a reverse proxy)
-STATS_API_TOKEN=<set-in-runtime-environment>
-```
-
-2. Start the service:
+### 4. Start the service
 
 ```bash
 docker compose up -d
+docker compose ps
 ```
 
-3. Visit the dashboard at `http://localhost:39421`. Open **隐私设置** (`/settings`) to manage retention and per-user data.
+Open `http://localhost:39421`. When `STATS_API_TOKEN` is set, the dashboard asks for that token and stores only an HTTP-only session cookie in the browser.
 
-## Privacy & Data Control
+The `/health` endpoint reports process liveness. `/health/ready` also reports database and collector state; a temporary upstream failure can make readiness degraded without requiring a container restart.
 
-- **Default**: play history is kept **permanently** until you change the policy.
-- **Retention**: use `/settings` to set 1–360 days or switch back to permanent. The UI shows how many records would be removed before you confirm cleanup.
-- **Export / import**: download a user's play history as JSON, or import it back (merge or replace).
-- **Delete**: remove all records for a selected user after preview and confirmation.
-- **Your responsibility**: ensure Navidrome users are informed that listening activity is being collected. Set `STATS_API_TOKEN` if the service is reachable beyond a trusted network.
+## Operations
 
-See [`docs/privacy.md`](docs/privacy.md) and [`docs/security.md`](docs/security.md) for full boundaries.
+### View logs
 
-## How It Works
+```bash
+docker compose logs -f --tail=100 navidrome-stat
+```
 
-This service uses **timed polling** plus an **in-memory session tracker** (not push events from Navidrome):
+Application logs intentionally omit playback metadata and authentication request URLs. Avoid enabling or sharing infrastructure logs that contain Subsonic authentication query parameters.
 
-1. On startup it polls `getNowPlaying` every `POLL_INTERVAL` seconds (default **10**, clamped to 5-300).
-2. When a player and track are seen, a session is stored in memory and updated on each poll.
-3. Once the **actively observed** listen time reaches **`PLAY_THRESHOLD_SEC` seconds or more** (default 30, clamped to 1-3600), **one** row is written to SQLite for that session. The same session is not written twice.
-4. A paused entry (`isPlaying=false`) or a briefly missing player keeps the in-memory session alive for up to `PAUSE_GRACE_SEC` seconds (default 30, clamped to 0-3600). Paused wall-clock time does **not** advance the listen duration; only observations where `isPlaying=true` do. A different actively-playing track on the same player finalizes the old session immediately.
-5. When the track changes or the player is absent beyond the grace window, the in-memory session is finalized (once) and cleared. Short listens under the threshold are discarded.
-6. The dashboard refreshes every **10 seconds** and reads aggregated stats from the local database. The "正在播放" list also runs a lightweight local 1-second elapsed ticker between refreshes. A global statistics window control at the top of the dashboard selects `7 天` / `30 天` / `90 天` / `全部` (default `30 天`); all historical widgets (summary, players, transcoding, hourly, daily, top artists, top albums and history) honor the selected `days`, while "正在播放" stays real-time. The summary cards expose `active_days`, average-daily plays/listen and previous-window percentage-change badges. The backend window contract is documented in [`docs/interfaces.md`](docs/interfaces.md).
+### Update
 
-**Caveats**
+```bash
+docker compose pull
+docker compose up -d
+docker image prune
+```
 
-- Reported listen duration is **observed wall-clock time** between active polls, not exact player position; paused intervals are excluded once observed.
-- The service has **optional authentication** via `STATS_API_TOKEN`. Without it, do not expose the service to untrusted networks; use a reverse proxy or set the token.
-- Playback metadata is stored in plaintext SQLite on disk.
+Back up the database before an update. Review release notes before changing a pinned image tag.
+
+### Back up and restore
+
+The named volume contains the SQLite database, listening history, and any server credentials saved through the settings page. Treat every backup as sensitive.
+
+Stop the application before copying the database:
+
+```bash
+mkdir -p backups
+docker compose stop navidrome-stat
+docker run --rm \
+  -v navidrome-stat_navidrome-stat-data:/data:ro \
+  -v "$PWD/backups:/backup" \
+  alpine:3.20 \
+  cp /data/navidrome_stats.db /backup/navidrome_stats.db
+docker compose start navidrome-stat
+```
+
+The actual volume name is shown by `docker volume ls`; Compose usually prefixes it with the deployment directory name. Store backups in an access-controlled location and define an appropriate retention policy.
+
+To restore, stop the service, preserve the current volume, copy a verified backup to `/data/navidrome_stats.db`, ensure UID and GID `1000:1000` can write it, and then start the service. Test restoration away from the production volume first.
+
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NAVIDROME_URL` | None | Initial Navidrome base URL. Required unless a complete source was previously saved. |
+| `NAVIDROME_USER` | None | Initial Subsonic username. |
+| `NAVIDROME_PASS` | None | Initial Subsonic password. |
+| `DATABASE_URL` | `navidrome_stats.db` | SQLite file path. The Docker example uses `/data/navidrome_stats.db`. |
+| `STATS_API_TOKEN` | Empty | Protects the dashboard, statistics APIs, settings APIs, and OpenAPI routes when set. |
+| `POLL_INTERVAL` | `10` | Poll interval in seconds, clamped to 5-300. |
+| `PLAY_THRESHOLD_SEC` | `30` | Active observed seconds required to count a play, clamped to 1-3600. |
+| `PAUSE_GRACE_SEC` | `30` | Seconds to retain a paused or missing in-memory session, clamped to 0-3600. |
+| `MAX_POLL_BACKOFF_SEC` | `60` | Maximum upstream failure backoff, clamped to 1-3600 seconds. |
+
+A track counts once its accumulated active observation time is greater than or equal to `PLAY_THRESHOLD_SEC`. Polling measures observed time, not exact media position. Paused intervals do not add listening time after the pause is observed.
+
+## Security and Privacy
+
+- Without `STATS_API_TOKEN`, the dashboard and APIs are anonymous. Use that mode only on a trusted network.
+- The application does not terminate TLS. Place it behind a correctly configured HTTPS reverse proxy before remote access.
+- SQLite stores usernames, media metadata, listening timestamps, and settings-page credentials in plaintext.
+- Inform affected Navidrome users before collecting their listening activity and choose an appropriate retention period under **Settings > Privacy & Data**.
+- Protect `.env`, the Docker volume, backups, browser access, and reverse-proxy logs.
+- The dashboard currently loads Tailwind CSS and ECharts from public CDNs. Review [the privacy boundary](docs/privacy.md) and [the security model](docs/security.md) if external asset requests are not acceptable.
+
+No generic Compose example can establish your authorization rules, TLS termination, backup security, or public exposure policy. Those remain deployment-owner decisions.
+
+## Build from Source
+
+The repository includes a development-oriented [`docker-compose.yml`](docker-compose.yml) that builds the local checkout:
+
+```bash
+git clone https://github.com/StepaniaH/navidrome-stat.git
+cd navidrome-stat
+docker compose up -d --build
+```
+
+Create `.env` from the placeholder example in the Docker deployment section before running Compose. Never place real credentials in a tracked file.
 
 ## Development
 
-If you wish to run it locally without Docker:
+Python 3.11 is the supported runtime.
 
 ```bash
-# Setup virtual environment
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements-dev.txt
-
-# Run the server
-uvicorn src.main:app --host 0.0.0.0 --port 39421
-```
-
-### Dependencies
-
-- `requirements.txt` — pinned direct runtime packages.
-- `requirements.lock` — full transitive runtime lock used by Docker.
-- `requirements-dev.txt` — runtime + pinned test tools.
-
-To upgrade a runtime dependency:
-
-```bash
-# 1. Edit the version pin in requirements.txt
-# 2. Regenerate the lock file
-bash scripts/refresh_requirements_lock.sh
-# 3. Reinstall and test
 pip install -r requirements-dev.txt
 pytest -q
+uvicorn src.main:app --host 127.0.0.1 --port 39421
 ```
 
-## Project Documentation
+Runtime dependencies are pinned in `requirements.txt`; the fully resolved lock used by Docker is `requirements.lock`; test dependencies are in `requirements-dev.txt`.
 
-- [Agent 工作入口](AGENTS.md)
-- [文档索引](docs/README.md)
-- [当前实现事实](docs/current-state.md)
-- [稳定接口登记](docs/interfaces.md)
-- [隐私与敏感信息确认](docs/privacy.md)
-- [安全与部署边界](docs/security.md)
-- [后续任务列表](docs/tasks.md)
+## Documentation
+
+- [Project documentation map](docs/README.md)
+- [Current implementation](docs/current-state.md)
+- [Interfaces and configuration](docs/interfaces.md)
+- [Privacy boundaries](docs/privacy.md)
+- [Security model](docs/security.md)
+- [Agent task register](docs/tasks.md)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Navidrome Statistic is available under the [MIT License](LICENSE).

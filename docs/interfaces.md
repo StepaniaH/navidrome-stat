@@ -36,7 +36,7 @@
 | `/api/stats/daily` | GET | JSON 数组，元素为 `date`（`YYYY-MM-DD`）、`count` | 受支持但可演进 | 可选 `?days=` 默认 30；接受 `0`（全部历史）或 `7–90`（有限窗口），中间值（1–6）返回 422；按日聚合，`date` 升序；启用认证时需授权 |
 | `/api/stats/top-artists` | GET | JSON 数组，元素为 `artist`、`count`、`total_listen_sec`、`value` | 受支持但可演进 | `limit` 默认 10、范围 1–50；可选 `metric=plays`（默认）或 `metric=listen_time`；`value` 分别表示次数或秒数；同值按名称升序；启用认证时需授权 |
 | `/api/stats/top-albums` | GET | JSON 数组，元素为 `album`、`count`、`total_listen_sec`、`value` | 受支持但可演进 | 同 top-artists；启用认证时需授权 |
-| `/api/stats/now-playing` | GET | JSON 数组，元素为 `username`、`title`、`artist`、`client_name`、`seconds_elapsed`（int） | 受支持但可演进 | 来自内存 `session_tracker.active_sessions`，不访问数据库；不接受 `days`，永远是实时态；`seconds_elapsed` 从会话首次发现时间起算；启用认证时需授权 |
+| `/api/stats/now-playing` | GET | JSON 数组，元素为 `username`、`title`、`artist`、`client_name`、`seconds_elapsed`（int） | 受支持但可演进 | 聚合运行时注册的所有服务器 tracker，仅返回非暂停会话且不访问数据库；无注册 tracker 时兼容读取全局 tracker；不接受 `days`，永远是实时态；`seconds_elapsed` 从会话首次发现时间起算；启用认证时需授权 |
 | `/settings` | GET | `settings.html` 隐私与数据管理页 | 受支持但可演进 | 保留策略、按用户导出/导入/删除 |
 | `/api/privacy/settings` | GET/PUT | `retention_days`（`null`=永久）、`permanent` | 受支持但可演进 | PUT 接受 `null` 或 1–360 |
 | `/api/privacy/retention/preview` | GET | `records_to_delete`、`retention_days` | 受支持但可演进 | 可选 `?days=` 预览未保存策略 |
@@ -47,8 +47,11 @@
 | `/api/privacy/users/{username}/delete/preview` | GET | `records_to_delete` | 受支持但可演进 | 仅计数 |
 | `/api/privacy/users/{username}/delete` | POST | `deleted` | 受支持但可演进 | 请求体 `{"confirm": true}` 必填 |
 | `/api/source/config` | GET | `url`、`username`、`password_configured`（bool） | 受支持但可演进 | **永不返回 password**；返回 env > saved 的有效配置脱敏视图；启用认证时需授权 |
-| `/api/source/config` | PUT | 同 GET | 受支持但可演进 | 接受 `url`、`username`、可选 `password`；URL 必须为 http/https；`username` 不得为空；`password` 仅在非空时更新；不回显 password；启用认证时需授权 |
+| `/api/source/config` | PUT | 同 GET | 受支持但可演进 | 接受 `url`、`username`、可选 `password`；URL 必须为 http/https；`username` 不得为空；`password` 仅在非空时更新；不回显 password；无 `servers` 记录时立即热更新兼容 collector，环境变量仍优先；启用认证时需授权 |
 | `/api/source/test` | POST | `{ok: bool, message: str}` | 受支持但可演进 | 接受可选 `url`/`username`/`password`，解析顺序：请求值 > 环境变量 > 已保存 DB；用临时 `NavidromeClient` 调用 `getNowPlaying`，调用后立即 `close()`；仅返回通用成功/失败与简短中文消息，不返回上游响应体、凭据或异常详情；启用认证时需授权 |
+| `/api/servers` | POST | `id`、`display_name`、`url`、`username`、`password_configured`、`enabled` | 受支持但可演进 | 持久化后立即启动对应 collector；password 必填且不回显；运行时应用失败返回 503 通用文案 |
+| `/api/servers/{server_id}` | PUT | 同 POST | 受支持但可演进 | 持久化后立即替换、启用或禁用对应 collector；空 password 保留原值；替换前结算旧会话 |
+| `/api/servers/{server_id}` | DELETE | `{"status":"ok"}` | 受支持但可演进 | 删除后立即结算并停止对应 collector；不存在返回 404 |
 
 当前 history 调用示例：
 
@@ -162,13 +165,13 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 
 ## 5. SQLite schema
 
-数据库接口为“内部”。`schema_meta` 表记录 `schema_version`（当前 **2**）及 `retention_days`（`permanent` 或 1–360）；`init_db()` 在启动时向前迁移并创建索引。来源配置（`source_url`/`source_user`/`source_password`）直接复用 `schema_meta` 作为键值存储，未引入新表或 schema 版本迁移，既有库无需迁移即可读写。任何字段、约束或索引变更都必须先建立任务并提供既有数据迁移与回滚方案。
+数据库接口为“内部”。`schema_meta` 表记录 `schema_version`（当前 **5**）及 `retention_days`（`permanent` 或 1–360）；`init_db()` 在启动时向前迁移并创建索引。兼容来源配置（`source_url`/`source_user`/`source_password`）仍复用 `schema_meta` 作为键值存储，多服务器配置存储于版本 5 的 `servers` 表。任何字段、约束或索引变更都必须先建立任务并提供既有数据迁移与回滚方案。
 
 表：`schema_meta`
 
 | 键 | 说明 |
 | --- | --- |
-| `schema_version` | 当前为 `2` |
+| `schema_version` | 当前为 `5` |
 | `retention_days` | `permanent`（默认）或 `1`–`360` 的字符串 |
 | `source_url` | GUI 保存的 Navidrome URL，作为 `NAVIDROME_URL` 缺失时的回退（内部，部署敏感信息） |
 | `source_user` | GUI 保存的 Navidrome 用户名，作为 `NAVIDROME_USER` 缺失时的回退（内部，账户标识） |
@@ -224,7 +227,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 2. 环境变量 `NAVIDROME_URL` / `NAVIDROME_USER` / `NAVIDROME_PASS`；
 3. 已保存 DB `schema_meta` 中的 `source_url` / `source_user` / `source_password`。
 
-lifespan 在构造运行中的 `NavidromeClient` 前调用 `resolve_effective_source_config()`（仅 env > saved），若三者不齐全则记录错误并将 `client_initialized` 置为 false，不启动轮询。GUI 保存配置不会热更新运行客户端，需重启服务生效。`/api/source/test` 构造的临时客户端调用 `get_now_playing()` 后于 `finally` 中 `close()`。
+无 `servers` 记录时，lifespan 在构造兼容 collector 前调用 `resolve_effective_source_config()`（仅 env > saved），若三者不齐全则不启动该 collector。兼容来源 PUT 仅在无多服务器记录时立即热更新，并继续遵循环境变量优先级。`servers` 表的创建、更新、启停与删除由 `CollectorManager` 立即应用；每个服务器独立拥有 client/tracker/task。运行时应用失败返回 503 固定文案 `Saved configuration could not be applied`，不包含配置或上游正文；已持久化配置在后续成功更新或进程启动时重试。`/api/source/test` 构造的临时客户端调用 `get_now_playing()` 后于 `finally` 中 `close()`。
 
 ## 7. 变更流程
 

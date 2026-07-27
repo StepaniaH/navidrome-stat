@@ -6,13 +6,15 @@ services:
     ports:
       - "39421:39421"
     volumes:
-      - ./navidrome_stats.db:/app/navidrome_stats.db
+      - navidrome-stat-data:/data
     environment:
       NAVIDROME_URL: ${NAVIDROME_URL:-http://navidrome.example.invalid:4533}
       NAVIDROME_USER: ${NAVIDROME_USER:-example_user}
       NAVIDROME_PASS: ${NAVIDROME_PASS:-placeholder_pass}
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
-      DATABASE_URL: ${DATABASE_URL:-/app/navidrome_stats.db}
+      PLAY_THRESHOLD_SEC: ${PLAY_THRESHOLD_SEC:-30}
+      PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
+      DATABASE_URL: ${DATABASE_URL:-/data/navidrome_stats.db}
       STATS_API_TOKEN: ${STATS_API_TOKEN:-}
     restart: unless-stopped
     healthcheck:
@@ -27,3 +29,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+volumes:
+  navidrome-stat-data:
