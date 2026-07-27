@@ -60,6 +60,44 @@ async def test_put_config_persists_and_redacts(isolated_db):
 
 
 @pytest.mark.asyncio
+async def test_put_config_hot_reloads_legacy_when_no_servers(isolated_db):
+    await init_db(isolated_db)
+    manager = AsyncMock()
+    payload = {
+        "url": "http://navidrome.example.invalid:4533",
+        "username": "example_user",
+        "password": "synthetic_password_123",
+    }
+    with patch("src.main.list_servers", AsyncMock(return_value=[])):
+        with patch("src.main.collector_manager", manager):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                response = await ac.put("/api/source/config", json=payload)
+
+    assert response.status_code == 200
+    applied = manager.replace.await_args.args[0]
+    assert applied["id"] == "legacy"
+    assert applied["password"] == "synthetic_password_123"
+
+
+@pytest.mark.asyncio
+async def test_put_config_does_not_reload_legacy_when_servers_exist(isolated_db):
+    await init_db(isolated_db)
+    manager = AsyncMock()
+    payload = {
+        "url": "http://navidrome.example.invalid:4533",
+        "username": "example_user",
+        "password": "synthetic_password_123",
+    }
+    with patch("src.main.list_servers", AsyncMock(return_value=[{"id": "server-1"}])):
+        with patch("src.main.collector_manager", manager):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                response = await ac.put("/api/source/config", json=payload)
+
+    assert response.status_code == 200
+    manager.replace.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_put_config_blank_password_keeps_existing(isolated_db):
     await init_db(isolated_db)
     await set_saved_source_config(

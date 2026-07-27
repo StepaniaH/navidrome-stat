@@ -25,8 +25,10 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Create a non-root user and ensure /app is owned by it
-RUN useradd --create-home --uid 1000 appuser
+# Create a non-root user and a dedicated persistent-data directory
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir /data \
+    && chown appuser:appuser /data
 
 # Copy the application code with the correct ownership
 COPY --chown=appuser:appuser . .

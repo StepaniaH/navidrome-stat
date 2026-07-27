@@ -37,6 +37,42 @@
 | NDS-DATA-002 | 短播放尝试与短播放率 | P2 | 已完成 | NDS-UI-005 |
 | NDS-DATA-003 | 播放来源溯源层 | P2 | 已完成 | NDS-DATA-002 |
 | NDS-UI-006 | 设置页偏好与主题本地化 | P1 | 已完成 | NDS-SRC-001、NDS-UI-004 |
+| NDS-DOC-002 | 双语 README、Docker 部署与正在播放修复 | P1 | 已完成 | NDS-SRC-001、NDS-UI-002 |
+| NDS-REL-002 | 服务器配置热更新与采集器生命周期 | P1 | 已完成 | NDS-DOC-002、NDS-SRC-001 |
+
+## NDS-REL-002 服务器配置热更新与采集器生命周期
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-DOC-002、NDS-SRC-001；不读取或记录真实服务器地址、账户、密码、token、上游响应或播放元数据。
+- **目标**：服务器创建、更新、启停、删除及兼容来源保存后立即更新运行中的轮询客户端，不再要求重启服务。
+- **实施步骤**：
+  1. 按 `docs/superpowers/specs/2026-07-27-collector-hot-reload-design.md` 建立按服务器 ID 管理 client/tracker/task 的 `CollectorManager`，并用锁串行化生命周期变更。
+  2. 替换时先构造新 collector，再按现有阈值结算旧会话、取消旧任务、关闭旧客户端并注册新 collector；构造失败保留旧 collector。
+  3. lifespan 通过 manager 启动初始服务器并在关闭时 `stop_all()`；now-playing/readiness/metrics 继续读取运行时 tracker 聚合视图。
+  4. server create/update/delete 与适用的 legacy source save 在持久化后调用 manager；运行时失败返回通用 503，不回显配置或上游正文。
+  5. 设置页移除“重启生效”文案；同步当前事实、接口与隐私文档；仅使用合成测试数据。
+- **验收标准**：创建/更新/启用立即启动对应 poller；禁用/删除立即停止且不影响其他服务器；替换前旧会话按现有规则结算；替换构造失败保留旧 poller；设置页不再要求重启；接口错误不泄露敏感值；全量验证通过。
+- **验证命令**：`.venv/bin/python -m pytest -q tests/test_collector_manager.py tests/test_lifespan.py tests/test_static_settings.py`；`.venv/bin/python -m pytest -q`；`.venv/bin/python scripts/check_md_links.py`；`git diff --check`；敏感值扫描；重启本地服务后以脱敏 readiness/metrics 验证。
+- **涉及文件**：`src/main.py`、`src/static/settings.html`、新增或相关测试、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`、`docs/tasks.md`、设计与实施计划文档。
+- **风险/回滚**：生命周期错误可能中断单个服务器采集或重复结算；使用锁、先构造后切换、幂等 stop 和资源关闭测试降低风险。无 schema 变更，回滚代码即可恢复重启生效模式，已保存配置和历史不变。
+- **完成记录**：2026-07-27，OpenCode。新增 `CollectorManager` 按服务器 ID 管理 client/tracker/task，以锁串行化变更；替换时先构造新资源，再结算旧会话、取消任务、关闭 client 并注册新 tracker；禁用和删除立即停止对应 collector，构造失败保留旧 collector，结算失败仍清理新旧资源。lifespan 改由 manager 启停 collector；server create/update/delete 与无多服务器记录时的 legacy source PUT 在持久化后立即应用，失败返回固定 503 且不回显配置。设置页中英文改为保存后立即应用。新增 `tests/test_collector_manager.py`、`tests/test_server_api.py` 及 source/lifespan/static 回归用例。验证：全量 `.venv/bin/python -m pytest -q` 为 340 passed；目标集 42 passed；Markdown 链接和 `git diff --check` 通过；重启后 PID 73286 独占 `127.0.0.1:39421`，脱敏状态为 2 个已启用服务器、poller running。对一个服务器执行不含 password 的同值 PUT 返回 200，无需重启，等待 12 秒后 `poll_success_total` 从 4 增至 6，最终 readiness `ready`、upstream `ok`。未创建提交或 PR。遗留风险：现场 `poll_failure_total` 为 3，表明至少一个上游存在间歇失败；最近状态已恢复，若持续增长应另行按脱敏日志诊断网络或上游响应。
+
+## NDS-DOC-002 双语 README、Docker 部署与正在播放修复
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-SRC-001、NDS-UI-002；不读取真实 `.env`、SQLite 数据、日志或部署配置。
+- **目标**：以纯英文 `README.md` 作为主文档并链接纯中文 `README.zh-CN.md`，提供以已发布镜像为主的 Docker 部署教程；修复多服务器轮询后正在播放 API 仍读取旧全局 tracker、因而始终为空的问题。
+- **实施步骤**：
+  1. 按 `docs/superpowers/specs/2026-07-27-readme-now-playing-design.md` 重写英文 README，并创建同事实、同结构的中文 README；所有示例仅使用保留域名与明显占位符。
+  2. 以 `stepaniah/navidrome-statistic` 已发布镜像和 named volume 为默认 Compose 部署路径，另行说明源码构建；记录健康检查、更新、日志、备份、认证与明文 SQLite 边界。
+  3. 为 lifespan 创建的每服务器 `PlaybackSessionTracker` 建立运行时注册表；正在播放、readiness 与 metrics 从同一聚合视图读取，未注册 lifespan tracker 时兼容现有全局 tracker。
+  4. 正在播放聚合排除 `paused=true` 的宽限期会话，保持现有响应字段与 `seconds_elapsed` 语义，不新增服务器标识字段。
+  5. 先增加可复现失败的回归测试，再实施最小修复；同步当前事实、接口和隐私文档。
+- **验收标准**：英文 README 无中文叙述、中文 README 无英文叙述混排且相互链接；Docker 命令与当前镜像、端口、非 root 用户、配置和持久化事实一致；示例无真实敏感值；多服务器 tracker 中的活跃会话可由 `/api/stats/now-playing` 返回，暂停会话不返回；readiness 与 metrics 的活动数一致；既有接口响应字段不变；全部验证通过或明确记录环境阻塞。
+- **验证命令**：`pytest -q tests/test_lifespan.py tests/test_main.py tests/test_metrics.py`；`pytest -q`；`python3 scripts/check_md_links.py`；`docker compose config`；可用时执行 Docker 烟雾测试；`git diff --check`；`git diff --stat`；`git diff`；`git status --short`；敏感值扫描。
+- **涉及文件**：`README.md`、`README.zh-CN.md`、`src/main.py`、相关测试、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`、`docs/tasks.md`、设计与实施计划文档。
+- **风险/回滚**：运行时注册表清理错误可能残留陈旧会话或导致指标不一致；用 lifespan 与多 tracker 测试覆盖注册/注销。改动不涉及 schema 或既有数据；回滚应用代码与 README 文件即可。
+- **完成记录**：2026-07-27，OpenCode。将 `README.md` 重写为纯英文主文档并新增互链的 `README.zh-CN.md`；以已发布镜像为主路径补充 Compose、配置、更新、健康检查、日志、备份恢复与安全隐私说明。Dockerfile 新增 UID 1000 可写的 `/data`，仓库 Compose 改用命名卷与 `/data/navidrome_stats.db`。修复多服务器 lifespan tracker 未被正在播放、readiness 和 metrics 读取的问题，并排除宽限期内暂停会话；现有 now-playing 响应字段与计时语义不变。新增多 tracker、暂停过滤、观测计数和生命周期清理测试。验证：Python 3.11.15 下基线 `324 passed`，最终 `327 passed`；focused 测试 `28 passed`；`python3 scripts/check_md_links.py`、`docker compose config`、`git diff --check` 通过；英文 README 汉字扫描仅命中语言链接“简体中文”，README 凭据赋值扫描无命中。Docker daemon 未运行，镜像构建与 `scripts/docker_smoke_test.sh` 为环境阻塞，未声称通过。未创建提交或 PR。遗留风险：实际发布镜像、真实卷权限、备份恢复和外部访问边界仍需部署方在受控环境验收。
 
 ## NDS-SEC-001 访问控制与部署边界
 

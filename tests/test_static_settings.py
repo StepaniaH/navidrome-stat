@@ -63,3 +63,12 @@ def test_settings_has_timezone_and_catppuccin_palette_tokens():
     assert 'value="UTC"' in source
     for token in ("#303446", "#292c3c", "#ca9ee6", "#a6d189", "#eff1f5", "#e6e9ef", "#8839ef", "#40a02b"):
         assert token in source
+
+
+def test_server_settings_apply_immediately_without_restart_copy():
+    source = SETTINGS_HTML.read_text(encoding="utf-8")
+    assert "服务器配置保存后立即应用" in source
+    assert "Server changes apply immediately" in source
+    assert "重启服务后生效" not in source
+    assert "Restart the service to apply it" not in source
+    assert "running poller does not hot-reload" not in source

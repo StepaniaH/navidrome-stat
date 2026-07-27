@@ -2,6 +2,7 @@ import asyncio
 import os
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
@@ -176,6 +177,21 @@ session_tracker = PlaybackSessionTracker(
     pause_grace_sec=PAUSE_GRACE_SEC,
     save_attempt=_save_play_attempt_with_logging,
 )
+_runtime_trackers: list[PlaybackSessionTracker] = []
+
+
+def _live_trackers() -> tuple[PlaybackSessionTracker, ...]:
+    trackers = tuple(_runtime_trackers)
+    return trackers or (session_tracker,)
+
+
+def _active_sessions() -> list[dict]:
+    return [
+        session
+        for tracker in _live_trackers()
+        for session in tuple(tracker.active_sessions.values())
+        if not session.get("paused")
+    ]
 
 
 async def finalize_session(player_id: str):
@@ -224,6 +240,118 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
             )
 
         await asyncio.sleep(sleep_for)
+
+
+@dataclass
+class Collector:
+    client: NavidromeClient
+    tracker: PlaybackSessionTracker
+    task: asyncio.Task
+
+
+class CollectorManager:
+    def __init__(self, client_factory, poller, tracker_registry: list):
+        self._client_factory = client_factory
+        self._poller = poller
+        self._tracker_registry = tracker_registry
+        self._lock = asyncio.Lock()
+        self.collectors: dict[str, Collector] = {}
+
+    def _build(self, server: dict):
+        config = {
+            "url": server.get("url"),
+            "user": server.get("username", server.get("user")),
+            "password": server.get("password"),
+        }
+        if not has_full_config(config):
+            raise ValueError("Incomplete server configuration")
+        tracker = PlaybackSessionTracker(
+            lambda session, sid=server["id"], name=server["display_name"]: _save_play_session_with_logging(
+                {**session, "source_id": sid, "source_name": name}
+            ),
+            play_threshold_sec=PLAY_THRESHOLD_SEC,
+            pause_grace_sec=PAUSE_GRACE_SEC,
+            save_attempt=_attempt_callback(server["id"], server["display_name"]),
+            source_id=server["id"],
+            source_name=server["display_name"],
+        )
+        client = self._client_factory(
+            url=config["url"], user=config["user"], password=config["password"]
+        )
+        return client, tracker
+
+    def _sync_runtime_state(self) -> None:
+        runtime_state.client_initialized = bool(self.collectors)
+        runtime_state.polling_task = next(
+            (collector.task for collector in self.collectors.values()), None
+        )
+
+    async def _activate_unlocked(self, server_id: str, client, tracker) -> None:
+        task = asyncio.create_task(self._poller(client, tracker))
+        self.collectors[server_id] = Collector(client, tracker, task)
+        self._tracker_registry.append(tracker)
+        self._sync_runtime_state()
+
+    async def _stop_unlocked(self, server_id: str) -> None:
+        collector = self.collectors.pop(server_id, None)
+        if collector is None:
+            self._sync_runtime_state()
+            return
+        finalize_error = None
+        try:
+            await collector.tracker.finalize_all()
+        except Exception as exc:
+            finalize_error = exc
+        collector.task.cancel()
+        try:
+            await collector.task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await collector.client.close()
+        finally:
+            if collector.tracker in self._tracker_registry:
+                self._tracker_registry.remove(collector.tracker)
+            self._sync_runtime_state()
+        if finalize_error is not None:
+            raise finalize_error
+
+    async def start(self, server: dict) -> None:
+        async with self._lock:
+            if not server.get("enabled", True):
+                return
+            client, tracker = self._build(server)
+            await self._stop_unlocked(server["id"])
+            await self._activate_unlocked(server["id"], client, tracker)
+
+    async def replace(self, server: dict) -> None:
+        async with self._lock:
+            if not server.get("enabled", True):
+                await self._stop_unlocked(server["id"])
+                return
+            client, tracker = self._build(server)
+            try:
+                await self._stop_unlocked(server["id"])
+            except Exception:
+                await client.close()
+                raise
+            await self._activate_unlocked(server["id"], client, tracker)
+
+    async def stop(self, server_id: str) -> None:
+        async with self._lock:
+            await self._stop_unlocked(server_id)
+
+    async def stop_all(self) -> None:
+        async with self._lock:
+            for server_id in list(self.collectors):
+                await self._stop_unlocked(server_id)
+
+
+collector_manager = CollectorManager(
+    lambda **config: NavidromeClient(**config),
+    polling_loop_for_tracker,
+    _runtime_trackers,
+)
 
 
 async def retention_maintenance_loop():
@@ -290,7 +418,7 @@ async def build_readiness_report() -> dict:
             "poll_failure_total": runtime_state.poll_failure_count,
             "save_success_total": runtime_state.save_success_count,
             "save_failure_total": runtime_state.save_failure_count,
-            "active_sessions": len(session_tracker.active_sessions),
+            "active_sessions": len(_active_sessions()),
             "seconds_since_last_poll": seconds_since_poll,
             "last_upstream_error_code": runtime_state.last_upstream_error_code,
         },
@@ -303,6 +431,33 @@ async def _query_stats(fetch):
     except Exception:
         logger.error("Database query failed")
         raise HTTPException(status_code=503, detail="Stats temporarily unavailable")
+
+
+async def _apply_runtime_config(operation) -> None:
+    try:
+        await operation()
+    except Exception:
+        logger.error("Saved collector configuration could not be applied")
+        raise HTTPException(
+            status_code=503,
+            detail="Saved configuration could not be applied",
+        )
+
+
+async def _reload_legacy_source_if_active() -> None:
+    if await list_servers():
+        return
+    config = await resolve_effective_source_config()
+    if not has_full_config(config):
+        return
+    await collector_manager.replace(
+        {
+            "id": LEGACY_SOURCE_ID,
+            "display_name": LEGACY_SOURCE_NAME,
+            **config,
+            "enabled": True,
+        }
+    )
 
 
 def _validate_stats_days(days: int) -> int:
@@ -358,9 +513,6 @@ async def lifespan(app: FastAPI):
     await init_db()
     await run_startup_retention_purge()
 
-    clients = []
-    tasks = []
-    trackers = []
     retention_task = None
     try:
         configured_servers = await list_servers()
@@ -370,25 +522,14 @@ async def lifespan(app: FastAPI):
             legacy = await resolve_effective_source_config()
             server_configs = [{"id": LEGACY_SOURCE_ID, "display_name": LEGACY_SOURCE_NAME, **legacy}]
         for server in server_configs:
-            config = {"url": server.get("url"), "user": server.get("username", server.get("user")), "password": server.get("password")}
-            if not has_full_config(config):
+            config = {
+                "url": server.get("url"),
+                "user": server.get("username", server.get("user")),
+                "password": server.get("password"),
+            }
+            if not has_full_config(config) or not server.get("enabled", True):
                 continue
-            tracker = PlaybackSessionTracker(
-                lambda session, sid=server["id"], name=server["display_name"]: _save_play_session_with_logging({**session, "source_id": sid, "source_name": name}),
-                play_threshold_sec=PLAY_THRESHOLD_SEC,
-                pause_grace_sec=PAUSE_GRACE_SEC,
-                save_attempt=_attempt_callback(server["id"], server["display_name"]),
-                source_id=server["id"],
-                source_name=server["display_name"],
-            )
-            client = NavidromeClient(url=config["url"], user=config["user"], password=config["password"])
-            clients.append(client)
-            trackers.append(tracker)
-            task = asyncio.create_task(polling_loop_for_tracker(client, tracker))
-            tasks.append(task)
-        runtime_state.client_initialized = bool(clients)
-        if tasks:
-            runtime_state.polling_task = tasks[0]
+            await collector_manager.start(server)
         retention_task = asyncio.create_task(retention_maintenance_loop())
     except Exception as e:
         runtime_state.client_initialized = False
@@ -397,24 +538,14 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down background task...")
-    for task in tasks:
-        task.cancel()
     if retention_task is not None:
         retention_task.cancel()
-    for tracker in trackers:
-        await tracker.finalize_all()
-    for task in tasks:
-        try:
-            await task
-        except asyncio.CancelledError:
-            logger.info("Background task cancelled.")
+    await collector_manager.stop_all()
     if retention_task is not None:
         try:
             await retention_task
         except asyncio.CancelledError:
             logger.info("Retention maintenance task cancelled.")
-    for client in clients:
-        await client.close()
     runtime_state.polling_task = None
 
 
@@ -529,7 +660,7 @@ async def health_ready():
 @app.get("/metrics")
 async def metrics():
     """Prometheus exposition endpoint; always anonymous."""
-    active = len(session_tracker.active_sessions)
+    active = len(_active_sessions())
     return PlainTextResponse(
         content=format_prometheus_metrics(active_sessions=active),
         media_type="text/plain; version=0.0.4; charset=utf-8",
@@ -726,7 +857,7 @@ async def api_now_playing():
     try:
         now = datetime.now(timezone.utc)
         items: list[NowPlayingItem] = []
-        for session in session_tracker.active_sessions.values():
+        for session in _active_sessions():
             first_seen_at = session.get("first_seen_at")
             seconds_elapsed = 0
             if first_seen_at is not None:
@@ -919,6 +1050,7 @@ async def api_source_config_put(body: SourceConfigUpdate):
 
     updated = await get_saved_source_config()
     config = resolve_source_config(overrides=None, saved=updated)
+    await _apply_runtime_config(_reload_legacy_source_if_active)
     view = redacted_view(config)
     return SourceConfigResponse(**view)
 
@@ -983,6 +1115,7 @@ async def api_servers_create(body: ServerRequest):
     server = {"id": uuid.uuid4().hex, "display_name": body.display_name.strip(), "url": url,
               "username": body.username.strip(), "password": body.password, "enabled": body.enabled}
     await save_server(server)
+    await _apply_runtime_config(lambda: collector_manager.replace(server))
     return _server_view(server)
 
 
@@ -999,6 +1132,7 @@ async def api_servers_update(server_id: str, body: ServerRequest):
               "username": body.username.strip(), "password": body.password or existing["password"],
               "enabled": body.enabled}
     await save_server(server)
+    await _apply_runtime_config(lambda: collector_manager.replace(server))
     return _server_view(server)
 
 
@@ -1006,6 +1140,7 @@ async def api_servers_update(server_id: str, body: ServerRequest):
 async def api_servers_delete(server_id: str):
     if not await delete_server(server_id):
         raise HTTPException(status_code=404, detail="Server not found")
+    await _apply_runtime_config(lambda: collector_manager.stop(server_id))
     return {"status": "ok"}
 
 

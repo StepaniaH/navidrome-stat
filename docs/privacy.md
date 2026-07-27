@@ -21,12 +21,14 @@
 - 密码保存在 `NavidromeClient` 实例内存中，用于每次生成 Subsonic token；代码默认不把密码写入 SQLite。**例外**：通过 `PUT /api/source/config` 保存的 GUI 来源配置会将 Navidrome 密码以**明文**写入 `schema_meta.source_password`，作为环境变量 `NAVIDROME_PASS` 缺失时的回退。这是自托管场景的已知安全权衡：`GET /api/source/config` 与所有日志只返回/记录 `password_configured: bool`，从不返回密码本身；部署方须确保数据库文件受文件系统访问控制保护（见 NDS-SRC-001 完成记录）。
 - token 和 salt 作为 URL 查询参数发送。应用没有主动记录请求 URL，但代理、上游服务器或网络设施是否记录查询参数不由本仓库控制。
 - SQLite 保存用户名和播放历史明细，明文存储于本地文件；可通过 `/settings` 配置保留期、导出、导入或按用户删除。
+- Docker 默认部署将 SQLite 文件保存在挂载到 `/data` 的命名卷中。该卷以及从中复制的备份同时包含明文收听行为数据，并可能包含通过设置页保存的服务器凭据；卷、备份和恢复环境必须使用与数据库相同或更严格的访问控制。
 - 播放历史**默认永久保留**（用户确认，2026-07-16）；保留期可在 1–360 天与永久之间切换，变更后需预览并确认才执行清理。
 - 按用户导出/导入 JSON 支持数据可携带性；导入校验 `format_version` 与用户名一致性；删除与过期清理仅返回/记录条数，不记录曲目内容。
 - 启用 `STATS_API_TOKEN` 时，统计 API、隐私 API 与 OpenAPI 需 Bearer 令牌或登录会话；`/health` 探针仍匿名。未设置时仅适用于可信网络。
 - Dashboard 从公共 CDN 获取脚本；历史表格使用 `textContent` 渲染；ECharts 使用 SRI；响应含 CSP。Tailwind CDN 自托管仍待部署方决策。
 - 页面语言、主题和统计时区只保存在当前浏览器的 `localStorage`，不包含用户名、曲目或凭据；统计时区作为已登记的 IANA 名称发送到统计 API，用于日期/小时分桶。
 - `/health/ready` 仅输出聚合指标与状态枚举，不含服务器地址、用户名或曲目信息；`httpx` 请求日志级别为 WARNING。
+- collector 热更新失败只记录固定生命周期错误并返回通用 503；不记录服务器 ID、地址、用户名、密码、token、上游响应或播放元数据。
 - `.env`、数据库文件和真实部署值是否被正确排除、备份或保护取决于实际工作区及部署流程；文档不得复制这些值。
 
 ## 3. 敏感值规则

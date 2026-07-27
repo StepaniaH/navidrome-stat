@@ -1,6 +1,6 @@
 # 当前实现事实
 
-核验基线：当前工作树中的 `src/`、`tests/`、`Dockerfile`、`docker-compose.yml`、`requirements.txt` 和 `README.md`。本文只描述代码可证明的行为，不代表生产部署已经完成安全配置或人工验收。
+核验基线：当前工作树中的 `src/`、`tests/`、`Dockerfile`、`docker-compose.yml`、`requirements.txt`、`README.md` 和 `README.zh-CN.md`。本文只描述代码可证明的行为，不代表生产部署已经完成安全配置或人工验收。
 
 ## 1. 组件与数据流
 
@@ -17,12 +17,12 @@
 
 运行数据流：
 
-1. FastAPI lifespan 调用 `init_db()`，随后创建 `polling_loop()` 后台任务。
-2. lifespan 调用 `resolve_effective_source_config()`（环境变量 > 已保存 DB 值）解析连接信息，再构造 `NavidromeClient`；不齐全则记录错误且不启动轮询。`NavidromeClient` 每次请求生成六位 salt 和 MD5 token。
-3. 轮询循环调用上游 `/rest/getNowPlaying`，由 `PlaybackSessionTracker` 按 `playerId` 追踪会话；缺失 `playerId` 的条目被跳过。
+1. FastAPI lifespan 调用 `init_db()`，再由 `CollectorManager` 为启用且配置完整的服务器创建 client、tracker 与轮询任务。
+2. 无多服务器记录时，lifespan 调用 `resolve_effective_source_config()`（环境变量 > 已保存 DB 值）解析兼容来源；多服务器记录由 `servers` 表提供。`NavidromeClient` 每次请求生成六位 salt 和 MD5 token。
+3. `CollectorManager` 按服务器 ID 独立管理 `NavidromeClient`、`PlaybackSessionTracker` 与 task，并用 `asyncio.Lock` 串行化配置变更。创建/更新/启停/删除服务器后立即替换或停止对应 collector；替换时先构造新 client/tracker，再按现有阈值结算旧会话、取消任务并关闭旧 client，其他服务器不中断。轮询调用上游 `/rest/getNowPlaying` 并按 `playerId` 追踪会话；缺失 `playerId` 的条目被跳过。运行时注册表聚合这些 tracker，供正在播放 API、readiness 和 Prometheus 指标读取；未通过 lifespan 启动的直接调用仍回退到兼容的全局 tracker。
 4. 同一播放器继续播放同一 `track_id` 时累加 `active_duration_sec`（每次活跃观测累加距上一次活跃观测的时间），更新 `last_active_at` 与 `last_seen_at`；暂停或缺失的轮询不累加时长也不更新 `last_active_at`；换曲立即结算旧会话。
 5. 结算以累计的 `active_duration_sec` 计算**活跃**观测时长（排除暂停/消失后的挂钟时间）：每次正在播放的同曲轮询累加 `current_time - last_active_at`，恢复播放后从恢复时间戳继续累加（暂停间隔被排除）。时长大于等于 `PLAY_THRESHOLD_SEC`（默认 30）才写入一条 `play_history` 记录；批处理 finalize 不再追加最终间隔。
-6. Dashboard 初次加载并每 10 秒请求统计 API（含 `/api/stats/summary`）；标签页隐藏时降为 30 秒；含概览卡片、加载/空/错误状态与响应式布局。“正在播放”列表在两次刷新之间用本地 1 秒计时器递增显示的已用秒数；服务器刷新时以 `seconds_elapsed` 重新设置基线，不发起额外 API 请求。Dashboard 和设置页共享浏览器本地 `navidrome-language`、`navidrome-theme`、`navidrome-timezone` 偏好；语言切换即时更新主要标题、标签和控件，主题使用 Catppuccin Frappe/Latte 变量。Dashboard 顶部有全局 `#statsWindowControl` 时间范围控件（`7 天` / `30 天` / `90 天` / `全部`，默认 `30 天`，状态变量 `statsDays`），切换时刷新所有历史窗口组件（summary/players/transcoding/hourly/daily/heatmap/top-artists/top-albums/history）并复用 `fetchStats` 的 in-flight 防护；`now-playing` 不受窗口影响、始终实时。概览卡显示当前范围、`active_days`、日均与环比百分比徽章。顶部还有 `#statsTimezoneSelect` 时区选择器（选项 `浏览器时区` 与 `UTC`，状态变量 `statsTimezone`）：`browser` 在启动时通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 解析为 IANA 名称并以 `textContent` 写入选项标签；切换时复用 `fetchStats` 的 in-flight 防护，所有历史请求附带 `&timezone=${encodeURIComponent(resolveStatsTimezone())}`，`now-playing` 不附带时区。Dashboard 在 hourly/daily 下方新增「周时热力图」卡片（`#weekdayHourChart` + skeleton + empty），由 `renderWeekdayHourChart(data)` 渲染 ECharts heatmap：168 个 `{weekday,hour,count}` 单元，X 轴为静态 0–23 小时、Y 轴为静态 Mon–Sun（与 Python `date.weekday()` 对齐），含 `visualMap` 与空状态，并参与 `setLoading` 与 `resize` 处理。
+6. Dashboard 初次加载并每 10 秒请求统计 API（含 `/api/stats/summary`）；标签页隐藏时降为 30 秒；含概览卡片、加载/空/错误状态与响应式布局。“正在播放”聚合所有运行中服务器 tracker 的非暂停会话；暂停或暂时缺失的会话可在宽限期内保留于 tracker，但不会显示为正在播放，也不会计入 readiness/Prometheus 的 `active_sessions`。列表在两次刷新之间用本地 1 秒计时器递增显示的已用秒数；服务器刷新时以从首次观测起算的 `seconds_elapsed` 重新设置基线，不发起额外 API 请求。Dashboard 和设置页共享浏览器本地 `navidrome-language`、`navidrome-theme`、`navidrome-timezone` 偏好；语言切换即时更新主要标题、标签和控件，主题使用 Catppuccin Frappe/Latte 变量。Dashboard 顶部有全局 `#statsWindowControl` 时间范围控件（`7 天` / `30 天` / `90 天` / `全部`，默认 `30 天`，状态变量 `statsDays`），切换时刷新所有历史窗口组件（summary/players/transcoding/hourly/daily/heatmap/top-artists/top-albums/history）并复用 `fetchStats` 的 in-flight 防护；`now-playing` 不受窗口影响、始终实时。概览卡显示当前范围、`active_days`、日均与环比百分比徽章。顶部还有 `#statsTimezoneSelect` 时区选择器（选项 `浏览器时区` 与 `UTC`，状态变量 `statsTimezone`）：`browser` 在启动时通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 解析为 IANA 名称并以 `textContent` 写入选项标签；切换时复用 `fetchStats` 的 in-flight 防护，所有历史请求附带 `&timezone=${encodeURIComponent(resolveStatsTimezone())}`，`now-playing` 不附带时区。Dashboard 在 hourly/daily 下方新增「周时热力图」卡片（`#weekdayHourChart` + skeleton + empty），由 `renderWeekdayHourChart(data)` 渲染 ECharts heatmap：168 个 `{weekday,hour,count}` 单元，X 轴为静态 0–23 小时、Y 轴为静态 Mon–Sun（与 Python `date.weekday()` 对齐），含 `visualMap` 与空状态，并参与 `setLoading` 与 `resize` 处理。
 
 ## 2. 播放计数语义
 
@@ -36,12 +36,12 @@
 - 切换为不同的活跃曲目会立即结算旧会话。
 - `listen_duration_sec` 为活跃观测时长（向下取整），不含暂停后的挂钟时间。
 - 活跃会话由 `PlaybackSessionTracker` 维护，只存在于单个进程内。异常退出会丢失未结算会话；多 worker 或多副本之间不共享状态。
-- `NavidromeClient` 在 lifespan 中创建并在关闭时 `close()`；轮询失败时指数退避后继续下一轮，上限由 `MAX_POLL_BACKOFF_SEC` 控制。
+- `NavidromeClient` 由 `CollectorManager` 创建；配置替换、禁用、删除或 lifespan 关闭时执行 `close()`。轮询失败时指数退避后继续下一轮，上限由 `MAX_POLL_BACKOFF_SEC` 控制。
 
 ## 3. 持久化与查询
 
 - 默认数据库路径为运行目录下的 `navidrome_stats.db`；`DATABASE_URL` 实际被当作 SQLite 文件路径，不是通用数据库 URL。
-- `init_db()` 创建 `play_history` 与 `schema_meta`，并执行版本迁移（当前 schema 版本 2：默认 `retention_days=permanent`）。
+- `init_db()` 创建基础表并执行版本迁移（当前 schema 版本 5）；版本 2 引入默认 `retention_days=permanent`，版本 3–4 引入短播放与来源字段，版本 5 引入多服务器配置及服务器来源字段。
 - 每次写入或查询都会打开一个新的 aiosqlite 连接。
 - `played_at` 保存结算时 `last_seen_at` 的 ISO 8601 字符串，当前由应用产生时包含 UTC 偏移。
 - 播放器和转码统计按已落库记录数聚合，不按监听秒数聚合。
@@ -50,7 +50,7 @@
 - `get_summary(days=0)` 返回 `/api/stats/summary` 的窗口对比字段（`active_days`、`average_daily_*`、`previous_total_*`、`*_change_pct`、`window_days`）；有限窗口按 `active_days` 平均，`days=0` 按最早至最晚播放日的包含天数平均。
 - `get_player_stats()` 返回每个客户端的播放次数、总/平均收听秒数、转码次数与转码率；`get_transcoding_stats()` 同时返回播放占比与收听时长占比。
 - `get_top_artists()` / `get_top_albums()` 支持 `metric=plays|listen_time`，返回 `value` 作为当前排序值，并保留 `count` 与 `total_listen_sec`；结果按值降序、名称升序确定性排序。
-- schema 版本为 4，新增 `play_attempts` 表记录未达到播放阈值的短播放尝试，并为正式播放增加 `source` 溯源字段；`get_short_play_stats()` 与 `/api/stats/short-plays` 返回短播放率，`get_source_stats()` 与 `/api/stats/sources` 返回 `poller`/`import` 来源分布。短播放率不等同于跳过率，因为轮询无法证明用户是否主动跳过；Navidrome 原生历史尚未绑定未确认的私有读取接口。
+- schema 版本 3–4 新增 `play_attempts` 表记录未达到播放阈值的短播放尝试，并为正式播放增加 `source` 溯源字段；当前版本 5 另含 `servers` 表及 `source_id`/`source_name`。`get_short_play_stats()` 与 `/api/stats/short-plays` 返回短播放率，`get_source_stats()` 与 `/api/stats/sources` 返回 `poller`/`import` 来源分布。短播放率不等同于跳过率，因为轮询无法证明用户是否主动跳过；Navidrome 原生历史尚未绑定未确认的私有读取接口。
 - `get_weekday_hour_stats(days=30, timezone_name="UTC")` 返回 7×24=168 个 `{weekday,hour,count}` 行，始终零填充；weekday 遵循 Python `date.weekday()`（0=周一 … 6=周日），hour 与 weekday 按 `zoneinfo.ZoneInfo(timezone_name)` 转换后的本地时间取；无效时区抛 `ValueError`，从不字符串拼接进 SQL。
 - 所有聚合查询（summary/players/transcoding/hourly/heatmap/daily/top-artists/top-albums/history）都接受可选 `timezone_name` 参数（默认 `UTC`），仅用于 Python 端 bucket 边界与有限窗口的 UTC 截止计算；时间戳仍以 UTC ISO 字符串存储。
 - history 接口按 `username, track_id` 聚合；`title`/`artist`/`album` 取自最新插入行（`MAX(id)`），按最近 `played_at` 排序。
@@ -71,17 +71,17 @@
 - history 的 `limit` 使用 FastAPI `Query` 校验，范围 1–100，默认 10。统计窗口 `days` 使用 FastAPI `Query` 校验（`ge=0, le=90`）并由 `_validate_stats_days` 进一步拒绝 `1–6`；`0` 表示全部历史。`daily` 默认 `30`，其他历史端点默认 `0`（全部历史）以保留既有调用方行为；`now-playing` 不接受 `days`。所有历史端点还接受可选 `timezone` 查询参数（IANA 名称，默认 `UTC`），经 `_validate_stats_timezone` 与 `zoneinfo.ZoneInfo` 校验，非法值返回 422；`now-playing` 不接受 `timezone`。`/api/stats/heatmap` 默认 `days=30`，返回 168 行零填充网格。
 - Dashboard 的 Tailwind CSS 和 ECharts 从公共 CDN 加载；ECharts 5.5.0 带 SRI；CSP 限制脚本来源。
 - 页面提供可见的错误横幅、手动刷新按钮和上次更新时间；历史表格用户数据用 `textContent` 渲染。
-- 设置页（`/settings`）按「服务器连接、隐私与数据、常规、外观、关于」顺序提供五个带 SVG 图标的顶级标签。服务器连接包含多服务器 CRUD、Navidrome URL/用户名/密码表单、保存和测试连接；测试结果使用正常文档流消息块，具有额外上边距，不覆盖表单。常规提供浏览器本地时区与 UTC 选择；外观提供语言和 Catppuccin Frappe/Latte 主题，偏好仅保存在 `localStorage`。保留模式为可见的单选/分段控件而非仅靠复选框揭示滑块；密码输入为 `type=password`，GET 仅返回 `password_configured: bool`，从不渲染密码。
+- 设置页（`/settings`）按「服务器连接、隐私与数据、常规、外观、关于」顺序提供五个带 SVG 图标的顶级标签。服务器连接包含多服务器 CRUD、Navidrome URL/用户名/密码表单、保存和测试连接；服务器变更保存后立即应用，不要求重启。测试结果使用正常文档流消息块，具有额外上边距，不覆盖表单。常规提供浏览器本地时区与 UTC 选择；外观提供语言和 Catppuccin Frappe/Latte 主题，偏好仅保存在 `localStorage`。保留模式为可见的单选/分段控件而非仅靠复选框揭示滑块；密码输入为 `type=password`，GET 仅返回 `password_configured: bool`，从不渲染密码。
 
 ## 5. 部署与配置
 
-- Docker 镜像采用多阶段构建：builder 阶段基于 `python:3.11-slim` 安装 `build-essential` 并在 `/opt/venv` 中安装 `requirements.lock`；runner 阶段同样基于 `python:3.11-slim`，仅复制 `/opt/venv`，不保留 `build-essential`，并以非 root 用户 `appuser`（UID 1000）运行。
+- Docker 镜像采用多阶段构建：builder 阶段基于 `python:3.11-slim` 安装 `build-essential` 并在 `/opt/venv` 中安装 `requirements.lock`；runner 阶段同样基于 `python:3.11-slim`，仅复制 `/opt/venv`，不保留 `build-essential`，并以非 root 用户 `appuser`（UID 1000）运行；镜像预建由该用户拥有的 `/data` 持久化目录。
 - Uvicorn 在容器和 `src/main.py` 直接运行路径中绑定 `0.0.0.0:39421`。
-- Compose 将宿主机 `39421` 映射到容器同端口，加载 `.env`，并把单个数据库文件挂载到 `/app/navidrome_stats.db`。
+- Compose 将宿主机 `39421` 映射到容器同端口，加载 `.env`，并将命名卷挂载到 `/data`；容器内数据库路径默认为 `/data/navidrome_stats.db`。
 - Compose 声明存活健康检查（`GET /health`），未将上游失败配置为容器重启条件。
 - `requirements.txt`、`requirements.lock` 与 `requirements-dev.txt` 固定运行与测试依赖版本；Docker 使用 `requirements.lock` 安装。
 - 仓库提供 `.dockerignore`，构建上下文排除 `.env`、数据库、测试与文档。
-- 代码没有 TLS 终止、反向代理、访问控制或备份实现；这些只能由实际部署环境提供，当前仓库无法证明。
+- 代码提供可选 `STATS_API_TOKEN` 访问控制，但没有 TLS 终止、反向代理或备份自动化；这些部署边界仍需由实际环境提供，当前仓库无法证明。
 
 ## 6. 测试现状
 

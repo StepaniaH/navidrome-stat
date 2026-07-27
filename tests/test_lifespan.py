@@ -15,6 +15,8 @@ def synthetic_navidrome_env(monkeypatch):
 
 @pytest.fixture
 def reset_runtime(monkeypatch, db_path):
+    import src.main as main
+
     monkeypatch.setenv("DATABASE_URL", db_path)
     runtime_state.polling_task = None
     runtime_state.client_initialized = False
@@ -26,6 +28,7 @@ def reset_runtime(monkeypatch, db_path):
     runtime_state.save_success_count = 0
     runtime_state.save_failure_count = 0
     session_tracker.active_sessions.clear()
+    main._runtime_trackers.clear()
     yield
     if runtime_state.polling_task is not None and not runtime_state.polling_task.done():
         runtime_state.polling_task.cancel()
@@ -41,22 +44,51 @@ async def test_lifespan_starts_polling_and_closes_client(
         "subsonic-response": {"status": "ok", "nowPlaying": {"entry": []}}
     }
 
-    with patch("src.main.NavidromeClient", return_value=mock_client):
-        async with lifespan(app):
-            assert runtime_state.client_initialized is True
-            assert runtime_state.polling_task is not None
-            assert runtime_state.polling_task_alive()
+    with patch("src.main.list_servers", AsyncMock(return_value=[])):
+        with patch("src.main.NavidromeClient", return_value=mock_client):
+            async with lifespan(app):
+                assert runtime_state.client_initialized is True
+                assert runtime_state.polling_task is not None
+                assert runtime_state.polling_task_alive()
 
     mock_client.close.assert_awaited_once()
     assert runtime_state.polling_task is None or runtime_state.polling_task.done()
 
 
 @pytest.mark.asyncio
+async def test_lifespan_registers_and_cleans_up_runtime_trackers(
+    reset_runtime, db_path
+):
+    import src.main as main
+
+    configured_server = {
+        "id": "synthetic-server",
+        "display_name": "Synthetic Server",
+        "url": "http://navidrome.example.invalid:4533",
+        "username": "synthetic-user",
+        "password": "synthetic-password",
+        "enabled": True,
+    }
+    mock_client = AsyncMock()
+    mock_client.get_now_playing.return_value = {
+        "subsonic-response": {"status": "ok", "nowPlaying": {"entry": []}}
+    }
+
+    with patch("src.main.list_servers", AsyncMock(return_value=[configured_server])):
+        with patch("src.main.NavidromeClient", return_value=mock_client):
+            async with lifespan(app):
+                assert len(main._runtime_trackers) == 1
+
+    assert main._runtime_trackers == []
+
+
+@pytest.mark.asyncio
 async def test_lifespan_degraded_when_client_init_fails(reset_runtime, db_path):
-    with patch("src.main.NavidromeClient", side_effect=ValueError("missing config")):
-        async with lifespan(app):
-            assert runtime_state.client_initialized is False
-            assert runtime_state.polling_task is None
+    with patch("src.main.list_servers", AsyncMock(return_value=[])):
+        with patch("src.main.NavidromeClient", side_effect=ValueError("missing config")):
+            async with lifespan(app):
+                assert runtime_state.client_initialized is False
+                assert runtime_state.polling_task is None
 
 
 @pytest.mark.asyncio
