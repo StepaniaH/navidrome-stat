@@ -44,12 +44,16 @@ def test_source_message_stays_in_normal_flow():
 
 def test_settings_i18n_and_local_preferences_are_local_only():
     source = SETTINGS_HTML.read_text(encoding="utf-8")
+    assert '<html lang="en">' in source
+    assert "localStorage.getItem('navidrome-language') || 'en'" in source
     for key in ("navidrome-language", "navidrome-theme", "navidrome-timezone"):
         assert key in source
     assert "data-i18n=\"tab.source\"" in source
     assert "data-i18n=\"tab.general\"" in source
     assert "function translatePage()" in source
-    assert "element.textContent = value" in source
+    assert "element.textContent = t(element.dataset.i18n)" in source
+    assert "data-i18n-attr" in source
+    assert "function localized(" in source
 
 
 def test_settings_has_timezone_and_catppuccin_palette_tokens():
