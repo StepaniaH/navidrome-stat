@@ -213,12 +213,32 @@ def test_dashboard_reads_shared_timezone_preference(source):
 
 
 def test_dashboard_has_local_i18n_and_theme_palette(source):
+    assert '<html lang="en">' in source
+    assert "localStorage.getItem('navidrome-language') || 'en'" in source
     assert "const dashboardTranslations" in source
     assert "function translateDashboard()" in source
     assert "localStorage.getItem('navidrome-language')" in source
     assert "function translateDashboard()" in source
     assert "localStorage.getItem('navidrome-theme')" in source
     for token in ("#303446", "#292c3c", "#ca9ee6", "#a6d189", "#eff1f5", "#e6e9ef", "#8839ef", "#40a02b"):
+        assert token in source
+
+
+def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(source):
+    for token in (
+        "dashboardText('上次更新 ', 'Last updated ')",
+        "dashboardText(`活跃 ${activeDays} 天`, `${activeDays} active days`)",
+        "Client listening details",
+        "Listening time",
+        "dashboardDuration(item.listenSec)",
+        "dashboardText('播放', 'Plays')",
+        "dashboardText(`${statsWindowLabel()}每日播放次数`, `${statsWindowLabel()} plays per day`)",
+        "subtitle.serverBreakdown",
+        "subtitle.history",
+        "history.caption",
+        "history.lastPlayed",
+        "metric.listenTime",
+    ):
         assert token in source
 
 
@@ -367,7 +387,7 @@ def test_ranking_metric_switch_fetches_only_rankings(source):
 def test_ranking_renderer_shows_both_metrics_safely(source):
     block = _function_block(source, "renderRankingList")
     assert "Number(d.value)" in block
-    assert "formatListenDuration(totalListenSec)" in block
+    assert "dashboardDuration(totalListenSec)" in block
     assert "textContent" in block
     assert "innerHTML" not in block
 
