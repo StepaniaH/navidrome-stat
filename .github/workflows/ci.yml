@@ -41,3 +41,31 @@ jobs:
 
       - name: Docker smoke test
         run: bash scripts/docker_smoke_test.sh
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install application and browser dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build local frontend assets
+        run: npm run build:assets
+
+      - name: Run browser tests
+        run: npm run test:e2e

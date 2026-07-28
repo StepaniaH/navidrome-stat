@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 HISTORY_LIMIT_DEFAULT = 10
@@ -167,6 +167,8 @@ class HistoryItem(BaseModel):
     play_count: int
     last_played_at: Optional[str] = None
     total_listen_sec: Optional[int] = None
+    source_id: Optional[str] = None
+    source_name: Optional[str] = None
 
 
 class HealthLiveResponse(BaseModel):
@@ -187,6 +189,9 @@ class ReadinessMetrics(BaseModel):
     active_sessions: int
     seconds_since_last_poll: Optional[int] = None
     last_upstream_error_code: Optional[int] = None
+    collector_count: int = 0
+    healthy_collector_count: int = 0
+    degraded_collector_count: int = 0
 
 
 class ReadinessResponse(BaseModel):
@@ -196,7 +201,7 @@ class ReadinessResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    token: str
+    token: str = Field(min_length=1, max_length=4096)
 
 
 class AuthStatusResponse(BaseModel):
@@ -214,6 +219,8 @@ class PrivacySettingsUpdate(BaseModel):
 
 class RetentionPreviewResponse(BaseModel):
     records_to_delete: int
+    history_records_to_delete: int = 0
+    attempt_records_to_delete: int = 0
     retention_days: Optional[int] = None
     database_bytes: int
     total_records: int
@@ -225,11 +232,15 @@ class RetentionPreviewResponse(BaseModel):
 class StorageStatsResponse(BaseModel):
     database_bytes: int
     total_records: int
+    history_records: int = 0
+    attempt_records: int = 0
     estimated_data_bytes: int
 
 
 class RetentionApplyResponse(BaseModel):
     deleted: int
+    history_deleted: int = 0
+    attempts_deleted: int = 0
     retention_days: Optional[int] = None
 
 
@@ -253,6 +264,7 @@ class UserImportRequest(BaseModel):
 
 class UserImportResponse(BaseModel):
     imported: int
+    attempts_imported: int = 0
     merge: bool
 
 
@@ -276,15 +288,15 @@ class SourceConfigResponse(BaseModel):
 
 
 class SourceConfigUpdate(BaseModel):
-    url: Optional[str] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
+    url: Optional[str] = Field(default=None, max_length=2048)
+    username: Optional[str] = Field(default=None, max_length=255)
+    password: Optional[str] = Field(default=None, max_length=4096)
 
 
 class SourceTestRequest(BaseModel):
-    url: Optional[str] = None
-    username: Optional[str] = None
-    password: Optional[str] = None
+    url: Optional[str] = Field(default=None, max_length=2048)
+    username: Optional[str] = Field(default=None, max_length=255)
+    password: Optional[str] = Field(default=None, max_length=4096)
 
 
 class SourceTestResponse(BaseModel):
@@ -299,13 +311,16 @@ class ServerResponse(BaseModel):
     username: str
     password_configured: bool
     enabled: bool = True
+    runtime_status: Optional[str] = None
+    last_poll_ok: Optional[bool] = None
+    seconds_since_last_poll: Optional[int] = None
 
 
 class ServerRequest(BaseModel):
-    display_name: str
-    url: str
-    username: str
-    password: Optional[str] = None
+    display_name: str = Field(min_length=1, max_length=255)
+    url: str = Field(min_length=1, max_length=2048)
+    username: str = Field(min_length=1, max_length=255)
+    password: Optional[str] = Field(default=None, max_length=4096)
     enabled: bool = True
 
 
@@ -319,6 +334,25 @@ class ServerStat(BaseModel):
     source_name: str
     count: int
     total_listen_sec: int
+
+
+class ServerOption(BaseModel):
+    id: str
+    display_name: str
+
+
+class DashboardSnapshot(BaseModel):
+    summary: SummaryStat
+    players: list[PlayerStat]
+    transcoding: list[TranscodingStat]
+    hourly: list[HourlyStat]
+    daily: list[DailyStat]
+    heatmap: list[WeekdayHourStat]
+    history: list[HistoryItem]
+    servers: list[ServerStat]
+    available_servers: list[ServerOption]
+    top_artists: list[TopArtistItem]
+    top_albums: list[TopAlbumItem]
 
 
 class AboutResponse(BaseModel):

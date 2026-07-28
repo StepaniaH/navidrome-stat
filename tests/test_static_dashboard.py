@@ -155,18 +155,22 @@ def test_daily_days_state_variable_replaced(source):
 
 def test_historical_fetch_urls_use_stats_days(source):
     block = _function_block(source, "fetchStats")
-    # Every historical widget request must propagate the global window.
-    assert "/api/stats/summary?days=${statsDays}" in block
-    assert "/api/stats/players?days=${statsDays}" in block
-    assert "/api/stats/transcoding?days=${statsDays}" in block
-    assert "/api/stats/hourly?days=${statsDays}" in block
-    assert "/api/stats/daily?days=${statsDays}" in block
-    assert "/api/stats/history?limit=10&days=${statsDays}" in block
-    assert "/api/stats/top-artists?limit=10&days=${statsDays}" in block
-    assert "/api/stats/top-albums?limit=10&days=${statsDays}" in block
-    # Now-playing must NOT be window-filtered.
-    assert "/api/stats/now-playing', fetchOptions" in block
-    assert "now-playing?days" not in block
+    assert "/api/stats/dashboard?${query}" in block
+    assert "days=${statsDays}" in block
+    for endpoint in (
+        "summary?",
+        "players?",
+        "transcoding?",
+        "hourly?",
+        "daily?",
+        "history?",
+        "top-artists?",
+        "top-albums?",
+    ):
+        assert f"/api/stats/{endpoint}" not in block
+    now_block = _function_block(source, "fetchNowPlaying")
+    assert "/api/stats/now-playing${sourceParam}" in now_block
+    assert "now-playing?days" not in now_block
 
 
 def test_dashboard_header_has_no_preference_controls(source):
@@ -246,23 +250,10 @@ def test_historical_fetch_urls_propagate_timezone(source):
     block = _function_block(source, "fetchStats")
     assert "encodeURIComponent(resolveStatsTimezone())" in block
     assert "timezone=${tzParam}" in block
-    # Every historical endpoint must carry the timezone parameter. The
-    # history/top-* endpoints prepend ``limit=`` before ``days=``, so we just
-    # assert that ``&timezone=${tzParam}`` follows the ``days=${statsDays}``
-    # token on the same line.
-    assert "summary?days=${statsDays}&timezone=${tzParam}" in block
-    assert "players?days=${statsDays}&timezone=${tzParam}" in block
-    assert "transcoding?days=${statsDays}&timezone=${tzParam}" in block
-    assert "hourly?days=${statsDays}&timezone=${tzParam}" in block
-    assert "daily?days=${statsDays}&timezone=${tzParam}" in block
-    assert "heatmap?days=${statsDays}&timezone=${tzParam}" in block
-    assert "history?limit=10&days=${statsDays}&timezone=${tzParam}" in block
-    assert "top-artists?limit=10&days=${statsDays}&timezone=${tzParam}" in block
-    assert "top-albums?limit=10&days=${statsDays}&timezone=${tzParam}" in block
-    # Now-playing must NOT carry the timezone parameter.
-    assert "/api/stats/now-playing', fetchOptions" in block
-    assert "now-playing?timezone" not in block
-    assert "now-playing?days" not in block
+    assert "/api/stats/dashboard?${query}" in block
+    now_block = _function_block(source, "fetchNowPlaying")
+    assert "timezone" not in now_block
+    assert "days" not in now_block
 
 
 def test_heatmap_card_markup_exists(source):
@@ -303,15 +294,8 @@ def test_heatmap_render_function_exists(source):
 
 def test_heatmap_included_in_fetchstats_promise_all(source):
     block = _function_block(source, "fetchStats")
-    # The heatmap request is part of the historical Promise.all batch.
-    assert "/api/stats/heatmap?days=${statsDays}&timezone=${tzParam}" in block
-    # Response variable is declared alongside the other historical responses.
-    assert "weekdayHourRes" in block
-    # Parsed alongside the other JSON payloads and rendered.
-    assert "weekdayHourRes.json()" in block
-    assert "renderWeekdayHourChart(weekdayHourData)" in block
-    # Auth and ok-status checks include the heatmap response.
-    assert "weekdayHourRes" in block
+    assert "/api/stats/dashboard?${query}" in block
+    assert "renderWeekdayHourChart(snapshot.heatmap)" in block
 
 
 def test_heatmap_skeleton_in_set_loading(source):
@@ -371,16 +355,16 @@ def test_ranking_metric_control_and_state_exist(source):
 def test_ranking_fetch_propagates_metric_and_uses_selected_value(source):
     block = _function_block(source, "fetchStats")
     assert "&metric=${rankingMetric}" in block
-    assert "renderTopArtistsChart(topArtistsData, rankingMetric)" in block
-    assert "renderTopAlbumsChart(topAlbumsData, rankingMetric)" in block
+    assert "renderTopArtistsChart(snapshot.top_artists, rankingMetric)" in block
+    assert "renderTopAlbumsChart(snapshot.top_albums, rankingMetric)" in block
 
 
 def test_ranking_metric_switch_fetches_only_rankings(source):
     block = _function_block(source, "fetchRankings")
     assert "rankingInFlight" in block
-    assert "/api/stats/top-artists" in block
-    assert "/api/stats/top-albums" in block
-    assert "metric=${rankingMetric}" in block
+    assert "await fetchStats()" in block
+    assert "/api/stats/top-artists" not in block
+    assert "/api/stats/top-albums" not in block
     assert "innerHTML" not in block
 
 
@@ -406,3 +390,24 @@ def test_client_legend_and_transcoding_percentages_exist(source):
     assert "listenPct" in transcode_block
     assert "listenSec" in transcode_block
     assert "tooltip" in transcode_block
+
+
+def test_realtime_and_historical_refresh_are_split(source):
+    assert "const REFRESH_MS = 60000;" in source
+    assert "const HIDDEN_REFRESH_MS = 300000;" in source
+    assert "const NOW_PLAYING_REFRESH_MS = 10000;" in source
+    schedule = _function_block(source, "scheduleRefresh")
+    assert "fetchStats," in schedule
+    assert "fetchNowPlaying," in schedule
+
+
+def test_server_filter_is_safe_and_propagated(source):
+    assert 'id="statsSourceSelect"' in source
+    assert "let selectedSourceId = '';" in source
+    stats = _function_block(source, "fetchStats")
+    now_playing = _function_block(source, "fetchNowPlaying")
+    assert "&source_id=${encodeURIComponent(selectedSourceId)}" in stats
+    assert "?source_id=${encodeURIComponent(selectedSourceId)}" in now_playing
+    options = _function_block(source, "updateSourceOptions")
+    assert "textContent" in options
+    assert "innerHTML" not in options

@@ -4,29 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Navidrome Statistics</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        ink: { 950: '#0a0a0f', 900: '#12121a', 800: '#1a1a26', 700: '#252536' },
-                        accent: { DEFAULT: '#a78bfa', dim: '#7c5fd4', glow: '#c4b5fd' },
-                        mint: { DEFAULT: '#34d399', dim: '#059669' },
-                    },
-                    fontFamily: {
-                        display: ['"SF Pro Display"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-                        mono: ['"SF Mono"', 'ui-monospace', 'monospace'],
-                    },
-                    boxShadow: {
-                        card: '0 4px 24px -4px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)',
-                        glow: '0 0 40px -10px rgba(167,139,250,0.35)',
-                    },
-                },
-            },
-        };
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js" integrity="sha384-o5uz97et3bErHvpKfD4Jz4n0JfhJDWABFuF4NP+iEEDxE1VwMWJ19QGR0lqFZnr6" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="/static/vendor/tailwind.css">
+    <script src="/static/vendor/echarts.min.js"></script>
     <script>document.documentElement.dataset.theme = localStorage.getItem('navidrome-theme') || 'frappe';</script>
     <style>
         :root, [data-theme="frappe"] {
@@ -227,6 +206,12 @@
                     <button type="button" data-days="0"
                         data-i18n="window.all" class="stats-window-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">全部</button>
                 </div>
+                <label class="inline-flex items-center gap-2 text-xs text-slate-500">
+                    <span data-i18n="dashboard.serverFilter">服务器</span>
+                    <select id="statsSourceSelect" class="rounded-lg bg-ink-800 border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:ring-2 focus:ring-accent/50">
+                        <option value="" data-i18n="dashboard.allServers">全部服务器</option>
+                    </select>
+                </label>
              </div>
             <p id="statsScopeLabel" class="text-xs text-slate-600 mt-3 font-mono" aria-live="polite"></p>
             <p id="lastUpdated" class="text-xs text-slate-600 mt-1 font-mono" aria-live="polite"></p>
@@ -426,7 +411,7 @@
         </section>
 
         <footer class="mt-8 text-center text-xs text-slate-600 font-mono" data-i18n="footer.refreshInfo">
-            每 10 秒自动刷新 · 播放满 30 秒计入一次
+            正在播放每 10 秒刷新 · 历史统计每 60 秒刷新
         </footer>
     </div>
 
@@ -449,8 +434,9 @@
     </div>
 
     <script>
-        const REFRESH_MS = 10000;
-        const HIDDEN_REFRESH_MS = 30000;
+        const REFRESH_MS = 60000;
+        const HIDDEN_REFRESH_MS = 300000;
+        const NOW_PLAYING_REFRESH_MS = 10000;
         const colorPalette = ['#a78bfa', '#818cf8', '#34d399', '#f472b6', '#fb923c', '#facc15', '#22d3ee', '#f87171'];
 
         const playerChart = echarts.init(document.getElementById('playerChart'), null, { renderer: 'canvas' });
@@ -466,10 +452,14 @@
         const HOUR_LABELS = Array.from({ length: 24 }, (_, h) => String(h));
 
         let fetchInFlight = false;
+        let nowPlayingFetchInFlight = false;
         let refreshTimer = null;
+        let nowPlayingRefreshTimer = null;
         let hasLoadedOnce = false;
         let authRequired = false;
         let statsDays = 30;
+        let selectedSourceId = '';
+        const knownSources = new Map();
         // Ranking metric state shared by the top artists and top albums cards.
         // ``plays`` keeps the historical count-based ranking; ``listen_time``
         // ranks by total observed listen seconds. Switching it only re-fetches
@@ -526,7 +516,7 @@
                 throw new Error('invalid token');
             }
             hideLogin();
-            await fetchStats();
+            await Promise.all([fetchStats(), fetchNowPlaying()]);
         }
 
         const chartBase = {
@@ -549,8 +539,8 @@
                 'dashboard.nowPlaying': '正在播放', 'dashboard.summary': '概览统计', 'dashboard.totalPlays': '总播放次数', 'dashboard.listen': '累计收听', 'dashboard.tracks': '曲目数',
                 'dashboard.clients': '客户端分布', 'dashboard.transcoding': '转码比例', 'dashboard.hourly': '播放时段分布', 'dashboard.daily': '每日播放趋势',
                 'dashboard.heatmap': '周时热力图', 'dashboard.rankings': '热门艺人与专辑', 'dashboard.artists': '热门艺人', 'dashboard.albums': '热门专辑',
-                'dashboard.sources': '服务器来源', 'dashboard.history': '最近播放', 'dashboard.window': '统计时间范围', 'metric.plays': '播放次数', 'metric.listenTime': '收听时长',
-                'subtitle.currentWindow': '按当前统计窗口', 'subtitle.serverBreakdown': '不同 Navidrome 服务器的播放次数与收听时长', 'subtitle.history': '按最近播放时间排序，重复收听会累加 Plays', 'history.caption': '播放历史记录表', 'history.user': '用户', 'history.track': '曲目', 'history.artist': '艺人', 'history.album': '专辑', 'history.lastPlayed': '最近播放', 'footer.refreshInfo': '每 10 秒自动刷新 · 播放满 30 秒计入一次',
+                'dashboard.sources': '服务器来源', 'dashboard.history': '最近播放', 'dashboard.window': '统计时间范围', 'dashboard.serverFilter': '服务器', 'dashboard.allServers': '全部服务器', 'metric.plays': '播放次数', 'metric.listenTime': '收听时长',
+                'subtitle.currentWindow': '按当前统计窗口', 'subtitle.serverBreakdown': '不同 Navidrome 服务器的播放次数与收听时长', 'subtitle.history': '按最近播放时间排序，重复收听会累加 Plays', 'history.caption': '播放历史记录表', 'history.user': '用户', 'history.track': '曲目', 'history.artist': '艺人', 'history.album': '专辑', 'history.lastPlayed': '最近播放', 'footer.refreshInfo': '正在播放每 10 秒刷新 · 历史统计每 60 秒刷新',
             },
             en: {
                 'status.connecting': 'Connecting…', 'dashboard.manualRefresh': 'Refresh now', 'window.7': '7 days', 'window.30': '30 days', 'window.90': '90 days', 'window.all': 'All',
@@ -561,8 +551,8 @@
                 'dashboard.nowPlaying': 'Now Playing', 'dashboard.summary': 'Overview', 'dashboard.totalPlays': 'Total Plays', 'dashboard.listen': 'Listening Time', 'dashboard.tracks': 'Unique Tracks',
                 'dashboard.clients': 'Clients', 'dashboard.transcoding': 'Transcoding', 'dashboard.hourly': 'Playback by Hour', 'dashboard.daily': 'Daily Trend',
                 'dashboard.heatmap': 'Weekday × Hour', 'dashboard.rankings': 'Top Artists & Albums', 'dashboard.artists': 'Top Artists', 'dashboard.albums': 'Top Albums',
-                'dashboard.sources': 'Server Sources', 'dashboard.history': 'Recent Plays', 'dashboard.window': 'Statistics range', 'metric.plays': 'Plays', 'metric.listenTime': 'Listening time',
-                'subtitle.currentWindow': 'Current statistics range', 'subtitle.serverBreakdown': 'Play count and listening time by Navidrome server', 'subtitle.history': 'Sorted by most recent play; repeated listening adds to Plays', 'history.caption': 'Playback history table', 'history.user': 'User', 'history.track': 'Track', 'history.artist': 'Artist', 'history.album': 'Album', 'history.lastPlayed': 'Last played', 'footer.refreshInfo': 'Refreshes every 10 seconds · Plays count after 30 seconds',
+                'dashboard.sources': 'Server Sources', 'dashboard.history': 'Recent Plays', 'dashboard.window': 'Statistics range', 'dashboard.serverFilter': 'Server', 'dashboard.allServers': 'All servers', 'metric.plays': 'Plays', 'metric.listenTime': 'Listening time',
+                'subtitle.currentWindow': 'Current statistics range', 'subtitle.serverBreakdown': 'Play count and listening time by Navidrome server', 'subtitle.history': 'Sorted by most recent play; repeated listening adds to Plays', 'history.caption': 'Playback history table', 'history.user': 'User', 'history.track': 'Track', 'history.artist': 'Artist', 'history.album': 'Album', 'history.lastPlayed': 'Last played', 'footer.refreshInfo': 'Now playing refreshes every 10s · History every 60s',
             },
         };
         function translateDashboard() {
@@ -855,7 +845,7 @@
                 const th = document.createElement('th');
                 th.scope = 'col';
                 th.textContent = label;
-                if (index === 3) th.classList.add('hide-mobile');
+                if (index >= 3) th.classList.add('hide-mobile');
                 headerRow.appendChild(th);
             });
             thead.appendChild(headerRow);
@@ -875,6 +865,7 @@
                 average.className = 'hide-mobile';
                 average.textContent = formatListenDuration(item.average_listen_sec);
                 const transcode = document.createElement('td');
+                transcode.className = 'hide-mobile';
                 const rate = Number(item.transcoding_rate_pct);
                 transcode.textContent = Number.isFinite(rate) ? `${rate.toFixed(1)}%` : '—';
                 [name, count, total, average, transcode].forEach(cell => {
@@ -1248,6 +1239,36 @@
             });
         }
 
+        function updateSourceOptions(data) {
+            if (Array.isArray(data)) {
+                data.forEach((item) => {
+                    const id = item && (item.source_id || item.id);
+                    const name = item && (item.source_name || item.display_name || id);
+                    if (id) {
+                        knownSources.set(
+                            String(id),
+                            name,
+                        );
+                    }
+                });
+            }
+            const select = document.getElementById('statsSourceSelect');
+            const allOption = document.createElement('option');
+            allOption.value = '';
+            allOption.textContent = dashboardText('全部服务器', 'All servers');
+            const options = [allOption];
+            [...knownSources.entries()]
+                .sort((a, b) => String(a[1]).localeCompare(String(b[1])))
+                .forEach(([id, name]) => {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = name;
+                    options.push(option);
+                });
+            select.replaceChildren(...options);
+            select.value = selectedSourceId;
+        }
+
         function renderHistoryTable(data) {
             const tbody = document.getElementById('historyTable');
             tbody.replaceChildren();
@@ -1343,55 +1364,34 @@
 
             try {
                 const tzParam = encodeURIComponent(resolveStatsTimezone());
-                const [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, serverStatsRes, nowPlayingRes, topArtistsRes, topAlbumsRes] = await Promise.all([
-                    fetch(`/api/stats/summary?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
-                    fetch(`/api/stats/players?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
-                    fetch(`/api/stats/transcoding?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
-                    fetch(`/api/stats/hourly?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
-                    fetch(`/api/stats/daily?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
-                    fetch(`/api/stats/heatmap?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
-                    fetch(`/api/stats/history?limit=10&days=${statsDays}&timezone=${tzParam}`, fetchOptions),
-                    fetch(`/api/stats/servers?days=${statsDays}&timezone=${tzParam}`, fetchOptions),
-                    fetch('/api/stats/now-playing', fetchOptions),
-                    fetch(`/api/stats/top-artists?limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`, fetchOptions),
-                    fetch(`/api/stats/top-albums?limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`, fetchOptions),
-                ]);
-
-                if ([summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, serverStatsRes, nowPlayingRes, topArtistsRes, topAlbumsRes].some(r => r.status === 401)) {
+                const sourceParam = selectedSourceId
+                    ? `&source_id=${encodeURIComponent(selectedSourceId)}`
+                    : '';
+                const query = `days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}${sourceParam}`;
+                const snapshotRes = await fetch(`/api/stats/dashboard?${query}`, fetchOptions);
+                if (snapshotRes.status === 401) {
                     showLogin('访问令牌无效或已过期，请重新登录。');
                     return;
                 }
-
-                const responses = [summaryRes, playersRes, transcodingRes, hourlyRes, dailyRes, weekdayHourRes, historyRes, serverStatsRes, nowPlayingRes, topArtistsRes, topAlbumsRes];
-                if (responses.some(r => !r.ok)) {
-                    throw new Error('部分数据请求失败 (' + responses.filter(r => !r.ok).map(r => r.status).join(', ') + ')');
+                if (!snapshotRes.ok) {
+                    throw new Error('statistics request failed (' + snapshotRes.status + ')');
                 }
-
-                const [summaryData, playersData, transcodingData, hourlyData, dailyData, weekdayHourData, historyData, serverStatsData, nowPlayingData, topArtistsData, topAlbumsData] = await Promise.all([
-                    summaryRes.json(),
-                    playersRes.json(),
-                    transcodingRes.json(),
-                    hourlyRes.json(),
-                    dailyRes.json(),
-                    weekdayHourRes.json(),
-                    historyRes.json(),
-                    serverStatsRes.json(),
-                    nowPlayingRes.json(),
-                    topArtistsRes.json(),
-                    topAlbumsRes.json(),
-                ]);
-
-                renderNowPlaying(nowPlayingData);
-                updateSummary(summaryData, transcodingData);
-                renderPlayerChart(playersData);
-                renderTranscodingChart(transcodingData);
-                renderHourlyChart(hourlyData);
-                renderDailyChart(dailyData);
-                renderWeekdayHourChart(weekdayHourData);
-                renderTopArtistsChart(topArtistsData, rankingMetric);
-                renderTopAlbumsChart(topAlbumsData, rankingMetric);
-                renderHistoryTable(historyData);
-                renderServerSourceBreakdown(serverStatsData);
+                const snapshot = await snapshotRes.json();
+                updateSummary(snapshot.summary, snapshot.transcoding);
+                renderPlayerChart(snapshot.players);
+                renderTranscodingChart(snapshot.transcoding);
+                renderHourlyChart(snapshot.hourly);
+                renderDailyChart(snapshot.daily);
+                renderWeekdayHourChart(snapshot.heatmap);
+                renderTopArtistsChart(snapshot.top_artists, rankingMetric);
+                renderTopAlbumsChart(snapshot.top_albums, rankingMetric);
+                renderHistoryTable(snapshot.history);
+                renderServerSourceBreakdown(snapshot.servers);
+                updateSourceOptions(
+                    snapshot.available_servers && snapshot.available_servers.length
+                        ? snapshot.available_servers
+                        : snapshot.servers,
+                );
 
                 hasLoadedOnce = true;
                 hideError();
@@ -1409,10 +1409,40 @@
             }
         }
 
+        async function fetchNowPlaying() {
+            if (nowPlayingFetchInFlight) return;
+            nowPlayingFetchInFlight = true;
+            try {
+                const sourceParam = selectedSourceId
+                    ? `?source_id=${encodeURIComponent(selectedSourceId)}`
+                    : '';
+                const response = await fetch(`/api/stats/now-playing${sourceParam}`, fetchOptions);
+                if (response.status === 401) {
+                    showLogin('访问令牌无效或已过期，请重新登录。');
+                    return;
+                }
+                if (!response.ok) throw new Error('now-playing request failed');
+                renderNowPlaying(await response.json());
+            } catch (error) {
+                console.error('Error fetching now playing:', error);
+            } finally {
+                nowPlayingFetchInFlight = false;
+            }
+        }
+
         function scheduleRefresh() {
             if (refreshTimer) clearInterval(refreshTimer);
-            const ms = document.hidden ? HIDDEN_REFRESH_MS : REFRESH_MS;
-            refreshTimer = setInterval(fetchStats, ms);
+            if (nowPlayingRefreshTimer) clearInterval(nowPlayingRefreshTimer);
+            refreshTimer = setInterval(
+                fetchStats,
+                document.hidden ? HIDDEN_REFRESH_MS : REFRESH_MS,
+            );
+            if (!document.hidden) {
+                nowPlayingRefreshTimer = setInterval(
+                    fetchNowPlaying,
+                    NOW_PLAYING_REFRESH_MS,
+                );
+            }
         }
 
         function setActiveRankingMetric(metric) {
@@ -1434,21 +1464,7 @@
             if (rankingInFlight || fetchInFlight) return;
             rankingInFlight = true;
             try {
-                const tzParam = encodeURIComponent(resolveStatsTimezone());
-                const query = `limit=10&days=${statsDays}&timezone=${tzParam}&metric=${rankingMetric}`;
-                const [artistsRes, albumsRes] = await Promise.all([
-                    fetch(`/api/stats/top-artists?${query}`, fetchOptions),
-                    fetch(`/api/stats/top-albums?${query}`, fetchOptions),
-                ]);
-                if ([artistsRes, albumsRes].some(r => r.status === 401)) {
-                    showLogin('访问令牌无效或已过期，请重新登录。');
-                    return;
-                }
-                if (!artistsRes.ok || !albumsRes.ok) throw new Error('ranking request failed');
-                const [artists, albums] = await Promise.all([artistsRes.json(), albumsRes.json()]);
-                renderTopArtistsChart(artists, rankingMetric);
-                renderTopAlbumsChart(albums, rankingMetric);
-                hideError();
+                await fetchStats();
             } catch (error) {
                 showError(dashboardText('无法获取热门榜单数据。', 'Unable to load ranking data.'));
                 console.error('Error fetching rankings:', error);
@@ -1491,6 +1507,12 @@
         });
         setActiveStatsWindowButton(statsDays);
 
+        document.getElementById('statsSourceSelect').addEventListener('change', (event) => {
+            selectedSourceId = event.target.value || '';
+            fetchStats();
+            fetchNowPlaying();
+        });
+
         document.querySelectorAll('.ranking-metric-btn').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const metric = btn.dataset.rankingMetric;
@@ -1503,7 +1525,10 @@
         });
         setActiveRankingMetric(rankingMetric);
 
-        document.getElementById('refreshBtn').addEventListener('click', fetchStats);
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            fetchStats();
+            fetchNowPlaying();
+        });
 
         document.getElementById('loginForm').addEventListener('submit', async (event) => {
             event.preventDefault();
@@ -1523,6 +1548,7 @@
             } else {
                 startNowPlayingTicker();
                 fetchStats();
+                fetchNowPlaying();
             }
         });
 
@@ -1546,14 +1572,14 @@
             }
 
             if (authRequired) {
-                const probe = await fetch('/api/stats/summary', fetchOptions);
+                const probe = await fetch('/api/stats/dashboard?days=30', fetchOptions);
                 if (probe.status === 401) {
                     showLogin();
                     return;
                 }
             }
 
-            await fetchStats();
+            await Promise.all([fetchStats(), fetchNowPlaying()]);
             scheduleRefresh();
         }
 

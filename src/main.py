@@ -13,6 +13,8 @@ from src.auth import (
     SESSION_COOKIE_NAME,
     is_auth_enabled,
     is_authorized,
+    login_rate_limiter,
+    secure_session_cookie_enabled,
     session_cookie_value,
     verify_login_token,
 )
@@ -41,6 +43,7 @@ from src.database import (
     LEGACY_SOURCE_NAME,
     ping_db,
     resolve_timezone,
+    SCHEMA_VERSION,
 )
 from src.runtime_state import runtime_state
 from src.schemas import (
@@ -96,9 +99,11 @@ from src.schemas import (
     ServerRequest,
     ServerTestResponse,
     ServerStat,
+    DashboardSnapshot,
     AboutResponse,
 )
 from src.privacy_ops import (
+    IMPORT_MAX_PAYLOAD_BYTES,
     RETENTION_MAX_DAYS,
     RETENTION_MIN_DAYS,
     apply_retention_purge,
@@ -115,8 +120,9 @@ from src.privacy_ops import (
 )
 from src.config import env_int
 from src.metrics import format_prometheus_metrics
+from src.dashboard_cache import dashboard_snapshot_cache
 from src.sessions import PlaybackSessionTracker
-from src.version import APP_VERSION, SCHEMA_VERSION, LICENSE, PROJECT_NAME
+from src.version import APP_VERSION, LICENSE, PROJECT_NAME
 from src.source_config import (
     get_saved_source_config,
     has_full_config,
@@ -141,26 +147,56 @@ PLAY_THRESHOLD_SEC = env_int(
     "PLAY_THRESHOLD_SEC", default=30, min_value=1, max_value=3600
 )
 PAUSE_GRACE_SEC = env_int("PAUSE_GRACE_SEC", default=30, min_value=0, max_value=3600)
+SAVE_RETRY_ATTEMPTS = env_int(
+    "SAVE_RETRY_ATTEMPTS", default=3, min_value=1, max_value=10
+)
+
+
+def _exception_kind(exc: Exception) -> str:
+    """Return a non-sensitive error category suitable for application logs."""
+    return type(exc).__name__
+
+
+async def _retry_save(operation, *, kind: str) -> None:
+    for attempt in range(1, SAVE_RETRY_ATTEMPTS + 1):
+        try:
+            await operation()
+            return
+        except Exception as exc:
+            if attempt >= SAVE_RETRY_ATTEMPTS:
+                logger.error(
+                    "%s persistence failed (type=%s, attempts=%s)",
+                    kind,
+                    _exception_kind(exc),
+                    attempt,
+                )
+                raise
+            logger.warning(
+                "%s persistence retry (type=%s, attempt=%s)",
+                kind,
+                _exception_kind(exc),
+                attempt,
+            )
+            await asyncio.sleep(0.05 * (2 ** (attempt - 1)))
 
 
 async def _save_play_session_with_logging(session: dict) -> None:
     try:
-        await save_play_session(session)
+        await _retry_save(lambda: save_play_session(session), kind="play_session")
         runtime_state.record_save_success()
+        await dashboard_snapshot_cache.invalidate()
         logger.debug(
             "Recorded play session (duration=%ss)",
             session["duration_sec"],
         )
-    except Exception as e:
+    except Exception:
         runtime_state.record_save_failure()
-        logger.error("Failed to save play session: %s", e)
+        raise
 
 
 async def _save_play_attempt_with_logging(attempt: dict) -> None:
-    try:
-        await save_play_attempt(attempt)
-    except Exception as e:
-        logger.error("Failed to save play attempt: %s", e)
+    await _retry_save(lambda: save_play_attempt(attempt), kind="play_attempt")
+    await dashboard_snapshot_cache.invalidate()
 
 
 def _attempt_callback(source_id: str, source_name: str):
@@ -206,6 +242,14 @@ async def polling_loop(client: NavidromeClient):
 async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSessionTracker):
     logger.info("Starting polling loop with interval: %s seconds", POLL_INTERVAL)
     consecutive_failures = 0
+    try:
+        playback_report = await client.supports_playback_report()
+    except Exception:
+        playback_report = False
+    logger.info(
+        "OpenSubsonic playback report capability: %s",
+        "available" if playback_report else "legacy_fallback",
+    )
 
     while True:
         current_time = datetime.now(timezone.utc)
@@ -215,8 +259,16 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
             response = data.get("subsonic-response", {})
             if response.get("status") != "ok":
                 error_info = response.get("error", {})
-                error_code = error_info.get("code") if isinstance(error_info, dict) else None
-                runtime_state.record_poll_upstream_error(current_time, error_code)
+                error_code_raw = (
+                    error_info.get("code") if isinstance(error_info, dict) else None
+                )
+                try:
+                    error_code = int(error_code_raw)
+                except (TypeError, ValueError):
+                    error_code = None
+                runtime_state.record_poll_upstream_error(
+                    current_time, error_code, tracker.source_id
+                )
                 logger.error("Error from Navidrome API (code=%s)", error_code)
                 consecutive_failures += 1
                 sleep_for = min(
@@ -227,12 +279,15 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
                 now_playing = response.get("nowPlaying", {})
                 entries = now_playing.get("entry", [])
                 await tracker.process_poll(entries, current_time)
-                runtime_state.record_poll_success(current_time)
+                runtime_state.record_poll_success(current_time, tracker.source_id)
                 consecutive_failures = 0
 
-        except Exception as e:
-            runtime_state.record_poll_exception(current_time)
-            logger.error("Error in polling loop: %s", e)
+        except Exception as exc:
+            runtime_state.record_poll_exception(current_time, tracker.source_id)
+            logger.error(
+                "Polling cycle failed (type=%s)",
+                _exception_kind(exc),
+            )
             consecutive_failures += 1
             sleep_for = min(
                 POLL_INTERVAL * (2 ** (consecutive_failures - 1)),
@@ -247,6 +302,7 @@ class Collector:
     client: NavidromeClient
     tracker: PlaybackSessionTracker
     task: asyncio.Task
+    config_key: tuple
 
 
 class CollectorManager:
@@ -280,15 +336,37 @@ class CollectorManager:
         )
         return client, tracker
 
+    @staticmethod
+    def _config_key(server: dict) -> tuple:
+        return (
+            server.get("url"),
+            server.get("username", server.get("user")),
+            server.get("password"),
+            server.get("display_name"),
+            bool(server.get("enabled", True)),
+        )
+
     def _sync_runtime_state(self) -> None:
         runtime_state.client_initialized = bool(self.collectors)
         runtime_state.polling_task = next(
             (collector.task for collector in self.collectors.values()), None
         )
+        active_ids = set(self.collectors)
+        for source_id, collector in self.collectors.items():
+            runtime_state.set_collector_task(source_id, collector.task)
+        for source_id in tuple(runtime_state.collectors):
+            if source_id not in active_ids:
+                runtime_state.set_collector_task(source_id, None)
 
-    async def _activate_unlocked(self, server_id: str, client, tracker) -> None:
+    async def _activate_unlocked(
+        self,
+        server_id: str,
+        client,
+        tracker,
+        config_key: tuple,
+    ) -> None:
         task = asyncio.create_task(self._poller(client, tracker))
-        self.collectors[server_id] = Collector(client, tracker, task)
+        self.collectors[server_id] = Collector(client, tracker, task, config_key)
         self._tracker_registry.append(tracker)
         self._sync_runtime_state()
 
@@ -322,7 +400,9 @@ class CollectorManager:
                 return
             client, tracker = self._build(server)
             await self._stop_unlocked(server["id"])
-            await self._activate_unlocked(server["id"], client, tracker)
+            await self._activate_unlocked(
+                server["id"], client, tracker, self._config_key(server)
+            )
 
     async def replace(self, server: dict) -> None:
         async with self._lock:
@@ -335,7 +415,51 @@ class CollectorManager:
             except Exception:
                 await client.close()
                 raise
-            await self._activate_unlocked(server["id"], client, tracker)
+            await self._activate_unlocked(
+                server["id"], client, tracker, self._config_key(server)
+            )
+
+    async def reconcile(self, servers: list[dict]) -> None:
+        """Converge collectors to the complete desired configuration.
+
+        All changed/new clients are constructed before any running collector
+        is stopped. This makes the legacy-to-multi-server transition and the
+        deletion of the final configured server deterministic.
+        """
+        desired = {
+            server["id"]: server
+            for server in servers
+            if server.get("enabled", True)
+        }
+        async with self._lock:
+            replacements: dict[str, tuple] = {}
+            try:
+                for source_id, server in desired.items():
+                    existing = self.collectors.get(source_id)
+                    config_key = self._config_key(server)
+                    if existing is not None and existing.config_key == config_key:
+                        continue
+                    client, tracker = self._build(server)
+                    replacements[source_id] = (client, tracker, config_key)
+            except Exception:
+                for client, _tracker, _key in replacements.values():
+                    await client.close()
+                raise
+
+            remove_ids = set(self.collectors) - set(desired)
+            change_ids = set(replacements) & set(self.collectors)
+            try:
+                for source_id in sorted(remove_ids | change_ids):
+                    await self._stop_unlocked(source_id)
+                for source_id, (client, tracker, config_key) in replacements.items():
+                    await self._activate_unlocked(
+                        source_id, client, tracker, config_key
+                    )
+            except Exception:
+                for source_id, (client, _tracker, _key) in replacements.items():
+                    if source_id not in self.collectors:
+                        await client.close()
+                raise
 
     async def stop(self, server_id: str) -> None:
         async with self._lock:
@@ -361,32 +485,44 @@ async def retention_maintenance_loop():
         try:
             result = await apply_retention_purge()
             if result["deleted"]:
+                await dashboard_snapshot_cache.invalidate()
                 logger.info("Retention purge removed %s records", result["deleted"])
-        except Exception as e:
-            logger.error("Retention maintenance failed: %s", e)
+        except Exception as exc:
+            logger.error(
+                "Retention maintenance failed (type=%s)",
+                _exception_kind(exc),
+            )
 
 
 async def run_startup_retention_purge():
     try:
         result = await apply_retention_purge()
         if result["deleted"]:
+            await dashboard_snapshot_cache.invalidate()
             logger.info("Startup retention purge removed %s records", result["deleted"])
-    except Exception as e:
-        logger.error("Startup retention purge failed: %s", e)
+    except Exception as exc:
+        logger.error(
+            "Startup retention purge failed (type=%s)",
+            _exception_kind(exc),
+        )
 
 
 async def build_readiness_report() -> dict:
     db_ok = await ping_db()
-    polling_running = runtime_state.polling_task_alive()
+    collectors = list(runtime_state.collectors.values())
+    polling_running = bool(collectors) and all(
+        collector.task_alive() for collector in collectors
+    )
 
     if runtime_state.client_initialized:
         polling_status = "running" if polling_running else "stopped"
     else:
         polling_status = "not_started"
 
-    if runtime_state.last_poll_ok is True:
+    last_states = [collector.last_poll_ok for collector in collectors]
+    if last_states and all(state is True for state in last_states):
         upstream_status = "ok"
-    elif runtime_state.last_poll_ok is False:
+    elif any(state is False for state in last_states):
         upstream_status = "error"
     else:
         upstream_status = "unknown"
@@ -401,10 +537,25 @@ async def build_readiness_report() -> dict:
         overall = "ready"
 
     seconds_since_poll = None
-    if runtime_state.last_poll_at is not None:
+    poll_times = [
+        collector.last_poll_at
+        for collector in collectors
+        if collector.last_poll_at is not None
+    ]
+    if poll_times:
         seconds_since_poll = int(
-            (datetime.now(timezone.utc) - runtime_state.last_poll_at).total_seconds()
+            (datetime.now(timezone.utc) - min(poll_times)).total_seconds()
         )
+    healthy_collectors = sum(
+        1
+        for collector in collectors
+        if collector.task_alive() and collector.last_poll_ok is True
+    )
+    degraded_collectors = sum(
+        1
+        for collector in collectors
+        if not collector.task_alive() or collector.last_poll_ok is False
+    )
 
     return {
         "status": overall,
@@ -421,6 +572,9 @@ async def build_readiness_report() -> dict:
             "active_sessions": len(_active_sessions()),
             "seconds_since_last_poll": seconds_since_poll,
             "last_upstream_error_code": runtime_state.last_upstream_error_code,
+            "collector_count": len(collectors),
+            "healthy_collector_count": healthy_collectors,
+            "degraded_collector_count": degraded_collectors,
         },
     }
 
@@ -444,20 +598,23 @@ async def _apply_runtime_config(operation) -> None:
         )
 
 
-async def _reload_legacy_source_if_active() -> None:
-    if await list_servers():
-        return
+async def _desired_collector_configs() -> list[dict]:
+    configured = await list_servers()
+    if configured:
+        return [server for server in configured if server.get("enabled", True)]
     config = await resolve_effective_source_config()
     if not has_full_config(config):
-        return
-    await collector_manager.replace(
-        {
-            "id": LEGACY_SOURCE_ID,
-            "display_name": LEGACY_SOURCE_NAME,
-            **config,
-            "enabled": True,
-        }
-    )
+        return []
+    return [{
+        "id": LEGACY_SOURCE_ID,
+        "display_name": LEGACY_SOURCE_NAME,
+        **config,
+        "enabled": True,
+    }]
+
+
+async def _reconcile_collectors() -> None:
+    await collector_manager.reconcile(await _desired_collector_configs())
 
 
 def _validate_stats_days(days: int) -> int:
@@ -507,6 +664,10 @@ def _validate_ranking_metric(metric: str) -> str:
     return metric
 
 
+def _source_kwargs(source_id: str | None) -> dict:
+    return {"source_id": source_id} if source_id else {}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing database...")
@@ -515,25 +676,14 @@ async def lifespan(app: FastAPI):
 
     retention_task = None
     try:
-        configured_servers = await list_servers()
-        if configured_servers:
-            server_configs = [s for s in configured_servers if s["enabled"]]
-        else:
-            legacy = await resolve_effective_source_config()
-            server_configs = [{"id": LEGACY_SOURCE_ID, "display_name": LEGACY_SOURCE_NAME, **legacy}]
-        for server in server_configs:
-            config = {
-                "url": server.get("url"),
-                "user": server.get("username", server.get("user")),
-                "password": server.get("password"),
-            }
-            if not has_full_config(config) or not server.get("enabled", True):
-                continue
-            await collector_manager.start(server)
+        await _reconcile_collectors()
         retention_task = asyncio.create_task(retention_maintenance_loop())
-    except Exception as e:
+    except Exception as exc:
         runtime_state.client_initialized = False
-        logger.error("Failed to initialize NavidromeClient: %s", e)
+        logger.error(
+            "Collector initialization failed (type=%s)",
+            _exception_kind(exc),
+        )
 
     yield
 
@@ -554,22 +704,44 @@ app = FastAPI(lifespan=lifespan)
 AUTH_EXEMPT_PATHS = frozenset({"/health", "/health/ready", "/metrics", "/api/auth/login", "/api/auth/status"})
 
 
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    response = await call_next(request)
+def _with_security_headers(response: Response) -> Response:
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
         "connect-src 'self'; "
         "font-src 'self' data:; "
         "frame-ancestors 'none'"
     )
     return response
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    if (
+        request.method == "POST"
+        and request.url.path.startswith("/api/privacy/users/")
+        and request.url.path.endswith("/import")
+    ):
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                too_large = int(content_length) > IMPORT_MAX_PAYLOAD_BYTES
+            except ValueError:
+                too_large = True
+            if too_large:
+                return _with_security_headers(
+                    JSONResponse(
+                        {"detail": "Import payload is too large"},
+                        status_code=413,
+                    )
+                )
+    response = await call_next(request)
+    return _with_security_headers(response)
 
 
 @app.middleware("http")
@@ -622,19 +794,28 @@ async def auth_status():
 
 
 @app.post("/api/auth/login")
-async def auth_login(body: LoginRequest):
+async def auth_login(body: LoginRequest, request: Request):
     """Creates a browser session when STATS_API_TOKEN is configured."""
     if not is_auth_enabled():
         raise HTTPException(status_code=404, detail="Authentication is not enabled")
+    retry_after = login_rate_limiter.check(request)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts",
+            headers={"Retry-After": str(retry_after)},
+        )
     if not verify_login_token(body.token):
+        login_rate_limiter.record_failure(request)
         raise HTTPException(status_code=401, detail="Unauthorized")
+    login_rate_limiter.clear(request)
     response = JSONResponse({"status": "ok"})
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=session_cookie_value(),
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=secure_session_cookie_enabled(),
         max_age=60 * 60 * 24 * 30,
         path="/",
     )
@@ -667,10 +848,112 @@ async def metrics():
     )
 
 
+async def _build_dashboard_snapshot(
+    *,
+    days: int,
+    timezone_name: str,
+    metric: str,
+    source_id: str | None,
+) -> dict:
+    source_kwargs = _source_kwargs(source_id)
+    (
+        summary,
+        players,
+        transcoding,
+        hourly,
+        daily,
+        heatmap,
+        history,
+        servers,
+        available_servers,
+        top_artists,
+        top_albums,
+    ) = await asyncio.gather(
+        get_summary(days=days, timezone_name=timezone_name, **source_kwargs),
+        get_player_stats(days=days, timezone_name=timezone_name, **source_kwargs),
+        get_transcoding_stats(
+            days=days, timezone_name=timezone_name, **source_kwargs
+        ),
+        get_hourly_stats(days=days, timezone_name=timezone_name, **source_kwargs),
+        get_daily_stats(days=days, timezone_name=timezone_name, **source_kwargs),
+        get_weekday_hour_stats(
+            days=days, timezone_name=timezone_name, **source_kwargs
+        ),
+        get_playback_history(
+            limit=HISTORY_LIMIT_DEFAULT,
+            days=days,
+            timezone_name=timezone_name,
+            **source_kwargs,
+        ),
+        get_server_stats(
+            days=days,
+            timezone_name=timezone_name,
+            source_id=source_id,
+        ),
+        list_servers(),
+        get_top_artists(
+            limit=TOP_LIMIT_DEFAULT,
+            days=days,
+            timezone_name=timezone_name,
+            metric=metric,
+            **source_kwargs,
+        ),
+        get_top_albums(
+            limit=TOP_LIMIT_DEFAULT,
+            days=days,
+            timezone_name=timezone_name,
+            metric=metric,
+            **source_kwargs,
+        ),
+    )
+    return {
+        "summary": summary,
+        "players": players,
+        "transcoding": transcoding,
+        "hourly": hourly,
+        "daily": daily,
+        "heatmap": heatmap,
+        "history": history,
+        "servers": servers,
+        "available_servers": [
+            {"id": server["id"], "display_name": server["display_name"]}
+            for server in available_servers
+        ],
+        "top_artists": top_artists,
+        "top_albums": top_albums,
+    }
+
+
+@app.get("/api/stats/dashboard", response_model=DashboardSnapshot)
+async def api_dashboard_snapshot(
+    days: int = Query(default=STATS_DAYS_DEFAULT, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+    metric: str = Query(default=RANKING_METRIC_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
+):
+    """Return one cached historical payload; now-playing remains real-time."""
+    window = _validate_stats_days(days)
+    tz = _validate_stats_timezone(timezone)
+    ranking = _validate_ranking_metric(metric)
+    key = (window, tz, ranking, source_id)
+    return await _query_stats(
+        lambda: dashboard_snapshot_cache.get_or_create(
+            key,
+            lambda: _build_dashboard_snapshot(
+                days=window,
+                timezone_name=tz,
+                metric=ranking,
+                source_id=source_id,
+            ),
+        )
+    )
+
+
 @app.get("/api/stats/summary", response_model=SummaryStat)
 async def api_summary_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for aggregate listening statistics over the selected window.
 
@@ -684,58 +967,82 @@ async def api_summary_stats(
     """
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_summary(days=window, timezone_name=tz))
+    return await _query_stats(
+        lambda: get_summary(
+            days=window, timezone_name=tz, **_source_kwargs(source_id)
+        )
+    )
 
 
 @app.get("/api/stats/players", response_model=list[PlayerStat])
 async def api_player_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for player usage distribution over the selected window."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_player_stats(days=window, timezone_name=tz))
+    return await _query_stats(
+        lambda: get_player_stats(
+            days=window, timezone_name=tz, **_source_kwargs(source_id)
+        )
+    )
 
 
 @app.get("/api/stats/transcoding", response_model=list[TranscodingStat])
 async def api_transcoding_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for transcoding ratio over the selected window."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_transcoding_stats(days=window, timezone_name=tz))
+    return await _query_stats(
+        lambda: get_transcoding_stats(
+            days=window, timezone_name=tz, **_source_kwargs(source_id)
+        )
+    )
 
 
 @app.get("/api/stats/short-plays", response_model=ShortPlayStats)
 async def api_short_play_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return short-play rate; it does not claim intentional skips."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_short_play_stats(days=window, timezone_name=tz))
+    return await _query_stats(
+        lambda: get_short_play_stats(
+            days=window, timezone_name=tz, **_source_kwargs(source_id)
+        )
+    )
 
 
 @app.get("/api/stats/sources", response_model=list[SourceStat])
 async def api_source_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return formal play counts grouped by provenance source."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_source_stats(days=window, timezone_name=tz))
+    return await _query_stats(
+        lambda: get_source_stats(
+            days=window, timezone_name=tz, **_source_kwargs(source_id)
+        )
+    )
 
 
 @app.get("/api/stats/servers", response_model=list[ServerStat])
 async def api_server_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
-    source_id: str | None = Query(default=None),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return formal play totals grouped by configured server identity."""
     window = _validate_stats_days(days)
@@ -747,19 +1054,25 @@ async def api_server_stats(
 async def api_hourly_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for play counts grouped by local hour of day (0-23) over the
     selected window. Hours are taken in the requested timezone (default UTC).
     """
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_hourly_stats(days=window, timezone_name=tz))
+    return await _query_stats(
+        lambda: get_hourly_stats(
+            days=window, timezone_name=tz, **_source_kwargs(source_id)
+        )
+    )
 
 
 @app.get("/api/stats/heatmap", response_model=list[WeekdayHourStat])
 async def api_weekday_hour_stats(
     days: int = Query(default=STATS_DAYS_DEFAULT, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for the 7x24 weekday x hour heatmap over the selected window.
 
@@ -772,7 +1085,11 @@ async def api_weekday_hour_stats(
     """
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_weekday_hour_stats(days=window, timezone_name=tz))
+    return await _query_stats(
+        lambda: get_weekday_hour_stats(
+            days=window, timezone_name=tz, **_source_kwargs(source_id)
+        )
+    )
 
 
 @app.get("/api/stats/daily", response_model=list[DailyStat])
@@ -783,6 +1100,7 @@ async def api_daily_stats(
         le=DAILY_DAYS_MAX,
     ),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for play counts per local day over the last ``days`` days.
 
@@ -795,7 +1113,11 @@ async def api_daily_stats(
     """
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_daily_stats(days=window, timezone_name=tz))
+    return await _query_stats(
+        lambda: get_daily_stats(
+            days=window, timezone_name=tz, **_source_kwargs(source_id)
+        )
+    )
 
 
 @app.get("/api/stats/top-artists", response_model=list[TopArtistItem])
@@ -808,6 +1130,7 @@ async def api_top_artists(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     metric: str = Query(default=RANKING_METRIC_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for top artists ranked by ``metric`` over the selected window.
 
@@ -823,7 +1146,13 @@ async def api_top_artists(
     tz = _validate_stats_timezone(timezone)
     m = _validate_ranking_metric(metric)
     return await _query_stats(
-        lambda: get_top_artists(limit=limit, days=window, timezone_name=tz, metric=m)
+        lambda: get_top_artists(
+            limit=limit,
+            days=window,
+            timezone_name=tz,
+            metric=m,
+            **_source_kwargs(source_id),
+        )
     )
 
 
@@ -837,6 +1166,7 @@ async def api_top_albums(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     metric: str = Query(default=RANKING_METRIC_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for top albums ranked by ``metric`` over the selected window.
 
@@ -847,17 +1177,27 @@ async def api_top_albums(
     tz = _validate_stats_timezone(timezone)
     m = _validate_ranking_metric(metric)
     return await _query_stats(
-        lambda: get_top_albums(limit=limit, days=window, timezone_name=tz, metric=m)
+        lambda: get_top_albums(
+            limit=limit,
+            days=window,
+            timezone_name=tz,
+            metric=m,
+            **_source_kwargs(source_id),
+        )
     )
 
 
 @app.get("/api/stats/now-playing", response_model=list[NowPlayingItem])
-async def api_now_playing():
+async def api_now_playing(
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
+):
     """Endpoint for currently active playback sessions (in-memory, no DB access)."""
     try:
         now = datetime.now(timezone.utc)
         items: list[NowPlayingItem] = []
         for session in _active_sessions():
+            if source_id and session.get("source_id") != source_id:
+                continue
             first_seen_at = session.get("first_seen_at")
             seconds_elapsed = 0
             if first_seen_at is not None:
@@ -871,6 +1211,7 @@ async def api_now_playing():
                     artist=session.get("artist"),
                     client_name=session.get("client_name"),
                     seconds_elapsed=seconds_elapsed,
+                    source_name=session.get("source_name"),
                 )
             )
         return items
@@ -888,15 +1229,32 @@ async def api_playback_history(
     ),
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for recent playback history over the selected window."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_playback_history(limit=limit, days=window, timezone_name=tz))
+    return await _query_stats(
+        lambda: get_playback_history(
+            limit=limit,
+            days=window,
+            timezone_name=tz,
+            **_source_kwargs(source_id),
+        )
+    )
 
 
 def _privacy_settings_response(days: int | None) -> PrivacySettingsResponse:
     return PrivacySettingsResponse(retention_days=days, permanent=days is None)
+
+
+def _validated_username(username: str) -> str:
+    normalized = username.strip()
+    if not normalized:
+        raise HTTPException(status_code=422, detail="username is required")
+    if len(normalized) > 255:
+        raise HTTPException(status_code=422, detail="username is too long")
+    return normalized
 
 
 @app.get("/api/privacy/settings", response_model=PrivacySettingsResponse)
@@ -936,7 +1294,10 @@ async def api_retention_apply(body: ConfirmRequest):
     if not body.confirm:
         raise HTTPException(status_code=400, detail="confirm=true is required to delete data")
     try:
-        return await apply_retention_purge()
+        result = await apply_retention_purge()
+        if result["deleted"]:
+            await dashboard_snapshot_cache.invalidate()
+        return result
     except Exception as exc:
         logger.error("Retention apply failed")
         raise HTTPException(status_code=503, detail="Retention operation failed") from exc
@@ -950,36 +1311,41 @@ async def api_privacy_users():
 
 @app.get("/api/privacy/users/{username}/export")
 async def api_export_user(username: str):
-    if not username.strip():
-        raise HTTPException(status_code=422, detail="username is required")
+    normalized = _validated_username(username)
     try:
-        payload = await export_user_data(username.strip())
+        payload = await export_user_data(normalized)
     except Exception as exc:
         logger.error("User export failed")
         raise HTTPException(status_code=503, detail="Export failed") from exc
-    filename = f"navidrome-stat-{username.strip()}.json"
     return JSONResponse(
         content=payload,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="navidrome-stat-export.json"'
+        },
     )
 
 
 @app.post("/api/privacy/users/{username}/import", response_model=UserImportResponse)
 async def api_import_user(username: str, body: UserImportRequest):
-    if not username.strip():
-        raise HTTPException(status_code=422, detail="username is required")
+    normalized = _validated_username(username)
     try:
         result = await import_user_data(
-            username.strip(),
+            normalized,
             body.payload,
             merge=body.merge,
         )
+        if result["imported"] or result.get("attempts_imported", 0):
+            await dashboard_snapshot_cache.invalidate()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("User import failed")
         raise HTTPException(status_code=503, detail="Import failed") from exc
-    return UserImportResponse(imported=result["imported"], merge=body.merge)
+    return UserImportResponse(
+        imported=result["imported"],
+        attempts_imported=result.get("attempts_imported", 0),
+        merge=body.merge,
+    )
 
 
 @app.get(
@@ -987,19 +1353,19 @@ async def api_import_user(username: str, body: UserImportRequest):
     response_model=UserDeletePreviewResponse,
 )
 async def api_delete_user_preview(username: str):
-    if not username.strip():
-        raise HTTPException(status_code=422, detail="username is required")
-    return await preview_delete_user(username.strip())
+    return await preview_delete_user(_validated_username(username))
 
 
 @app.post("/api/privacy/users/{username}/delete", response_model=UserDeleteResponse)
 async def api_delete_user(username: str, body: ConfirmRequest):
-    if not username.strip():
-        raise HTTPException(status_code=422, detail="username is required")
+    normalized = _validated_username(username)
     if not body.confirm:
         raise HTTPException(status_code=400, detail="confirm=true is required to delete data")
     try:
-        return await delete_user_data(username.strip())
+        result = await delete_user_data(normalized)
+        if result["deleted"]:
+            await dashboard_snapshot_cache.invalidate()
+        return result
     except Exception as exc:
         logger.error("User delete failed")
         raise HTTPException(status_code=503, detail="Delete failed") from exc
@@ -1050,7 +1416,7 @@ async def api_source_config_put(body: SourceConfigUpdate):
 
     updated = await get_saved_source_config()
     config = resolve_source_config(overrides=None, saved=updated)
-    await _apply_runtime_config(_reload_legacy_source_if_active)
+    await _apply_runtime_config(_reconcile_collectors)
     view = redacted_view(config)
     return SourceConfigResponse(**view)
 
@@ -1078,7 +1444,9 @@ async def api_source_test(body: SourceTestRequest):
         password=config["password"],
     )
     try:
-        await test_client.get_now_playing()
+        data = await test_client.get_now_playing()
+        if not NavidromeClient.response_is_ok(data):
+            return SourceTestResponse(ok=False, message="上游拒绝连接或返回错误")
     except Exception:
         return SourceTestResponse(ok=False, message="无法连接到上游 Navidrome")
     finally:
@@ -1090,10 +1458,24 @@ async def api_source_test(body: SourceTestRequest):
 
 
 def _server_view(server: dict) -> ServerResponse:
+    snapshot = runtime_state.collector_snapshot(server["id"])
+    seconds_since_last_poll = None
+    if snapshot["last_poll_at"] is not None:
+        seconds_since_last_poll = max(
+            0,
+            int(
+                (
+                    datetime.now(timezone.utc) - snapshot["last_poll_at"]
+                ).total_seconds()
+            ),
+        )
     return ServerResponse(
         id=server["id"], display_name=server["display_name"], url=server["url"],
         username=server["username"], password_configured=bool(server.get("password")),
         enabled=bool(server.get("enabled", True)),
+        runtime_status=snapshot["status"],
+        last_poll_ok=snapshot["last_poll_ok"],
+        seconds_since_last_poll=seconds_since_last_poll,
     )
 
 
@@ -1115,7 +1497,8 @@ async def api_servers_create(body: ServerRequest):
     server = {"id": uuid.uuid4().hex, "display_name": body.display_name.strip(), "url": url,
               "username": body.username.strip(), "password": body.password, "enabled": body.enabled}
     await save_server(server)
-    await _apply_runtime_config(lambda: collector_manager.replace(server))
+    await dashboard_snapshot_cache.invalidate()
+    await _apply_runtime_config(_reconcile_collectors)
     return _server_view(server)
 
 
@@ -1124,6 +1507,11 @@ async def api_servers_update(server_id: str, body: ServerRequest):
     existing = await get_server(server_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Server not found")
+    if not body.display_name.strip() or not body.username.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="display_name and username are required",
+        )
     try:
         url = validate_source_url(body.url)
     except ValueError as exc:
@@ -1132,7 +1520,8 @@ async def api_servers_update(server_id: str, body: ServerRequest):
               "username": body.username.strip(), "password": body.password or existing["password"],
               "enabled": body.enabled}
     await save_server(server)
-    await _apply_runtime_config(lambda: collector_manager.replace(server))
+    await dashboard_snapshot_cache.invalidate()
+    await _apply_runtime_config(_reconcile_collectors)
     return _server_view(server)
 
 
@@ -1140,7 +1529,8 @@ async def api_servers_update(server_id: str, body: ServerRequest):
 async def api_servers_delete(server_id: str):
     if not await delete_server(server_id):
         raise HTTPException(status_code=404, detail="Server not found")
-    await _apply_runtime_config(lambda: collector_manager.stop(server_id))
+    await dashboard_snapshot_cache.invalidate()
+    await _apply_runtime_config(_reconcile_collectors)
     return {"status": "ok"}
 
 
@@ -1149,11 +1539,27 @@ async def api_servers_test(server_id: str, body: ServerRequest | None = None):
     server = await get_server(server_id)
     if server is None:
         raise HTTPException(status_code=404, detail="Server not found")
-    config = body or ServerRequest(display_name=server["display_name"], url=server["url"], username=server["username"])
-    password = config.password or server["password"]
-    test_client = NavidromeClient(url=server["url"], user=server["username"], password=password)
+    config = body or ServerRequest(
+        display_name=server["display_name"],
+        url=server["url"],
+        username=server["username"],
+    )
+    if not config.username.strip():
+        raise HTTPException(status_code=422, detail="username is required")
     try:
-        await test_client.get_now_playing()
+        url = validate_source_url(config.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    password = config.password or server["password"]
+    test_client = NavidromeClient(
+        url=url,
+        user=config.username.strip(),
+        password=password,
+    )
+    try:
+        data = await test_client.get_now_playing()
+        if not NavidromeClient.response_is_ok(data):
+            return ServerTestResponse(ok=False, message="上游拒绝连接或返回错误")
     except Exception:
         return ServerTestResponse(ok=False, message="无法连接到上游 Navidrome")
     finally:

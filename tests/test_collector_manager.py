@@ -175,3 +175,53 @@ async def test_finalize_failure_still_closes_old_and_replacement_clients():
     clients[1].close.assert_awaited_once()
     assert old.task.cancelled()
     assert manager.collectors == {}
+
+
+@pytest.mark.asyncio
+async def test_reconcile_replaces_legacy_with_configured_server():
+    clients = []
+
+    def client_factory(**_config):
+        client = AsyncMock()
+        clients.append(client)
+        return client
+
+    async def poller(_client, _tracker):
+        await asyncio.Event().wait()
+
+    manager = __import__(
+        "src.main", fromlist=["CollectorManager"]
+    ).CollectorManager(client_factory, poller, [])
+    legacy = server_config("legacy")
+    legacy["display_name"] = "Legacy environment source"
+    await manager.reconcile([legacy])
+    await manager.reconcile([server_config("server-1")])
+
+    assert list(manager.collectors) == ["server-1"]
+    clients[0].close.assert_awaited_once()
+    await manager.stop_all()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_unchanged_configuration_keeps_running_collector():
+    clients = []
+
+    def client_factory(**_config):
+        client = AsyncMock()
+        clients.append(client)
+        return client
+
+    async def poller(_client, _tracker):
+        await asyncio.Event().wait()
+
+    manager = __import__(
+        "src.main", fromlist=["CollectorManager"]
+    ).CollectorManager(client_factory, poller, [])
+    desired = server_config("server-1")
+    await manager.reconcile([desired])
+    original = manager.collectors["server-1"]
+    await manager.reconcile([desired])
+
+    assert manager.collectors["server-1"] is original
+    assert len(clients) == 1
+    await manager.stop_all()

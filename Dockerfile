@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir -r requirements.lock
 # === Stage 2: runner ===
 FROM python:3.11-slim AS runner
 
+ARG APP_VERSION=0.7.0-dev
+ENV APP_VERSION=${APP_VERSION}
+
 WORKDIR /app
 
 # Bring in the prebuilt virtualenv from the builder; build-essential stays behind

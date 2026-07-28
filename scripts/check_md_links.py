@@ -4,12 +4,21 @@ import re
 import sys
 
 
+IGNORED_DIRECTORIES = {
+    ".git",
+    ".venv",
+    "node_modules",
+    "playwright-report",
+    "test-results",
+}
+
+
 def main() -> int:
     root = Path.cwd()
     missing = []
     pattern = re.compile(r"(?<!!)\[[^]]+\]\(([^)]+)\)")
     for document in sorted(root.rglob("*.md")):
-        if ".git" in document.parts:
+        if any(part in IGNORED_DIRECTORIES for part in document.parts):
             continue
         text = document.read_text(encoding="utf-8")
         for target in pattern.findall(text):

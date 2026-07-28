@@ -74,7 +74,9 @@ async def test_put_config_hot_reloads_legacy_when_no_servers(isolated_db):
                 response = await ac.put("/api/source/config", json=payload)
 
     assert response.status_code == 200
-    applied = manager.replace.await_args.args[0]
+    desired = manager.reconcile.await_args.args[0]
+    assert len(desired) == 1
+    applied = desired[0]
     assert applied["id"] == "legacy"
     assert applied["password"] == "synthetic_password_123"
 
@@ -94,7 +96,7 @@ async def test_put_config_does_not_reload_legacy_when_servers_exist(isolated_db)
                 response = await ac.put("/api/source/config", json=payload)
 
     assert response.status_code == 200
-    manager.replace.assert_not_awaited()
+    manager.reconcile.assert_awaited_once_with([{"id": "server-1"}])
 
 
 @pytest.mark.asyncio

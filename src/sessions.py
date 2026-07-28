@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Awaitable, Callable
+import uuid
 
 from src.config import env_int
 
@@ -68,13 +69,10 @@ class PlaybackSessionTracker:
         if player_id not in self.active_sessions:
             return
 
-        session = self.active_sessions.pop(player_id)
-        if session.get("committed"):
-            return
-
+        session = self.active_sessions[player_id]
         duration = session.get("active_duration_sec", 0.0)
         if duration >= self.play_threshold_sec:
-            await self._commit_session(session, int(duration))
+            await self._commit_session(session, int(duration), finalized=True)
         elif self._save_attempt is not None:
             await self._save_attempt({
                 **session,
@@ -82,8 +80,15 @@ class PlaybackSessionTracker:
                 "outcome": "short_play",
                 "last_seen_at": (session.get("last_active_at") or session["last_seen_at"]).isoformat(),
             })
+        self.active_sessions.pop(player_id, None)
 
-    async def _commit_session(self, session: dict, duration_sec: int) -> None:
+    async def _commit_session(
+        self,
+        session: dict,
+        duration_sec: int,
+        *,
+        finalized: bool,
+    ) -> None:
         # ``played_at`` is anchored to the last actively-playing observation,
         # excluding the post-pause/missing wall-clock gap.
         last_active = session.get("last_active_at") or session["last_seen_at"]
@@ -91,6 +96,8 @@ class PlaybackSessionTracker:
             **session,
             "duration_sec": duration_sec,
             "last_seen_at": last_active.isoformat(),
+            "finalized": finalized,
+            "finalized_at": last_active.isoformat() if finalized else None,
         }
         await self._save_session(payload)
 
@@ -101,8 +108,10 @@ class PlaybackSessionTracker:
 
         duration = session.get("active_duration_sec", 0.0)
         if duration >= self.play_threshold_sec:
+            await self._commit_session(session, int(duration), finalized=False)
+            # Mark committed only after durable persistence succeeds. If the
+            # callback raises, the active session remains eligible for retry.
             session["committed"] = True
-            await self._commit_session(session, int(duration))
 
     async def finalize_all(self) -> None:
         for player_id in list(self.active_sessions.keys()):
@@ -116,11 +125,19 @@ class PlaybackSessionTracker:
         return []
 
     def _session_from_entry(self, entry: dict, current_time: datetime) -> dict:
+        position_ms = self._position_ms(entry)
         return {
+            "session_id": uuid.uuid4().hex,
             "first_seen_at": current_time,
             "last_seen_at": current_time,
             "last_active_at": current_time,
             "active_duration_sec": 0.0,
+            "last_position_ms": position_ms,
+            "duration_confidence": (
+                "reported"
+                if self._has_playback_report(entry) and position_ms is not None
+                else "estimated"
+            ),
             "username": entry.get("username"),
             "client_name": entry.get("playerName"),
             "track_id": entry.get("id"),
@@ -132,6 +149,68 @@ class PlaybackSessionTracker:
             "source_id": self.source_id,
             "source_name": self.source_name,
         }
+
+    @staticmethod
+    def _position_ms(entry: dict) -> float | None:
+        value = entry.get("positionMs")
+        if isinstance(value, bool):
+            return None
+        try:
+            position = float(value)
+        except (TypeError, ValueError):
+            return None
+        return position if position >= 0 else None
+
+    @staticmethod
+    def _playback_rate(entry: dict) -> float:
+        value = entry.get("playbackRate", 1)
+        if isinstance(value, bool):
+            return 1.0
+        try:
+            rate = float(value)
+        except (TypeError, ValueError):
+            return 1.0
+        return rate if rate > 0 else 1.0
+
+    @staticmethod
+    def _has_playback_report(entry: dict) -> bool:
+        return entry.get("state") is not None
+
+    @staticmethod
+    def _is_playing(entry: dict) -> bool:
+        state = entry.get("state")
+        if isinstance(state, str):
+            return state.lower() in {"starting", "playing"}
+        return bool(entry.get("isPlaying", True))
+
+    def _active_delta(self, session: dict, entry: dict, current_time: datetime) -> float:
+        wall_delta = (current_time - session["last_active_at"]).total_seconds()
+        if wall_delta <= 0:
+            return 0.0
+
+        current_position = self._position_ms(entry)
+        previous_position = session.get("last_position_ms")
+        if (
+            self._has_playback_report(entry)
+            and current_position is not None
+            and previous_position is not None
+        ):
+            session["duration_confidence"] = "reported"
+            progress_ms = current_position - previous_position
+            if progress_ms == 0:
+                return 0.0
+            if progress_ms < 0:
+                # A backwards seek still consumed wall-clock listening time;
+                # do not count media position twice.
+                return wall_delta
+            reported_delta = progress_ms / 1000 / self._playback_rate(entry)
+            # A large forward seek must not be counted as listened time.
+            if reported_delta > wall_delta * 2 + 2:
+                return wall_delta
+            return min(reported_delta, wall_delta)
+
+        session["duration_confidence"] = "estimated"
+        return wall_delta
 
     async def process_poll(self, entries, current_time: datetime) -> None:
         # Players in this set emitted an actively-playing observation this
@@ -150,7 +229,7 @@ class PlaybackSessionTracker:
 
             player_id = str(player_id_raw)
             track_id = entry.get("id")
-            is_playing = entry.get("isPlaying", True)
+            is_playing = self._is_playing(entry)
 
             if not is_playing:
                 # Paused entry for a matching in-memory session: refresh the
@@ -175,12 +254,14 @@ class PlaybackSessionTracker:
                         # continue accumulating from the resume timestamp so
                         # the idle gap is excluded from listen duration.
                         session["last_active_at"] = current_time
+                        session["last_position_ms"] = self._position_ms(entry)
                         session["paused"] = False
                     else:
-                        delta = (current_time - session["last_active_at"]).total_seconds()
+                        delta = self._active_delta(session, entry, current_time)
                         if delta > 0:
                             session["active_duration_sec"] += delta
-                            session["last_active_at"] = current_time
+                        session["last_active_at"] = current_time
+                        session["last_position_ms"] = self._position_ms(entry)
                     session["last_seen_at"] = current_time
                     await self._maybe_commit_active_session(player_id)
                 else:
@@ -210,9 +291,4 @@ class PlaybackSessionTracker:
         for pid in stale_players:
             if pid not in self.active_sessions:
                 continue
-            if self.active_sessions[pid].get("committed"):
-                # Already saved once: just drop the in-memory session, no
-                # duplicate commit.
-                self.active_sessions.pop(pid)
-            else:
-                await self.finalize_session(pid)
+            await self.finalize_session(pid)

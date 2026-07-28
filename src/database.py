@@ -4,7 +4,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 DB_PATH = os.getenv("DATABASE_URL", "navidrome_stats.db")
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 LEGACY_SOURCE_ID = "legacy"
 LEGACY_SOURCE_NAME = "Legacy environment source"
 
@@ -115,6 +115,21 @@ def _previous_window_predicate(days: int, timezone_name: str = TIMEZONE_DEFAULT)
     return (
         "datetime(played_at) >= ? AND datetime(played_at) < ?",
         [start, end],
+    )
+
+
+def _source_predicate(
+    predicate: str,
+    params: list,
+    source_id: str | None,
+    *,
+    column: str = "source_id",
+) -> tuple[str, list]:
+    if source_id is None:
+        return predicate, params
+    return (
+        f"({predicate}) AND COALESCE({column}, ?) = ?",
+        [*params, LEGACY_SOURCE_ID, source_id],
     )
 
 
@@ -232,6 +247,49 @@ async def _apply_migrations(db: aiosqlite.Connection) -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_play_history_source_id ON play_history(source_id)")
         await _set_schema_version(db, 5)
 
+    if version < 6:
+        async with db.execute("PRAGMA table_info(play_history)") as cursor:
+            history_columns = {row[1] for row in await cursor.fetchall()}
+        if "session_id" not in history_columns:
+            await db.execute("ALTER TABLE play_history ADD COLUMN session_id TEXT")
+        if "duration_confidence" not in history_columns:
+            await db.execute(
+                "ALTER TABLE play_history ADD COLUMN "
+                "duration_confidence TEXT NOT NULL DEFAULT 'estimated'"
+            )
+        if "finalized" not in history_columns:
+            await db.execute(
+                "ALTER TABLE play_history ADD COLUMN finalized INTEGER NOT NULL DEFAULT 1"
+            )
+        if "finalized_at" not in history_columns:
+            await db.execute("ALTER TABLE play_history ADD COLUMN finalized_at TEXT")
+
+        async with db.execute("PRAGMA table_info(play_attempts)") as cursor:
+            attempt_columns = {row[1] for row in await cursor.fetchall()}
+        if "attempt_id" not in attempt_columns:
+            await db.execute("ALTER TABLE play_attempts ADD COLUMN attempt_id TEXT")
+        if "duration_confidence" not in attempt_columns:
+            await db.execute(
+                "ALTER TABLE play_attempts ADD COLUMN "
+                "duration_confidence TEXT NOT NULL DEFAULT 'estimated'"
+            )
+
+        await db.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_play_history_session_id
+            ON play_history(session_id)
+            WHERE session_id IS NOT NULL
+        """)
+        await db.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_play_attempts_attempt_id
+            ON play_attempts(attempt_id)
+            WHERE attempt_id IS NOT NULL
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_history_source_user_track
+            ON play_history(source_id, username, track_id)
+        """)
+        await _set_schema_version(db, 6)
+
 
 async def _get_meta_value(db: aiosqlite.Connection, key: str):
     await db.execute("""
@@ -280,16 +338,20 @@ async def init_db(db_path: str | None = None):
 
 
 async def save_play_session(session: dict, db_path: str | None = None):
-    """Saves a completed playback session to the database."""
+    """Insert or update one playback session by its privacy-safe random ID.
+
+    Older/imported callers may omit ``session_id`` and retain append-only
+    behavior. Poller sessions always provide an ID, allowing the threshold
+    checkpoint and final duration update to be retried without duplicate rows.
+    """
     path = _path(db_path)
     async with aiosqlite.connect(path) as db:
-        await db.execute("""
-            INSERT INTO play_history (
-                played_at, username, client_name, track_id,
-                title, artist, album, is_transcoding, listen_duration_sec, source,
-                source_id, source_name
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        columns = (
+            "played_at, username, client_name, track_id, title, artist, album, "
+            "is_transcoding, listen_duration_sec, source, source_id, source_name, "
+            "session_id, duration_confidence, finalized, finalized_at"
+        )
+        values = (
             session.get("last_seen_at"),
             session.get("username"),
             session.get("client_name"),
@@ -302,7 +364,43 @@ async def save_play_session(session: dict, db_path: str | None = None):
             session.get("source", "poller"),
             session.get("source_id", LEGACY_SOURCE_ID),
             session.get("source_name", LEGACY_SOURCE_NAME),
-        ))
+            session.get("session_id"),
+            session.get("duration_confidence", "estimated"),
+            int(bool(session.get("finalized", False))),
+            session.get("finalized_at"),
+        )
+        if session.get("session_id"):
+            await db.execute(
+                f"""
+                INSERT INTO play_history ({columns})
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_id) WHERE session_id IS NOT NULL DO UPDATE SET
+                    played_at=excluded.played_at,
+                    username=excluded.username,
+                    client_name=excluded.client_name,
+                    track_id=excluded.track_id,
+                    title=excluded.title,
+                    artist=excluded.artist,
+                    album=excluded.album,
+                    is_transcoding=excluded.is_transcoding,
+                    listen_duration_sec=excluded.listen_duration_sec,
+                    source=excluded.source,
+                    source_id=excluded.source_id,
+                    source_name=excluded.source_name,
+                    duration_confidence=excluded.duration_confidence,
+                    finalized=excluded.finalized,
+                    finalized_at=excluded.finalized_at
+                """,
+                values,
+            )
+        else:
+            await db.execute(
+                f"""
+                INSERT INTO play_history ({columns})
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                values,
+            )
         await db.commit()
 
 
@@ -313,8 +411,13 @@ async def save_play_attempt(attempt: dict, db_path: str | None = None):
         await db.execute("""
             INSERT INTO play_attempts (
                 played_at, username, client_name, track_id, title, artist,
-                album, is_transcoding, duration_sec, outcome, source_id, source_name
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                album, is_transcoding, duration_sec, outcome, source_id, source_name,
+                attempt_id, duration_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(attempt_id) WHERE attempt_id IS NOT NULL DO UPDATE SET
+                played_at=excluded.played_at,
+                duration_sec=excluded.duration_sec,
+                duration_confidence=excluded.duration_confidence
         """, (
             attempt.get("last_seen_at"), attempt.get("username"),
             attempt.get("client_name"), attempt.get("track_id"),
@@ -323,15 +426,19 @@ async def save_play_attempt(attempt: dict, db_path: str | None = None):
             attempt.get("outcome", "short_play"),
             attempt.get("source_id", LEGACY_SOURCE_ID),
             attempt.get("source_name", LEGACY_SOURCE_NAME),
+            attempt.get("session_id"),
+            attempt.get("duration_confidence", "estimated"),
         ))
         await db.commit()
 
 
 async def get_short_play_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
-                               db_path: str | None = None):
+                               db_path: str | None = None,
+                               source_id: str | None = None):
     """Return short-play counts and rate; this is not a skip-rate claim."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
+    pred, params = _source_predicate(pred, params, source_id)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(f"""
@@ -356,10 +463,12 @@ async def get_short_play_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFA
 
 
 async def get_source_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
-                           db_path: str | None = None):
+                           db_path: str | None = None,
+                           source_id: str | None = None):
     """Return formal play counts grouped by provenance source."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
+    pred, params = _source_predicate(pred, params, source_id)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(f"""
@@ -378,22 +487,21 @@ async def get_server_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
     """Return formal play counts grouped by configured server identity."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
-    where = pred
-    if source_id:
-        where += " AND source_id = ?"
-        params = [*params, source_id]
+    where, params = _source_predicate(pred, params, source_id, column="ph.source_id")
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(f"""
-            SELECT COALESCE(source_id, ?) AS source_id,
-                   COALESCE(source_name, ?) AS source_name,
+            SELECT COALESCE(ph.source_id, ?) AS source_id,
+                   COALESCE(s.display_name, MAX(ph.source_name), ?) AS source_name,
                    COUNT(*) AS count,
-                   COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec
-            FROM play_history WHERE {where}
-            GROUP BY COALESCE(source_id, ?), COALESCE(source_name, ?)
+                   COALESCE(SUM(ph.listen_duration_sec), 0) AS total_listen_sec
+            FROM play_history ph
+            LEFT JOIN servers s ON s.id = ph.source_id
+            WHERE {where}
+            GROUP BY COALESCE(ph.source_id, ?)
             ORDER BY count DESC, source_name ASC
         """, [LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME, *params,
-               LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME]) as cursor:
+               LEGACY_SOURCE_ID]) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
@@ -437,6 +545,7 @@ async def get_player_stats(
     days: int = 0,
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
+    source_id: str | None = None,
 ):
     """Returns the distribution of client usage based on play counts.
 
@@ -454,6 +563,7 @@ async def get_player_stats(
     """
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
+    pred, params = _source_predicate(pred, params, source_id)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -496,6 +606,7 @@ async def get_transcoding_stats(
     days: int = 0,
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
+    source_id: str | None = None,
 ):
     """Returns the ratio of transcoded vs direct play counts plus listen time.
 
@@ -513,6 +624,7 @@ async def get_transcoding_stats(
     """
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
+    pred, params = _source_predicate(pred, params, source_id)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -567,6 +679,7 @@ async def get_summary(
     days: int = 0,
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
+    source_id: str | None = None,
 ):
     """Returns aggregate listening statistics for the selected window.
 
@@ -591,6 +704,7 @@ async def get_summary(
     path = _path(db_path)
     tz = resolve_timezone(timezone_name)
     cur_pred, cur_params = _window_predicate(days, timezone_name)
+    cur_pred, cur_params = _source_predicate(cur_pred, cur_params, source_id)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -598,7 +712,10 @@ async def get_summary(
             SELECT
                 COUNT(*) AS total_plays,
                 COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec,
-                COUNT(DISTINCT track_id) AS unique_tracks,
+                COUNT(DISTINCT (
+                    COALESCE(source_id, 'legacy') || char(31) ||
+                    COALESCE(track_id, '')
+                )) AS unique_tracks,
                 COUNT(DISTINCT client_name) AS client_count
             FROM play_history
             WHERE {cur_pred}
@@ -654,6 +771,9 @@ async def get_summary(
                 round(total_listen_sec / active_days, 2) if active_days > 0 else 0.0
             )
             prev_pred, prev_params = _previous_window_predicate(days, timezone_name)
+            prev_pred, prev_params = _source_predicate(
+                prev_pred, prev_params, source_id
+            )
             async with db.execute(
                 f"""
                 SELECT
@@ -699,6 +819,7 @@ async def get_hourly_stats(
     days: int = 0,
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
+    source_id: str | None = None,
 ):
     """Returns play counts grouped by local hour of day (0-23).
 
@@ -716,6 +837,7 @@ async def get_hourly_stats(
     path = _path(db_path)
     tz = resolve_timezone(timezone_name)
     pred, params = _window_predicate(days, timezone_name)
+    pred, params = _source_predicate(pred, params, source_id)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -788,7 +910,12 @@ def _local_date_range(days: int, tz: ZoneInfo) -> tuple[date | None, date | None
     return (today - timedelta(days=int(days) - 1), today)
 
 
-async def get_daily_stats(days: int = 30, timezone_name: str = TIMEZONE_DEFAULT, db_path: str | None = None):
+async def get_daily_stats(
+    days: int = 30,
+    timezone_name: str = TIMEZONE_DEFAULT,
+    db_path: str | None = None,
+    source_id: str | None = None,
+):
     """Returns play counts per local day, ordered by date ASC, zero-filled.
 
     * ``days > 0``: every calendar date in ``[today-(days-1), today]`` in the
@@ -804,6 +931,7 @@ async def get_daily_stats(days: int = 30, timezone_name: str = TIMEZONE_DEFAULT,
     path = _path(db_path)
     tz = resolve_timezone(timezone_name)
     pred, params = _window_predicate(days, timezone_name)
+    pred, params = _source_predicate(pred, params, source_id)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -866,7 +994,12 @@ WEEKDAY_HOUR_HOUR_COUNT = 24
 WEEKDAY_HOUR_CELL_COUNT = WEEKDAY_HOUR_WEEKDAY_COUNT * WEEKDAY_HOUR_HOUR_COUNT
 
 
-async def get_weekday_hour_stats(days: int = 30, timezone_name: str = TIMEZONE_DEFAULT, db_path: str | None = None):
+async def get_weekday_hour_stats(
+    days: int = 30,
+    timezone_name: str = TIMEZONE_DEFAULT,
+    db_path: str | None = None,
+    source_id: str | None = None,
+):
     """Returns play counts for every weekday x hour cell (7 x 24 = 168 rows).
 
     Each row is ``{"weekday": 0..6, "hour": 0..23, "count": int}``. The grid is
@@ -883,6 +1016,7 @@ async def get_weekday_hour_stats(days: int = 30, timezone_name: str = TIMEZONE_D
     path = _path(db_path)
     tz = resolve_timezone(timezone_name)
     pred, params = _window_predicate(days, timezone_name)
+    pred, params = _source_predicate(pred, params, source_id)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -933,6 +1067,7 @@ async def get_top_artists(
     timezone_name: str = TIMEZONE_DEFAULT,
     metric: str = "plays",
     db_path: str | None = None,
+    source_id: str | None = None,
 ):
     """Returns top artists ranked by ``metric`` over the selected window.
 
@@ -961,6 +1096,7 @@ async def get_top_artists(
         timezone_name=timezone_name,
         metric=metric,
         db_path=db_path,
+        source_id=source_id,
     )
 
 
@@ -970,6 +1106,7 @@ async def get_top_albums(
     timezone_name: str = TIMEZONE_DEFAULT,
     metric: str = "plays",
     db_path: str | None = None,
+    source_id: str | None = None,
 ):
     """Returns top albums ranked by ``metric`` over the selected window.
 
@@ -983,6 +1120,7 @@ async def get_top_albums(
         timezone_name=timezone_name,
         metric=metric,
         db_path=db_path,
+        source_id=source_id,
     )
 
 
@@ -993,6 +1131,7 @@ async def _get_top_entity(
     timezone_name: str,
     metric: str,
     db_path: str | None,
+    source_id: str | None,
 ):
     if metric not in ("plays", "listen_time"):
         # Defensive: callers should validate; reject defensively rather than
@@ -1011,6 +1150,7 @@ async def _get_top_entity(
 
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
+    pred, params = _source_predicate(pred, params, source_id)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -1043,6 +1183,7 @@ async def get_playback_history(
     days: int = 0,
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
+    source_id: str | None = None,
 ):
     """Returns recent tracks with aggregated play counts.
 
@@ -1053,6 +1194,7 @@ async def get_playback_history(
     """
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
+    pred, params = _source_predicate(pred, params, source_id)
     async with aiosqlite.connect(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -1063,24 +1205,34 @@ async def get_playback_history(
                 ph.artist,
                 ph.album,
                 ph.played_at AS last_played_at,
+                COALESCE(ph.source_id, ?) AS source_id,
+                COALESCE(ph.source_name, ?) AS source_name,
                 agg.play_count,
                 agg.total_listen_sec
             FROM (
                 SELECT
                     username,
                     track_id,
+                    COALESCE(source_id, ?) AS source_id,
                     COUNT(*) AS play_count,
                     SUM(listen_duration_sec) AS total_listen_sec,
                     MAX(id) AS latest_id
                 FROM play_history
                 WHERE {pred}
-                GROUP BY username, track_id
+                GROUP BY COALESCE(source_id, ?), username, track_id
             ) agg
             JOIN play_history ph ON ph.id = agg.latest_id
             ORDER BY ph.played_at DESC, agg.play_count DESC
             LIMIT ?
             """,
-            [*params, limit],
+            [
+                LEGACY_SOURCE_ID,
+                LEGACY_SOURCE_NAME,
+                LEGACY_SOURCE_ID,
+                *params,
+                LEGACY_SOURCE_ID,
+                limit,
+            ],
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]

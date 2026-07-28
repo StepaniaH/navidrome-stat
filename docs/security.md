@@ -36,20 +36,21 @@
 
 **反向代理替代方案**：可在代理层统一做 Basic/OIDC 认证，此时可不设置 `STATS_API_TOKEN`，但须确保代理覆盖所有外部入口。
 
+登录失败按客户端地址的进程内 HMAC 摘要限制为 5 次/分钟。摘要使用每次进程启动生成的随机盐，不保存原始地址，也不作为持久化审计日志。该措施只用于降低在线猜测速度，不替代反向代理限流。HTTPS 部署应设置 `SESSION_COOKIE_SECURE=true`；应用无法自动判断代理外部协议。
+
 ## 3. 前端与供应链
 
 - 用户数据通过 `textContent` 渲染，服务端不执行 HTML 转义（由浏览器安全插入文本节点）。
-- Tailwind 与 ECharts 仍从公共 CDN 加载；ECharts 5.5.0 使用 SRI。Tailwind CDN 因动态编译无法 SRI，CSP 限制脚本来源。
-- 响应头：`Content-Security-Policy`、`X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`。
-
-完整 CDN 自托管决策仍见 [`tasks.md`](tasks.md) NDS-SEC-002。
+- Tailwind CSS 与 ECharts 使用固定版本构建并随应用从 `/static/vendor/` 提供；正常页面加载不依赖公共 CDN。
+- CSP 的脚本和样式来源仅允许 `'self'`，并保留当前页面所需的内联脚本/样式许可；同时发送 `X-Content-Type-Options`、`X-Frame-Options` 与 `Referrer-Policy`。
+- 合成恶意媒体元数据、服务器筛选和移动视口由 Playwright 浏览器测试覆盖；CI 重新构建本地资产后执行。
 
 ## 4. 数据生命周期（隐私）
 
-- 播放历史默认永久保留；保留策略存于 `schema_meta.retention_days`。
+- 播放历史和短播放尝试默认永久保留；保留策略存于 `schema_meta.retention_days`。
 - 设置页 `/settings` 与 `/api/privacy/*` 提供保留预览/清理、按用户导出/导入/删除。
-- 删除与过期清理需 `confirm: true`；预览 API 仅返回条数，不含曲目明细。
-- 导出内容不写入应用日志；部署方须自行管理数据库备份中的残留数据。
+- 删除与过期清理需 `confirm: true`；预览与实际操作统一覆盖两张表，只返回总数与分表条数。
+- 导出固定文件名且内容不写入日志；导入限制 5 MiB、10000 条并做字段边界校验。部署方仍须自行管理数据库备份中的残留数据。
 
 ## 5. 迁移与回滚
 
@@ -70,5 +71,7 @@
 2. `/health` 在两种模式下均可匿名访问。
 3. 合成恶意元数据经 API 原样返回，Dashboard 以文本显示。
 4. 响应头包含 CSP 与 `nosniff`。
+5. 页面网络请求不包含公共 CDN，移动视口无页面级横向溢出。
+6. 登录限流返回 429，HTTPS 部署配置下 Cookie 带 Secure。
 
 对应任务：NDS-SEC-001、NDS-SEC-002、NDS-PRIV-001。

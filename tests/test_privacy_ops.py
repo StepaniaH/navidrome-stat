@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timedelta, timezone
 
-from src.database import init_db, save_play_session
+from src.database import init_db, save_play_attempt, save_play_session
 from src.privacy_ops import (
     apply_retention_purge,
     delete_user_data,
@@ -124,3 +124,79 @@ async def test_delete_user_preview_and_apply(db_path):
 
     deleted = await delete_user_data("dave", db_path=db_path)
     assert deleted["deleted"] == 2
+
+
+@pytest.mark.asyncio
+async def test_retention_preview_matches_history_and_attempt_deletion(db_path):
+    await init_db(db_path)
+    old_at = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat()
+    await save_play_session(_session("synthetic-user", old_at), db_path=db_path)
+    await save_play_attempt(
+        {
+            **_session("synthetic-user", old_at, "short-track"),
+            "last_seen_at": old_at,
+            "duration_sec": 5,
+            "outcome": "short_play",
+        },
+        db_path=db_path,
+    )
+    await set_retention_days(30, db_path)
+
+    preview = await preview_retention_purge(db_path=db_path)
+    assert preview["records_to_delete"] == 2
+    assert preview["history_records_to_delete"] == 1
+    assert preview["attempt_records_to_delete"] == 1
+
+    result = await apply_retention_purge(db_path=db_path)
+    assert result == {
+        "deleted": 2,
+        "history_deleted": 1,
+        "attempts_deleted": 1,
+        "retention_days": 30,
+    }
+
+
+@pytest.mark.asyncio
+async def test_export_v2_roundtrips_short_attempts(db_path):
+    await init_db(db_path)
+    played_at = "2025-01-01T00:00:00+00:00"
+    await save_play_attempt(
+        {
+            **_session("synthetic-user", played_at, "short-track"),
+            "last_seen_at": played_at,
+            "duration_sec": 7,
+            "outcome": "short_play",
+            "duration_confidence": "reported",
+        },
+        db_path=db_path,
+    )
+    payload = await export_user_data("synthetic-user", db_path=db_path)
+    assert payload["format_version"] == 2
+    assert payload["attempt_count"] == 1
+
+    await delete_user_data("synthetic-user", db_path=db_path)
+    imported = await import_user_data(
+        "synthetic-user",
+        payload,
+        db_path=db_path,
+    )
+    assert imported["attempts_imported"] == 1
+    restored = await export_user_data("synthetic-user", db_path=db_path)
+    assert restored["attempts"][0]["duration_sec"] == 7
+
+
+@pytest.mark.asyncio
+async def test_import_rejects_naive_timestamp_and_excessive_duration(db_path):
+    await init_db(db_path)
+    base = {
+        "format_version": 2,
+        "username": "synthetic-user",
+        "records": [{"played_at": "2025-01-01T00:00:00", "track_id": "track"}],
+    }
+    with pytest.raises(ValueError, match="timezone"):
+        await import_user_data("synthetic-user", base, db_path=db_path)
+
+    base["records"][0]["played_at"] = "2025-01-01T00:00:00+00:00"
+    base["records"][0]["listen_duration_sec"] = 9_999_999
+    with pytest.raises(ValueError, match="between"):
+        await import_user_data("synthetic-user", base, db_path=db_path)

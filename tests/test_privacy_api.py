@@ -86,3 +86,28 @@ async def test_privacy_user_export_import_delete(isolated_db):
             json={"payload": payload, "merge": True},
         )
         assert imported.json()["imported"] == 1
+
+
+@pytest.mark.asyncio
+async def test_export_filename_does_not_embed_username(isolated_db):
+    await init_db(isolated_db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get(
+            "/api/privacy/users/synthetic%22name/export",
+        )
+    disposition = response.headers["content-disposition"]
+    assert disposition == 'attachment; filename="navidrome-stat-export.json"'
+    assert "synthetic" not in disposition
+
+
+@pytest.mark.asyncio
+async def test_import_rejects_oversized_content_length_before_parsing(isolated_db):
+    await init_db(isolated_db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/privacy/users/synthetic-user/import",
+            headers={"Content-Length": str(6 * 1024 * 1024)},
+            content=b"{}",
+        )
+    assert response.status_code == 413
+    assert response.json() == {"detail": "Import payload is too large"}
