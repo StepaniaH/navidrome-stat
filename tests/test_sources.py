@@ -1,7 +1,13 @@
 import asyncio
 import sqlite3
 
-from src.database import get_source_stats, init_db, save_play_session
+from src.database import (
+    get_playback_history,
+    get_source_stats,
+    get_summary,
+    init_db,
+    save_play_session,
+)
 
 
 def test_source_defaults_to_poller_and_can_be_aggregated(db_path):
@@ -44,4 +50,39 @@ def test_schema_v4_adds_source_column_to_existing_database(db_path):
     version = conn.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()[0]
     conn.close()
     assert "source" in columns
-    assert version == "5"
+    assert version == "6"
+
+
+def test_same_track_id_on_two_servers_remains_distinct(db_path):
+    asyncio.run(init_db(db_path))
+    base = {
+        "last_seen_at": "2024-03-24T12:00:00+00:00",
+        "username": "synthetic-user",
+        "client_name": "Synthetic Player",
+        "track_id": "shared-track-id",
+        "artist": "Synthetic Artist",
+        "album": "Synthetic Album",
+        "is_transcoding": 0,
+        "duration_sec": 40,
+    }
+    asyncio.run(save_play_session({
+        **base,
+        "title": "Server A Song",
+        "source_id": "server-a",
+        "source_name": "Server A",
+    }, db_path=db_path))
+    asyncio.run(save_play_session({
+        **base,
+        "title": "Server B Song",
+        "source_id": "server-b",
+        "source_name": "Server B",
+    }, db_path=db_path))
+
+    history = asyncio.run(get_playback_history(db_path=db_path))
+    assert len(history) == 2
+    assert {item["source_id"] for item in history} == {"server-a", "server-b"}
+    assert asyncio.run(get_summary(db_path=db_path))["unique_tracks"] == 2
+    filtered = asyncio.run(
+        get_playback_history(db_path=db_path, source_id="server-a")
+    )
+    assert [item["title"] for item in filtered] == ["Server A Song"]

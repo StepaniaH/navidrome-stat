@@ -57,3 +57,47 @@ async def test_get_now_playing(mock_get):
     assert "s" in params
 
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_detects_playback_report_extension():
+    client = NavidromeClient(
+        url="http://navidrome.example.invalid",
+        user="synthetic-user",
+        password="synthetic-password",
+    )
+    client.get_open_subsonic_extensions = AsyncMock(return_value={
+        "subsonic-response": {
+            "status": "ok",
+            "openSubsonicExtensions": {
+                "openSubsonicExtension": [
+                    {"name": "playbackReport", "versions": [1]},
+                ]
+            },
+        }
+    })
+    assert await client.supports_playback_report() is True
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_missing_extension_falls_back_without_failure():
+    client = NavidromeClient(
+        url="http://navidrome.example.invalid",
+        user="synthetic-user",
+        password="synthetic-password",
+    )
+    client.get_open_subsonic_extensions = AsyncMock(
+        side_effect=ValueError("synthetic malformed response")
+    )
+    assert await client.supports_playback_report() is False
+    await client.close()
+
+
+def test_subsonic_error_response_is_not_success():
+    assert NavidromeClient.response_is_ok({
+        "subsonic-response": {
+            "status": "failed",
+            "error": {"code": 40},
+        }
+    }) is False

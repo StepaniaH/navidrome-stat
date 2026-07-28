@@ -31,3 +31,24 @@ async def test_history_preserves_untrusted_metadata_verbatim(db_path):
     assert len(rows) == 1
     assert rows[0]["title"] == MALICIOUS_TITLE
     assert rows[0]["username"] == MALICIOUS_USER
+
+
+@pytest.mark.asyncio
+async def test_persistence_error_log_does_not_include_exception_text(
+    caplog,
+    monkeypatch,
+):
+    import src.main as main
+
+    async def fail():
+        raise RuntimeError(
+            "http://navidrome.example.invalid/rest/getNowPlaying?u=private&t=derived"
+        )
+
+    monkeypatch.setattr(main, "SAVE_RETRY_ATTEMPTS", 1)
+    with pytest.raises(RuntimeError):
+        await main._retry_save(fail, kind="synthetic")
+
+    assert "RuntimeError" in caplog.text
+    assert "private" not in caplog.text
+    assert "getNowPlaying" not in caplog.text

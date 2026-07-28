@@ -41,7 +41,7 @@ def test_schema_migration_is_idempotent(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'")
-    assert cursor.fetchone()[0] == "5"
+    assert cursor.fetchone()[0] == "6"
     cursor.execute("SELECT value FROM schema_meta WHERE key = 'retention_days'")
     assert cursor.fetchone()[0] == "permanent"
     cursor.execute("PRAGMA index_list(play_history)")
@@ -133,3 +133,43 @@ def test_get_summary_aggregates_totals(db_path):
 def test_ping_db_returns_true_for_initialized_database(db_path):
     asyncio.run(init_db(db_path))
     assert asyncio.run(ping_db(db_path)) is True
+
+
+def test_session_checkpoint_upserts_final_duration_without_duplicate(db_path):
+    asyncio.run(init_db(db_path))
+    checkpoint = {
+        "session_id": "synthetic-session-id",
+        "last_seen_at": "2024-03-24T12:00:30+00:00",
+        "username": "synthetic-user",
+        "client_name": "Synthetic Player",
+        "track_id": "track-1",
+        "title": "Synthetic Song",
+        "artist": "Synthetic Artist",
+        "album": "Synthetic Album",
+        "is_transcoding": 0,
+        "duration_sec": 30,
+        "duration_confidence": "reported",
+        "finalized": False,
+    }
+    asyncio.run(save_play_session(checkpoint, db_path=db_path))
+    asyncio.run(save_play_session(
+        {
+            **checkpoint,
+            "last_seen_at": "2024-03-24T12:02:00+00:00",
+            "duration_sec": 120,
+            "finalized": True,
+            "finalized_at": "2024-03-24T12:02:00+00:00",
+        },
+        db_path=db_path,
+    ))
+
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        """
+        SELECT COUNT(*), listen_duration_sec, finalized, duration_confidence
+        FROM play_history WHERE session_id = ?
+        """,
+        ("synthetic-session-id",),
+    ).fetchone()
+    conn.close()
+    assert row == (1, 120, 1, "reported")

@@ -3,6 +3,7 @@ from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, patch
 
 from src.main import app
+from src.auth import login_rate_limiter
 
 
 @pytest.mark.asyncio
@@ -98,3 +99,32 @@ async def test_security_headers_present():
     assert response.headers.get("x-content-type-options") == "nosniff"
     assert response.headers.get("x-frame-options") == "DENY"
     assert "Content-Security-Policy" in response.headers
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limit_uses_generic_response():
+    login_rate_limiter.reset()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+            for _ in range(login_rate_limiter.max_attempts):
+                response = await ac.post("/api/auth/login", json={"token": "wrong-token"})
+                assert response.status_code == 401
+            limited = await ac.post("/api/auth/login", json={"token": "wrong-token"})
+    login_rate_limiter.reset()
+    assert limited.status_code == 429
+    assert limited.json() == {"detail": "Too many login attempts"}
+    assert int(limited.headers["retry-after"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_secure_cookie_can_be_enabled(monkeypatch):
+    login_rate_limiter.reset()
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+            response = await ac.post(
+                "/api/auth/login",
+                json={"token": "synthetic-secret-token"},
+            )
+    assert response.status_code == 200
+    assert "Secure" in response.headers["set-cookie"]

@@ -156,6 +156,7 @@ def test_top_containers_keep_skeleton_and_empty_states(source):
         assert f'id="{prefix}Empty"' in source
 
 
-def test_top_fetch_calls_preserved(source):
-    assert "/api/stats/top-artists?limit=10" in source
-    assert "/api/stats/top-albums?limit=10" in source
+def test_top_data_uses_dashboard_snapshot(source):
+    assert "/api/stats/dashboard?${query}" in source
+    assert "snapshot.top_artists" in source
+    assert "snapshot.top_albums" in source

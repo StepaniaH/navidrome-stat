@@ -70,3 +70,34 @@ async def test_readiness_and_metrics_aggregate_non_paused_runtime_sessions(monke
 
     assert report["metrics"]["active_sessions"] == 2
     assert "navidrome_stat_active_sessions 2\n" in response.text
+
+
+@pytest.mark.asyncio
+async def test_readiness_reports_one_failed_collector(monkeypatch):
+    import asyncio
+    from datetime import datetime, timezone
+    import src.main as main
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState(client_initialized=True)
+    first_task = asyncio.create_task(asyncio.Event().wait())
+    second_task = asyncio.create_task(asyncio.Event().wait())
+    state.set_collector_task("server-a", first_task)
+    state.set_collector_task("server-b", second_task)
+    now = datetime.now(timezone.utc)
+    state.record_poll_success(now, "server-a")
+    state.record_poll_upstream_error(now, 40, "server-b")
+    monkeypatch.setattr(main, "runtime_state", state)
+    monkeypatch.setattr(main, "ping_db", AsyncMock(return_value=True))
+    try:
+        report = await main.build_readiness_report()
+    finally:
+        first_task.cancel()
+        second_task.cancel()
+        await asyncio.gather(first_task, second_task, return_exceptions=True)
+
+    assert report["status"] == "degraded"
+    assert report["checks"]["upstream"] == "error"
+    assert report["metrics"]["collector_count"] == 2
+    assert report["metrics"]["healthy_collector_count"] == 1
+    assert report["metrics"]["degraded_collector_count"] == 1

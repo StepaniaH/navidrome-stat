@@ -8,12 +8,14 @@ Navidrome Statistic 是一个自托管服务。它轮询 Subsonic 的 `getNowPla
 
 ## 功能
 
-- 按可配置的播放阈值和暂停宽限期追踪活跃播放。
-- 在一个仪表盘中管理多个 Navidrome 服务器。
+- 按可配置的播放阈值和暂停宽限期追踪活跃播放，通过幂等检查点保存并在结束时更新最终时长。
+- 上游声明支持时使用 OpenSubsonic 播放报告并记录时长是上报值还是估算值；旧版服务器继续使用轮询兼容路径。
+- 在一个仪表盘中管理多个 Navidrome 服务器，支持按服务器筛选和查看采集器健康状态。
 - 展示正在播放、播放历史、客户端、转码、时间趋势以及艺人和专辑排行。
 - 将未达到播放阈值的尝试与正式播放分开记录。
 - 支持配置保留期，以及按用户导出、导入和删除 JSON 数据。
 - 可通过 `STATS_API_TOKEN` 为仪表盘和接口启用认证。
+- 固定并自托管前端资源；仪表盘正常使用时不会访问公共 CDN。
 - 使用 Python 3.11 多阶段镜像，并以非 root 用户运行。
 
 ## Docker 部署
@@ -70,6 +72,8 @@ services:
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
       PLAY_THRESHOLD_SEC: ${PLAY_THRESHOLD_SEC:-30}
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
+      SAVE_RETRY_ATTEMPTS: ${SAVE_RETRY_ATTEMPTS:-3}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       DATABASE_URL: /data/navidrome_stats.db
     restart: unless-stopped
     healthcheck:
@@ -152,8 +156,11 @@ docker compose start navidrome-stat
 | `PLAY_THRESHOLD_SEC` | `30` | 计为一次播放所需的活跃观测秒数，限制在 1 至 3600。 |
 | `PAUSE_GRACE_SEC` | `30` | 在内存中保留暂停或暂时消失会话的秒数，限制在 0 至 3600。 |
 | `MAX_POLL_BACKOFF_SEC` | `60` | 上游故障退避上限，限制在 1 至 3600 秒。 |
+| `SAVE_RETRY_ATTEMPTS` | `3` | 会话数据库写入尝试次数，限制在 1 至 10；失败后会话仍可重试。 |
+| `SESSION_COOKIE_SECURE` | `false` | 应用通过 HTTPS 访问时设为 `true`，使登录 Cookie 带 Secure 标记。 |
+| `RETENTION_MAINTENANCE_SEC` | `86400` | 保留期清理间隔，限制在 60 至 604800 秒。 |
 
-当累计活跃观测时间大于等于 `PLAY_THRESHOLD_SEC` 时，一首曲目计为一次播放。轮询得到的是观测时间，不是精确媒体进度。暂停被观测到后，暂停区间不会增加收听时长。
+当累计活跃时长大于等于 `PLAY_THRESHOLD_SEC` 时，一首曲目计为一次播放。达到阈值时写入幂等检查点；会话结束时更新同一行的最终活跃时长，不会再增加一次播放。服务器声明支持 OpenSubsonic 播放报告时，会结合媒体位置和播放状态提高估算质量；否则继续按轮询间隔估算。暂停区间不计入时长。
 
 ## 安全与隐私
 
@@ -162,7 +169,8 @@ docker compose start navidrome-stat
 - SQLite 以明文保存用户名、媒体元数据、收听时间，以及通过设置页保存的凭据。
 - 收集播放活动前应告知受影响的 Navidrome 用户，并在“设置 > 隐私与数据”中选择适当的保留期。
 - 应保护 `.env`、Docker 卷、备份、浏览器访问和反向代理日志。
-- 仪表盘目前通过公共 CDN 加载 Tailwind CSS 和 ECharts。如果不允许外部资源请求，请阅读[隐私边界](docs/privacy.md)和[安全模型](docs/security.md)。
+- Tailwind CSS 和 ECharts 固定版本并由应用自身提供；浏览器 CSP 只允许同源脚本和样式。
+- 用户导出使用固定文件名，包含正式播放与短播放尝试；可导入第 1 或第 2 版格式。导入限制为 5 MiB、10000 条，并校验时间、字段长度和时长范围。
 
 通用 Compose 示例无法替你确定授权规则、TLS 终止、备份安全或公网暴露策略，这些事项必须由部署负责人决定。
 
@@ -192,6 +200,16 @@ uvicorn src.main:app --host 127.0.0.1 --port 39421
 
 直接运行依赖固定在 `requirements.txt`，Docker 使用完整解析后的 `requirements.lock`，测试依赖位于 `requirements-dev.txt`。
 
+重建固定版本的前端资源并运行合成浏览器测试：
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+浏览器测试使用临时 SQLite 数据库和拦截后的合成接口数据，不需要真实 Navidrome 账户。
+
 ## 项目文档
 
 - [项目文档索引](docs/README.md)
@@ -204,3 +222,4 @@ uvicorn src.main:app --host 127.0.0.1 --port 39421
 ## 许可证
 
 Navidrome Statistic 使用 [MIT License](LICENSE)。
+随应用分发的 Tailwind CSS 与 Apache ECharts 在 `src/static/vendor/` 中保留各自的许可证和声明文件。

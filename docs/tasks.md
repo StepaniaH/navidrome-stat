@@ -1,6 +1,6 @@
 # 后续任务清单
 
-本文件是后续工作的唯一任务来源。下列任务均基于当前代码检查创建，尚未实施，因此全部保持“待办”；这不表示优先级、设计或人工隐私决策已经获得用户批准。
+本文件是后续工作的唯一任务来源。任务状态以各项及总览为准；代码已完成不等于真实部署的访问、TLS、备份或用户告知已经获得人工验收。
 
 ## 状态与执行规则
 
@@ -15,7 +15,7 @@
 | ID | 领域 | 优先级 | 状态 | 依赖 |
 | --- | --- | --- | --- | --- |
 | NDS-SEC-001 | 访问控制与部署边界 | P0 | 待验收 | 用户人工确认访问范围与授权模型 |
-| NDS-SEC-002 | 前端注入与 CDN 风险 | P0 | 待验收 | 用户人工确认 CDN 策略 |
+| NDS-SEC-002 | 前端注入与 CDN 风险 | P0 | 已完成 | 已采用自托管策略 |
 | NDS-CORE-001 | 播放状态机正确性 | P0 | 已完成 | 无 |
 | NDS-DATA-001 | 数据库 schema 与查询确定性 | P0 | 已完成 | NDS-CORE-001 的计数语义结论 |
 | NDS-PRIV-001 | 保留、删除与用户告知 | P0 | 待验收 | 用户人工确认保留期、授权和数据请求流程 |
@@ -39,6 +39,26 @@
 | NDS-UI-006 | 设置页偏好与主题本地化 | P1 | 已完成 | NDS-SRC-001、NDS-UI-004 |
 | NDS-DOC-002 | 双语 README、Docker 部署与正在播放修复 | P1 | 已完成 | NDS-SRC-001、NDS-UI-002 |
 | NDS-REL-002 | 服务器配置热更新与采集器生命周期 | P1 | 已完成 | NDS-DOC-002、NDS-SRC-001 |
+| NDS-CORE-004 | 统计可信度、多服务器、隐私安全与性能收敛 | P0 | 已完成 | NDS-CORE-003、NDS-REL-002、NDS-PRIV-001 |
+
+## NDS-CORE-004 统计可信度、多服务器、隐私安全与性能收敛
+
+- **优先级/状态**：P0 / 已完成
+- **依赖**：NDS-CORE-003、NDS-REL-002；NDS-PRIV-001 已确定永久/1–360 天保留、预览确认和按用户数据请求原则。本任务不读取真实 `.env`、SQLite、日志、服务器地址、账户、密码、token 或播放元数据，只使用固定合成数据。
+- **目标**：修复完整活跃收听时长、写入失败丢失、多服务器采集/身份/健康不一致、隐私删除预览偏差及敏感异常日志，并降低 Dashboard 高频历史查询开销；保持已有 HTTP 调用兼容。
+- **实施步骤**：
+  1. 为播放会话生成不含个人信息的随机幂等 ID；达到阈值时先创建正式记录，播放结束时以同一 ID 更新最终活跃时长。数据库写入失败不得静默标记完成，运行中后续观测可重试。
+  2. 探测 OpenSubsonic `playbackReport` 扩展；支持时按 `state`、`positionMs` 与 `playbackRate` 计算活跃进度，缺失能力时保留轮询时间估算并登记置信度。
+  3. 用期望配置统一协调 legacy/多服务器 collector，避免首次创建或删除最后服务器时重复/缺失；运行状态按来源隔离，历史身份使用 `(source_id, username, track_id)`，统计 API 增加可选来源过滤。
+  4. 保留预览、存储统计与实际清理统一覆盖 `play_history`/`play_attempts`；导出格式向前演进并兼容旧导入；限制导入记录数、字段长度、时间与时长范围，附件名不得包含未经清理的用户名。
+  5. 日志只记录异常类别/状态码，不记录异常正文、请求 URL 或上游响应；提供可配置 Secure Cookie 和进程内登录退避，限流键仅保存进程随机盐摘要且不持久化。
+  6. 增加带短 TTL、写入失效的历史 Dashboard snapshot；前端分离实时与历史刷新，减少请求数和重复扫描；按模块边界提取缓存/状态辅助代码。
+  7. 同步双语 README、接口、当前事实、隐私、安全和任务完成记录；使用合成数据库完成迁移、API、状态机、隐私和静态页面回归。
+- **验收标准**：长会话结束后落库为最终活跃时长且重复保存不增加行数；临时写入失败不会静默丢会话；新版/旧版上游均可采集；collector 与逐来源健康状态一致；跨服务器相同 track ID 不合并；预览与实际删除总数一致；日志测试不出现合成凭据/URL；导入越界返回 422/413；可配置 Secure Cookie 与登录限流有测试；Dashboard 历史请求频率和端点数下降；旧数据库可幂等迁移；已有端点和默认部署保持兼容。
+- **验证命令**：`.venv/bin/python -m pytest -q`（连续两次）；`.venv/bin/python scripts/check_md_links.py`；`docker compose config`；`git diff --check`；合成凭据/URL 隐私扫描；合成数据库 `PRAGMA integrity_check` 与迁移重跑。
+- **涉及文件**：`src/sessions.py`、`src/client.py`、`src/database.py`、`src/main.py`、`src/runtime_state.py`、`src/auth.py`、`src/privacy_ops.py`、`src/schemas.py`、`src/dashboard_cache.py`、前端静态资源与构建配置、相关测试与 CI、README、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`、`docs/security.md`、`scripts/check_md_links.py`、本文件。
+- **风险/回滚**：schema 仅向前增加 nullable/有默认值列和索引，既有历史不重算；回滚旧应用仍可忽略新增列，但已写入的最终时长不应回退。来源过滤与 snapshot 为新增兼容接口；失败可恢复旧前端调用。登录限流仅进程内、重启清空。真实部署的 TLS、访问范围、备份和 CDN 策略仍需部署方人工确认。
+- **完成记录**：2026-07-28，Codex。基线：`.venv/bin/python -m pytest -q` 为 340 passed，工作树领取前干净。完成 schema v6 幂等会话检查点与最终时长更新、失败重试、OpenSubsonic 能力探测/时长置信度、完整 collector 协调和逐来源健康、跨服务器身份与筛选；隐私预览/清理覆盖两表，导出格式 v2 与有界导入；异常日志脱敏、登录限流和 Secure Cookie；60 秒 Dashboard snapshot、实时/历史分频刷新及模块拆分。Tailwind CSS 与 Apache ECharts 固定版本并自托管，CSP 移除公共 CDN；增加合成 Playwright 与 CI browser job。同步双语 README、接口、当前事实、隐私与安全文档。最终验证：全量 Python 测试连续两次均 `365 passed`；Playwright `3 passed`；npm 安装审计 `found 0 vulnerabilities`；合成数据库迁移重跑后 `schema=6` 且 `PRAGMA integrity_check=ok`；Markdown 链接检查、`docker compose config` 与 `git diff --check` 通过；仅扫描本次差异和新增合成文件，未发现真实凭据/地址/播放数据。未读取真实 `.env`、数据库或日志，未创建提交/PR。遗留：未达到阈值的纯内存会话在进程崩溃时仍可能丢失；snapshot 与限流仅单进程；真实部署 TLS、访问范围、用户告知和备份边界仍需部署方验收。
 
 ## NDS-REL-002 服务器配置热更新与采集器生命周期
 
@@ -93,8 +113,8 @@
 
 ## NDS-SEC-002 前端注入与 CDN 风险
 
-- **优先级/状态**：P0 / 待验收
-- **依赖**：用户人工确认公共 CDN 是否允许、是否要求离线运行或固定资产来源。
+- **优先级/状态**：P0 / 已完成
+- **依赖**：已采用隐私优先的固定版本自托管策略，不需要浏览器访问公共 CDN。
 - **目标**：安全渲染不可信媒体元数据，并降低第三方脚本供应链和隐私风险。
 - **实施步骤**：
   1. 为用户名、标题、艺人、专辑构造包含 HTML 和脚本边界字符的合成测试数据。
@@ -106,7 +126,7 @@
 - **验证命令**：`pytest -q`；前端浏览器自动化测试；检查页面网络请求和响应头；`git diff --check`。
 - **涉及文件**：`src/static/index.html`、可能的本地静态资源、`src/main.py`、前端/安全测试、`docs/privacy.md`、`docs/interfaces.md`。
 - **风险/回滚**：CSP 或资源改动可能导致样式/图表失效。保留可验证的前一资产版本，回滚时不得恢复不安全的动态 HTML 渲染。
-- **完成记录**：2026-07-16，Cursor Agent。`index.html` 历史表格改用 `textContent`/`createElement` 渲染。2026-07-16 续：ECharts SRI、CSP 与安全响应头；`tests/test_security.py` 合成恶意元数据；Dashboard 登录流与 `credentials: 'same-origin'`。验证：`pytest -q` 46 passed。遗留：Tailwind 自托管、浏览器自动化测试待用户确认 CDN 策略。
+- **完成记录**：2026-07-16，Cursor Agent。`index.html` 历史表格改用 `textContent`/`createElement` 渲染，增加 CSP 与安全响应头。2026-07-28，Codex：Tailwind CSS 3.4.19 与 Apache ECharts 6.1.0 固定并随应用自托管，保留第三方许可证/声明；CSP 移除公共 CDN。Playwright 使用合成恶意元数据验证只显示文本，检查服务器筛选与 390px 移动布局；CI 新增 browser job。验证：Python `365 passed`，Playwright `3 passed`，npm 安装审计 0 漏洞，`git diff --check` 通过。未使用真实用户或部署数据。
 
 ## NDS-CORE-001 播放状态机正确性
 

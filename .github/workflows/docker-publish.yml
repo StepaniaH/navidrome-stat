@@ -33,7 +33,9 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF#refs/tags/}"
+          APP_VERSION="${VERSION#v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
           {
             echo "tags<<EOF"
             echo "stepaniah/navidrome-statistic:${VERSION}"
@@ -51,5 +53,7 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/StepaniaH/navidrome-stat
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.app_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -8,12 +8,14 @@ It is designed for a single application instance. Multiple Navidrome servers can
 
 ## Features
 
-- Tracks active playback with a configurable threshold and pause grace period.
-- Supports multiple Navidrome servers from one dashboard.
+- Tracks active playback with a configurable threshold, pause grace period, idempotent checkpoints, and final session duration.
+- Uses OpenSubsonic playback reports when advertised and records whether duration is reported or estimated; older servers continue to work through polling.
+- Supports multiple Navidrome servers with per-server filtering and collector health.
 - Shows current playback, listening history, clients, transcoding, time trends, and artist or album rankings.
 - Records below-threshold attempts separately from counted plays.
 - Provides configurable retention and per-user JSON export, import, and deletion.
 - Offers optional dashboard and API authentication through `STATS_API_TOKEN`.
+- Serves pinned frontend assets locally; normal dashboard use does not contact a public CDN.
 - Runs as a non-root user in a multi-stage Python 3.11 container.
 
 ## Docker Deployment
@@ -70,6 +72,8 @@ services:
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
       PLAY_THRESHOLD_SEC: ${PLAY_THRESHOLD_SEC:-30}
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
+      SAVE_RETRY_ATTEMPTS: ${SAVE_RETRY_ATTEMPTS:-3}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       DATABASE_URL: /data/navidrome_stats.db
     restart: unless-stopped
     healthcheck:
@@ -152,8 +156,11 @@ To restore, stop the service, preserve the current volume, copy a verified backu
 | `PLAY_THRESHOLD_SEC` | `30` | Active observed seconds required to count a play, clamped to 1-3600. |
 | `PAUSE_GRACE_SEC` | `30` | Seconds to retain a paused or missing in-memory session, clamped to 0-3600. |
 | `MAX_POLL_BACKOFF_SEC` | `60` | Maximum upstream failure backoff, clamped to 1-3600 seconds. |
+| `SAVE_RETRY_ATTEMPTS` | `3` | Database save attempts for a session, clamped to 1-10. A failed save remains retryable. |
+| `SESSION_COOKIE_SECURE` | `false` | Set to `true` when the application is reached through HTTPS so the login cookie is marked Secure. |
+| `RETENTION_MAINTENANCE_SEC` | `86400` | Retention cleanup interval, clamped to 60-604800 seconds. |
 
-A track counts once its accumulated active observation time is greater than or equal to `PLAY_THRESHOLD_SEC`. Polling measures observed time, not exact media position. Paused intervals do not add listening time after the pause is observed.
+A track counts once its accumulated active time is greater than or equal to `PLAY_THRESHOLD_SEC`. That threshold creates an idempotent checkpoint; session end updates the same row with the final active duration rather than adding another play. When the server advertises OpenSubsonic playback reports, media position and playback state improve the estimate. Otherwise the service uses poll intervals. Paused intervals are excluded.
 
 ## Security and Privacy
 
@@ -162,7 +169,8 @@ A track counts once its accumulated active observation time is greater than or e
 - SQLite stores usernames, media metadata, listening timestamps, and settings-page credentials in plaintext.
 - Inform affected Navidrome users before collecting their listening activity and choose an appropriate retention period under **Settings > Privacy & Data**.
 - Protect `.env`, the Docker volume, backups, browser access, and reverse-proxy logs.
-- The dashboard currently loads Tailwind CSS and ECharts from public CDNs. Review [the privacy boundary](docs/privacy.md) and [the security model](docs/security.md) if external asset requests are not acceptable.
+- Tailwind CSS and ECharts are pinned and served by the application itself. The browser CSP permits only same-origin scripts and styles.
+- User exports use a fixed filename, include counted plays and short attempts, and can be imported from format version 1 or 2. Imports are bounded to 5 MiB and 10,000 records and validate timestamps, lengths, and duration ranges.
 
 No generic Compose example can establish your authorization rules, TLS termination, backup security, or public exposure policy. Those remain deployment-owner decisions.
 
@@ -192,6 +200,16 @@ uvicorn src.main:app --host 127.0.0.1 --port 39421
 
 Runtime dependencies are pinned in `requirements.txt`; the fully resolved lock used by Docker is `requirements.lock`; test dependencies are in `requirements-dev.txt`.
 
+To rebuild the pinned frontend assets and run synthetic browser tests:
+
+```bash
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+The browser tests use a temporary SQLite database and intercepted synthetic API data. They do not require a real Navidrome account.
+
 ## Documentation
 
 - [Project documentation map](docs/README.md)
@@ -204,3 +222,4 @@ Runtime dependencies are pinned in `requirements.txt`; the fully resolved lock u
 ## License
 
 Navidrome Statistic is available under the [MIT License](LICENSE).
+Bundled Tailwind CSS and Apache ECharts retain their respective license and notice files under `src/static/vendor/`.
