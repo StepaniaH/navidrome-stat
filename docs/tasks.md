@@ -22,7 +22,7 @@
 | NDS-API-001 | HTTP 契约与输入限制 | P1 | 已完成 | NDS-SEC-001 的认证边界结论 |
 | NDS-REL-001 | 上游客户端生命周期与容错 | P1 | 已完成 | 无 |
 | NDS-OPS-001 | 健康检查与可观测性 | P1 | 已完成 | NDS-REL-001 |
-| NDS-TEST-001 | 自动化测试基线 | P1 | 待验收 | NDS-CORE-001、NDS-DATA-001、NDS-API-001 |
+| NDS-TEST-001 | 自动化测试基线 | P1 | 已完成 | NDS-CORE-001、NDS-DATA-001、NDS-API-001 |
 | NDS-DEP-001 | 容器与依赖可复现性 | P1 | 待验收 | 用户人工确认部署约束 |
 | NDS-UI-001 | Dashboard 运行状态与可访问性 | P2 | 待验收 | NDS-SEC-002、NDS-API-001 |
 | NDS-DOC-001 | 用户文档事实校准 | P1 | 已完成 | NDS-CORE-001 的语义结论 |
@@ -40,6 +40,82 @@
 | NDS-DOC-002 | 双语 README、Docker 部署与正在播放修复 | P1 | 已完成 | NDS-SRC-001、NDS-UI-002 |
 | NDS-REL-002 | 服务器配置热更新与采集器生命周期 | P1 | 已完成 | NDS-DOC-002、NDS-SRC-001 |
 | NDS-CORE-004 | 统计可信度、多服务器、隐私安全与性能收敛 | P0 | 已完成 | NDS-CORE-003、NDS-REL-002、NDS-PRIV-001 |
+| NDS-CORE-005 | 可靠性恢复、查询性能与质量门禁 | P0 | 已完成 | NDS-CORE-004、NDS-REL-002 |
+| NDS-UI-007 | Dashboard 顶部筛选与自定义日期范围 | P1 | 已完成 | NDS-CORE-005、NDS-UI-006 |
+| NDS-UI-008 | Dashboard 去卡片化顶部、播放历史与页脚收敛 | P1 | 已完成 | NDS-UI-007 |
+| NDS-UI-009 | 设置页信息架构、选择器与本地化收敛 | P1 | 已完成 | NDS-UI-008、NDS-UI-006 |
+
+## NDS-UI-009 设置页信息架构、选择器与本地化收敛
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-UI-008、NDS-UI-006；只使用合成 API 响应和空数据执行测试，不读取真实 `.env`、SQLite、日志、服务器地址、用户名、凭据或播放元数据。
+- **目标**：将设置页重构为连接、隐私、偏好、关于四个清晰分区，消除卡片套卡片和原生下拉的视觉割裂；建立可供 Dashboard 与设置页复用的本地化基础层；修复隐私策略加载完成后又被静态翻译覆盖为“加载中…”的问题，并补充隐私中性的可访问性偏好。
+- **实施步骤**：
+  1. 复现并隔离隐私策略状态：动态状态不再携带静态 `data-i18n` 键；API 非成功响应进入明确错误状态；语言切换只重新渲染已加载状态。
+  2. 新增共享本地化运行时，统一语言规范化、回退、参数插值、DOM 文本及属性翻译；设置页所有动态文案改为翻译键，不保留中英文字面二选一函数。
+  3. 用一个可复用、支持键盘、外部点击、Escape 与 `aria-selected` 的 listbox 控制器替换设置页全部原生 `<select>`，包括动态用户选择器。
+  4. 合并常规与外观为“偏好”，采用四分区导航和扁平设置行；连接与隐私操作按“状态 / 配置 / 危险操作”分层，不使用多重装饰性卡片。
+  5. 新增“减少动态效果”本地偏好与“恢复本地偏好默认值”；只存储显示偏好，不采集或上传个人数据，并在 Dashboard 同步生效。
+  6. 增加静态与 Playwright 回归，覆盖隐私策略状态收敛、所有自定义选择器、键盘语义、偏好即时生效、桌面/移动端无横向溢出和合成数据安全渲染；同步当前事实、接口及隐私文档。
+- **验收标准**：设置页不存在原生 `<select>`；四个顶级分区层级清楚且桌面/390px 均无横向溢出；listbox 支持鼠标与键盘并暴露正确 ARIA 状态；隐私策略成功、失败和语言切换后均不会永久停留在“加载中…”；共享本地化运行时具有回退和插值测试，设置页无 `localized(zh, en)`；减少动画与重置偏好仅使用本地存储；全量测试、覆盖率、Ruff、Playwright、Markdown 链接、隐私扫描与 `git diff --check` 通过。
+- **验证命令**：`.venv/bin/python -m pytest -q`；`.venv/bin/python -m pytest --cov=src --cov-report=term-missing --cov-fail-under=80`；`.venv/bin/ruff check .`；`npx playwright test`；`.venv/bin/python scripts/check_md_links.py`；`git diff --check`。
+- **涉及文件**：`src/static/settings.html`、`src/static/index.html`、`src/static/localization.js`（新增）、`src/static/settings.js`（新增）、`tests/test_static_settings.py`、`tests/test_static_dashboard.py`、`tests/e2e/settings.spec.js`（新增）、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`、`docs/tasks.md`。
+- **风险/回滚**：外置脚本的加载顺序或自定义 listbox 焦点管理可能导致设置不可用；通过源码、合成 API 和真实浏览器回归覆盖。新偏好只影响 CSS 动效且可一键清除；无 API、数据库 schema 或既有行为数据变化，回滚静态文件、测试与文档即可。
+- **完成记录**：2026-07-29，Codex。设置页由五个分散页签重构为连接、隐私、偏好、关于四分区；桌面使用分组侧栏，移动端使用四列导航，内容以单一主表面和分隔行组织。语言、主题、时区和动态用户选择全部迁移到同一个可访问 listbox 控制器，页面无原生 `<select>`，键盘支持方向键、Home/End、Escape 与焦点恢复。新增共享 `localization.js`，统一语言规范化、英语回退、具名插值、DOM 文本/属性翻译和安全的本地偏好读写；Dashboard 与设置页的动态状态、错误、单位及操作文案均改为翻译键，不再使用中英文文字二选一函数。隐私策略改为独立 `loading/ready/error` 状态，动态摘要不再携带静态 `data-i18n`，成功加载、失败重试和语言切换均会收敛；导出文件名固定为 `navidrome-stat-export.json`，不含用户名。偏好新增减少动态效果及恢复默认值，只操作语言、主题、时区和动效四个本地键，并同步作用于 Dashboard。验证：Python `390 passed`；分支覆盖率 84.81%；Ruff、JavaScript 语法、Markdown 链接、`git diff --check` 与高置信凭据扫描通过；Playwright `10 passed`，其中设置页覆盖策略成功/失败、键盘 listbox、语言/主题/时区/动效持久化、重置和 390px 无横向溢出。浏览器与 API 测试只使用空数据库和固定合成响应；未读取真实 `.env` 或 SQLite 内容，也未把真实服务器、用户、凭据或播放元数据写入代码、文档、测试及截图。未创建提交或 PR。
+
+## NDS-UI-008 Dashboard 去卡片化顶部、播放历史与页脚收敛
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-UI-007；仅使用固定合成播放数据执行测试，不读取或写入真实播放记录、用户名、服务器地址、凭据或日志。
+- **目标**：移除 Dashboard 顶部“卡片套卡片”和重复纵向信息层级，将桌面端标题、筛选、状态及操作收敛到一行；让最近播放在页面宽度内完整布局且不出现横向滚动条；以产品名和公开项目链接替换刷新频率页脚。
+- **实施步骤**：
+  1. 顶部改为无外层卡片背景的单行应用栏，保留紧凑品牌标识、时间范围、服务器、实时状态、更新时间、设置及刷新；筛选触发器改为单行内容，保持既有 listbox、自定义日期和键盘交互。
+  2. 为中窄屏设置有界响应式换行，仅在空间不足时分组，不恢复桌面端两层大卡片。
+  3. 最近播放表格使用固定列宽与截断策略填满可用宽度，移除 `overflow-x-auto`；窄屏转为纵向记录卡片，保留全部字段和语义。
+  4. 页脚左侧显示 `Navidrome Stat`，右侧提供公开 GitHub 仓库和仓库 `LICENSE` 的 `MIT` 链接，外链使用安全的新窗口属性。
+  5. 增加源码及 Playwright 布局回归，验证桌面顶部为单行、历史容器无横向滚动、移动端页面无横向溢出及页脚链接正确；同步当前事实与任务记录。
+- **验收标准**：1440px 桌面端顶部不超过一行且无外层工具栏卡片；历史区域的 `scrollWidth` 不大于 `clientWidth`，桌面显示全部列、移动端显示全部字段；页脚左右对齐且链接目标正确；既有筛选、自定义日期、状态与刷新交互不回退；全量测试、覆盖率、Ruff、Playwright、Markdown 链接与 `git diff --check` 通过。
+- **验证命令**：`.venv/bin/python -m pytest -q`；`.venv/bin/python -m pytest --cov=src --cov-report=term-missing --cov-fail-under=80`；`.venv/bin/ruff check .`；`npx playwright test`；`.venv/bin/python scripts/check_md_links.py`；`git diff --check`。
+- **涉及文件**：`src/static/index.html`、`tests/test_static_dashboard.py`、`tests/e2e/dashboard.spec.js`、`docs/current-state.md`、`docs/tasks.md`。
+- **风险/回滚**：表格响应式 display 变化可能影响窄屏可读性或空状态行；通过合成六列数据和桌面/390px 浏览器断言覆盖。无 API、数据库 schema 或持久化变化；回滚上述前端、测试和文档即可恢复上一版。
+- **完成记录**：2026-07-29，Codex。顶部删除独立筛选工具栏、品牌副标题、渐变图标外壳和按钮边框卡片，桌面改为无背景的单行应用栏；标题、两个筛选器、实时/更新时间与设置/刷新保持同一基线，实际 1280px 页面高度 53px、无横向溢出。760px 以下仅因空间限制将筛选器分组到第二行。最近播放移除 `overflow-x-auto`，用固定比例六列和安全截断填满桌面宽度；640px 以下把同一六字段重排为纵向记录块，实际桌面容器溢出为 0。页脚改为左侧 `Navidrome Stat`、右侧公开 GitHub 仓库与仓库 `LICENSE` 的 MIT 链接，外链使用 `noopener noreferrer`。新增静态结构、桌面单行、历史无滚动、页脚目标及 390px 六字段可见回归。验证：Python `386 passed`，分支覆盖率 84.81%，Ruff、Markdown 链接和 `git diff --check` 通过；Playwright `6 passed`。测试只使用固定合成数据；未把实际页面中的用户名、服务器显示名、播放元数据、地址、凭据或日志写入代码、测试、文档或截图产物。未创建提交或 PR；领取前已有的同轮未提交改动保持不变。
+
+## NDS-UI-007 Dashboard 顶部筛选与自定义日期范围
+
+- **优先级/状态**：P1 / 已完成
+- **依赖**：NDS-CORE-005、NDS-UI-006；只使用合成日期与响应测试，不读取或写入真实播放记录、用户名、服务器地址、凭据或日志。
+- **目标**：重构 Dashboard 顶部信息层级与操作布局，将突兀的原生筛选控件替换为与现有暗色视觉一致、可键盘操作的选择器，并支持含起止日期的自定义统计范围。
+- **实施步骤**：
+  1. 将标题、实时状态、设置/刷新操作与统计筛选拆成清晰的两级布局，兼顾桌面和移动端。
+  2. 为时间范围提供 7/30/90 天、全部历史和自定义日期选择；自定义范围使用闭区间本地日期，并提供应用、取消和校验反馈。
+  3. 将服务器来源筛选改为统一视觉的自定义 listbox，保留外部点击、Escape、选中状态和可访问性语义。
+  4. 扩展 Dashboard snapshot 查询与数据库聚合，使自定义起止日期按所选时区计算 UTC 边界、等长前周期和日趋势零填充；限制最大范围，避免无界响应。
+  5. 增加 API、数据库、静态源码和 Playwright 交互测试，并同步用户与接口文档。
+- **验收标准**：顶部操作与筛选在桌面/移动端不拥挤；可见筛选控件无原生 `<select>`；时间和服务器菜单支持键盘及点击关闭；自定义范围必须成对、起始不晚于结束且跨度不超过规定上限；查询缓存键包含范围；日期仅作为请求参数、不持久化；全量测试、覆盖率、Ruff、浏览器、Markdown 与 diff 检查通过。
+- **验证命令**：`.venv/bin/python -m pytest -q`；`.venv/bin/python -m pytest --cov=src --cov-report=term-missing --cov-fail-under=80`；`.venv/bin/ruff check .`；`npx playwright test`；`.venv/bin/python scripts/check_md_links.py`；`git diff --check`。
+- **涉及文件**：`src/database.py`、`src/main.py`、`src/static/index.html`、相关 API/数据库/静态/浏览器测试、`README.md`、`README.zh-CN.md`、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`、`docs/tasks.md`。
+- **风险/回滚**：自定义日期只扩展 Dashboard snapshot，不改变 SQLite schema 或历史数据；默认 30 天和既有 `days` 查询保持兼容。若交互回退，可恢复原预设按钮和来源 `<select>`，后端新增可选参数仍可保留兼容。
+- **完成记录**：2026-07-29，Codex。顶部拆分为品牌/实时操作与独立筛选栏两级布局，设置和刷新改为紧凑图标操作；时间与服务器筛选统一为暗色 listbox，支持选中状态、外部点击和 Escape 关闭。时间菜单提供 7/30/90 天、全部历史及自定义起止日期，前端校验成对、顺序与 366 天上限。`/api/stats/dashboard` 和聚合查询按所选时区支持包含首尾的日期闭区间、等长前周期、日趋势零填充，并把范围加入缓存键；无 schema 或持久化变化。浏览器验证中发现并修复弹层被后续卡片覆盖的层级问题。验证：Python `382 passed`；分支覆盖率 84.81%；Ruff、Markdown 链接与 `git diff --check` 通过；Playwright `4 passed`（合成数据渲染/注入防护、服务器筛选、自定义日期请求、390px 移动端无横向溢出）。未把真实用户名、服务器地址、曲目、凭据或日志写入代码、测试和文档；自定义日期只存在于请求及短期缓存键。未创建提交或 PR。
+- **返工记录**：2026-07-29，用户基于实际截图否决第一版顶部视觉：品牌区纵向过高、操作按钮孤立、筛选外框过重、标签与边框重叠、元信息缺少归属。任务重新进入“进行中”；保留自定义日期和 listbox 功能，推翻顶部布局并改用不依赖未编译 Tailwind 任意值类的稳定自定义 CSS。待重新完成桌面/移动视觉验收后更新状态。
+- **返工完成记录**：2026-07-29，Codex。顶部重构为单行横向品牌/状态/操作区与下方 48px 筛选工具栏：品牌图标、标题和副标题成为一个紧凑单元，实时状态与等权重线框图标按钮归组，移除高饱和刷新按钮；时间、服务器与“上次更新”归入同一工具栏，范围辅助文本改为仅供读屏读取，消除可见重复。关键布局全部改用页面内显式 CSS，避免预编译 Tailwind 缺少任意值类时退化；760px 与 480px 断点分别处理平板堆叠、移动端等宽筛选和底部弹层。实际 1280px 页面测得顶部高 156px、无横向溢出；下拉弹层与触发器左对齐。新增源码断言、状态点类名回归和桌面紧凑度检查。验证：Python `384 passed`，分支覆盖率 84.81%，Ruff、Markdown 链接和 `git diff --check` 通过；Playwright `5 passed`，覆盖桌面层级、390px 无横向溢出、合成数据注入防护、服务器筛选和自定义日期请求。未在变更、测试或文档中写入真实播放记录、用户名、服务器标识、地址、凭据或日志；未创建提交或 PR。
+
+## NDS-CORE-005 可靠性恢复、查询性能与质量门禁
+
+- **优先级/状态**：P0 / 已完成
+- **依赖**：NDS-CORE-004、NDS-REL-002；仅使用固定合成数据，不读取真实 `.env`、SQLite、日志、服务器地址、账户、密码、token 或播放元数据。
+- **目标**：消除会话与采集器批量关闭的失败传播缺陷，统一 OpenSubsonic 能力契约，为异常退出提供有界检查点恢复，降低 SQLite 与 Dashboard snapshot 的重复连接和扫描开销，并建立可持续的代码质量门禁与模块边界。
+- **实施步骤**：
+  1. `finalize_all()` 和 `stop_all()` 对每个会话/采集器执行尽力清理，汇总脱敏错误且保证 client、task、tracker 注册表全部释放；协调失败不得留下未处理的后续采集器。
+  2. 将 `playbackReport` 能力作为 tracker 的显式模式，未声明能力时忽略扩展字段并使用轮询估算；增加合成 `getNowPlaying` 经轮询、会话和 SQLite 落库的集成测试。
+  3. 为已达到阈值的活跃会话周期刷新幂等检查点；schema 向前迁移并在启动时将遗留未完成检查点标记为恢复完成，不新增播放次数。
+  4. 统一 SQLite 连接初始化（外键、busy timeout、WAL 策略），减少 Dashboard snapshot 的连接与时间戳重复扫描；以合成数据记录查询基准。
+  5. Dashboard cache 改为按 key single-flight，factory 在全局锁外运行且失效期间不回填旧值；拆分采集器模块，加入 lint、覆盖率和依赖检查门禁。
+  6. 同步 README、当前事实、接口、隐私、安全、测试状态与任务记录，修复 schema 版本和浏览器覆盖描述。
+- **验收标准**：单个会话或采集器失败不阻止其余资源释放；能力声明与时长置信度一致；轮询到落库集成测试通过；异常退出后检查点恢复为最终记录且不重复计数；SQLite 并发配置和缓存无跨 key 阻塞；lint、覆盖率、依赖锁、全量测试、浏览器测试、Markdown、Compose 与隐私扫描通过。
+- **验证命令**：`.venv/bin/python -m pytest -q`；`.venv/bin/python -m pytest --cov=src --cov-report=term-missing --cov-fail-under=80`；`.venv/bin/ruff check .`；`uv pip check --python .venv/bin/python`；锁文件安装与 Dependabot 配置检查；`.venv/bin/python scripts/check_md_links.py`；`docker compose config`；`git diff --check`；合成数据库迁移重跑与 `PRAGMA integrity_check`。
+- **涉及文件**：`src/sessions.py`、`src/collector_manager.py`、`src/main.py`、`src/database.py`、`src/dashboard_cache.py`、配置、相关测试与 CI、README、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`、`docs/security.md`、本文件。
+- **风险/回滚**：schema 仅向前增加检查点更新时间并更新遗留未完成状态，旧应用可忽略新增列；恢复时长保持最后已持久化值，不推测崩溃后的播放。WAL 与 busy timeout 仍使用单机 SQLite 文件语义，不宣称支持共享网络文件系统或多副本。质量门禁以测得基线起步，避免一次性要求历史代码全面整改。
+- **完成记录**：2026-07-29，Codex。基线为干净 `dev`，`main`/`dev` 分别与远端一致，Python `365 passed`。完成会话与 collector 批量清理失败隔离；将 `playbackReport` 能力显式传入 tracker，并新增合成轮询到 SQLite 集成测试；schema v7 增加 `checkpointed_at`、周期检查点与保守启动恢复。新增统一 SQLite WAL/busy timeout/外键连接策略，Dashboard 三类时间分桶合并为一次扫描；10 万条合成记录单次本机基准由约 296.8 ms 降至 54.6 ms（5.44×）。Dashboard cache 改为按 key single-flight 并处理失效竞态；采集器生命周期拆到 `src/collector_manager.py`。CI 增加 Ruff、80% 分支覆盖率、`pip check` 与 Dependabot；全量结果 `375 passed`、覆盖率 84.58%、Ruff 通过、Playwright `3 passed`、依赖兼容检查通过。Markdown 链接、Compose 配置、`git diff --check`、schema v7 重跑、`PRAGMA integrity_check=ok` 和 WAL 检查通过。Docker daemon 未运行，因此本地容器 smoke 为环境阻塞，CI 仍保留该 job。`npm audit` 因会向 npm registry 外发私有项目依赖元数据而未执行，未绕过审批；锁文件安装与 Dependabot 继续提供供应链门禁。未主动打开或复制真实 `.env`、SQLite 或日志，只使用合成测试值；未创建提交或 PR。遗留：阈值以下会话在异常退出时仍可能丢失；WAL 只支持单机文件语义；真实部署访问、TLS、用户告知和备份边界仍需 NDS-SEC-001/NDS-PRIV-001/NDS-DEP-001 人工验收。
 
 ## NDS-CORE-004 统计可信度、多服务器、隐私安全与性能收敛
 
@@ -234,7 +310,7 @@
 
 ## NDS-TEST-001 自动化测试基线
 
-- **优先级/状态**：P1 / 待验收
+- **优先级/状态**：P1 / 已完成
 - **依赖**：NDS-CORE-001、NDS-DATA-001、NDS-API-001 的行为契约已确定。
 - **目标**：建立覆盖核心状态、数据库、API 和生命周期的稳定测试套件。
 - **实施步骤**：
@@ -244,10 +320,10 @@
   4. 增加覆盖率报告，先记录基线，再为核心模块设置经团队确认的最低门槛。
   5. 将测试分为快速单元测试、集成测试和可选容器/浏览器测试，文档化运行方式。
 - **验收标准**：测试可从干净检出重复运行；不依赖真实 Navidrome、网络、凭据或用户数据；失败能定位契约；无残留数据库/任务/客户端。
-- **验证命令**：`pytest -q`；带覆盖率的测试命令（工具选定后登记）；重复执行两次比较结果。
+- **验证命令**：`pytest -q --cov=src --cov-report=term-missing --cov-fail-under=80`；`ruff check .`；`npm run test:e2e`；CI Docker smoke。
 - **涉及文件**：`tests/`、测试配置、可能的开发依赖文件、README、`docs/current-state.md`。
 - **风险/回滚**：时间相关测试可能不稳定。使用可控时钟和事件同步，不使用长时间真实 sleep；门槛先基于基线制定。
-- **完成记录**：2026-07-16，Cursor Agent。数据库测试改用 `tmp_path` fixture；拆分 dev 依赖；新增 API limit/503 测试。2026-07-16 续：新增 `tests/test_lifespan.py`；`pytest -q` 36 passed。2026-07-16 续：新增 `tests/test_auth.py`、`tests/test_security.py`；`pytest -q` 46 passed。遗留：覆盖率门槛、浏览器自动化测试未做。
+- **完成记录**：2026-07-16，Cursor Agent。数据库测试改用 `tmp_path` fixture；拆分 dev 依赖；新增 API limit/503 测试。2026-07-16 续：新增 lifespan、认证与安全测试。2026-07-28 增加合成 Playwright 与 CI browser job。2026-07-29，Codex：增加轮询到数据库集成、缓存并发、失败隔离和异常恢复测试；`pytest-cov` 分支覆盖率基线 84.58%，CI 门槛 80%；Ruff 进入 CI。最终 `375 passed`、Playwright `3 passed`，测试不连接真实 Navidrome 或读取真实行为数据。本任务完成；容器 smoke 由 CI 执行，本机 Docker daemon 未运行。
 
 ## NDS-DEP-001 容器与依赖可复现性
 

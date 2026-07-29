@@ -25,7 +25,7 @@
 | `/api/auth/status` | GET | `{"auth_required": bool}` | 受支持但可演进 | 报告是否配置了 `STATS_API_TOKEN` |
 | `/api/auth/login` | POST | `{"status":"ok"}` + 会话 Cookie | 受支持但可演进 | 请求体 token 长度 1–4096；每进程每来源摘要 5 次/分钟，超限返回 429；未启用认证时 404；`SESSION_COOKIE_SECURE` 控制 Secure 标记 |
 | `/api/auth/logout` | POST | `{"status":"ok"}` | 受支持但可演进 | 清除会话 Cookie |
-| `/api/stats/dashboard` | GET | 一次返回 `summary`、`players`、`transcoding`、`hourly`、`daily`、`heatmap`、`history`、`servers`、`available_servers`、`top_artists`、`top_albums` | 受支持但可演进 | 默认 `days=30`；可选 `timezone`、`metric`、`source_id`；进程内缓存 60 秒、最多 64 个键，相关写入后失效；`available_servers` 仅含 `id` 与 `display_name` |
+| `/api/stats/dashboard` | GET | 一次返回 `summary`、`players`、`transcoding`、`hourly`、`daily`、`heatmap`、`history`、`servers`、`available_servers`、`top_artists`、`top_albums` | 受支持但可演进 | 默认 `days=30`；可选 `timezone`、`metric`、`source_id`；可成对提供 `start_date`/`end_date`（`YYYY-MM-DD`、包含首尾、最长 366 天）覆盖预设窗口；缓存键包含日期范围；`available_servers` 仅含 `id` 与 `display_name` |
 | `/api/stats/summary` | GET | JSON：`total_plays`、`total_listen_sec`、`unique_tracks`、`client_count`，以及窗口对比字段 `active_days`、`average_daily_plays`、`average_daily_listen_sec`、`previous_total_plays`、`previous_total_listen_sec`、`plays_change_pct`、`listen_change_pct`、`window_days`（见下） | 受支持但可演进 | 可选 `?days=0`（默认，全部历史）或 `7–90`；对比与日均价仅对有限窗口计算，`days=0` 时 `window_days=null` 且 `previous_*` 与百分比均为 `null`；启用认证时需授权 |
 | `/api/stats/players` | GET | JSON 数组，元素为 `client_name`、`count`、`total_listen_sec`、`average_listen_sec`、`transcoded_count`、`transcoding_rate_pct` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；按 `count DESC, client_name ASC` 排序；启用认证时需授权 |
 | `/api/stats/transcoding` | GET | JSON 数组，元素为 `is_transcoding`、`count`、`total_listen_sec`、`plays_pct`、`listen_sec_pct` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；百分比按当前窗口计算；启用认证时需授权 |
@@ -38,7 +38,7 @@
 | `/api/stats/top-artists` | GET | JSON 数组，元素为 `artist`、`count`、`total_listen_sec`、`value` | 受支持但可演进 | `limit` 默认 10、范围 1–50；可选 `metric=plays`（默认）或 `metric=listen_time`；`value` 分别表示次数或秒数；同值按名称升序；启用认证时需授权 |
 | `/api/stats/top-albums` | GET | JSON 数组，元素为 `album`、`count`、`total_listen_sec`、`value` | 受支持但可演进 | 同 top-artists；启用认证时需授权 |
 | `/api/stats/now-playing` | GET | JSON 数组，元素为 `username`、`title`、`artist`、`client_name`、`seconds_elapsed`、`source_name` | 受支持但可演进 | 可选 `source_id`；聚合运行时注册的所有服务器 tracker，仅返回非暂停会话且不访问数据库；不接受 `days`，永远是实时态 |
-| `/settings` | GET | `settings.html` 隐私与数据管理页 | 受支持但可演进 | 保留策略、按用户导出/导入/删除 |
+| `/settings` | GET | 连接、隐私、本地偏好与项目信息设置页 | 受支持但可演进 | 四分区导航；保留策略、按用户导出/导入/删除、连接管理与浏览器本地偏好 |
 | `/api/privacy/settings` | GET/PUT | `retention_days`（`null`=永久）、`permanent` | 受支持但可演进 | PUT 接受 `null` 或 1–360 |
 | `/api/privacy/storage` | GET | 数据库字节数、总记录数，以及 history/attempt 分表计数 | 受支持但可演进 | 不返回播放明细 |
 | `/api/privacy/retention/preview` | GET | 总计和 history/attempt 分表待删条数、估算字节、保留期 | 受支持但可演进 | 可选 `?days=` 预览未保存策略；与实际清理使用相同两张表范围 |
@@ -83,6 +83,14 @@ GET /api/stats/players?days=90
 - `1–6`、负数或大于 90 的值返回 422；
 - `now-playing` 不接受 `days`。
 
+Dashboard snapshot 自定义日期示例：
+
+```text
+GET /api/stats/dashboard?days=30&timezone=Asia/Shanghai&start_date=2026-01-01&end_date=2026-01-31
+```
+
+`start_date` 与 `end_date` 必须同时出现，开始日期不得晚于结束日期，包含首尾的跨度不得超过 366 天；违反约束返回 422。提供自定义日期后，`days` 仍用于保持旧请求兼容，但实际统计、日趋势零填充和等长前周期均按自定义范围计算。
+
 除 `now-playing` 仅接受 `source_id` 外，历史统计路由均可选 `source_id`（1–128 字符）。过滤按稳定的服务器 ID 执行；history 的身份键为 `(source_id, username, track_id)`，因此不同服务器的相同 track ID 不合并。省略该参数保持聚合全部服务器的兼容行为。
 
 `timezone` 取值约定（适用于 summary/players/transcoding/hourly/heatmap/daily/top-artists/top-albums/history；`now-playing` 不接受）：
@@ -91,7 +99,7 @@ GET /api/stats/players?days=90
 - 由 `src.database.resolve_timezone` 通过 `zoneinfo.ZoneInfo` 校验；非 IANA 名称返回 422，错误文案固定 `timezone must be a valid IANA timezone name`；
 - 时区仅用于 Python 端的 weekday/hour/date 边界与有限窗口的 UTC 截止计算，从不字符串拼接进 SQL；时间戳仍以 UTC ISO 字符串存储；
 - Dashboard 选择器仅保留 `browser`（启动时通过 `Intl.DateTimeFormat().resolvedOptions().timeZone` 解析为 IANA 名称并转发）与 `UTC` 两个选项，切换时复用 `fetchStats` 的 in-flight 防护重新拉取所有历史组件。
-- Dashboard 与 `/settings` 使用浏览器 `localStorage` 共享 `navidrome-language`（`zh-CN`/`en`）、`navidrome-theme`（`frappe`/`latte`）和 `navidrome-timezone`（`browser`/`UTC`）偏好；这些设置不写入服务端或 SQLite。切换语言和主题即时更新当前页面，统计时区变更重新请求历史统计。
+- Dashboard 与 `/settings` 使用浏览器 `localStorage` 共享 `navidrome-language`（`zh-CN`/`en`）、`navidrome-theme`（`frappe`/`latte`）、`navidrome-timezone`（`browser`/`UTC`）和 `navidrome-motion`（`system`/`reduced`）偏好；这些设置不写入服务端或 SQLite。语言值由共享本地化运行时规范化并在缺少翻译键时回退英语；切换语言和主题即时更新当前页面，统计时区变更重新请求历史统计，`reduced` 关闭两页的非必要动效。设置页“恢复默认值”只删除这四个本地键。
 
 `/api/stats/heatmap` 调用示例：
 
@@ -166,6 +174,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 | `MAX_POLL_BACKOFF_SEC` | 可选 | `60` | `src/main.py`、`src/config.py` | 受支持但可演进 | 上游连续失败时轮询退避上限（秒）；钳制到 1–3600 |
 | `PLAY_THRESHOLD_SEC` | 可选 | `30` | `src/main.py`、`src/sessions.py`、`src/config.py` | 受支持但可演进 | 计入播放的最低**活跃**观测秒数；钳制到 1–3600；非数字/缺失回退默认 |
 | `PAUSE_GRACE_SEC` | 可选 | `30` | `src/main.py`、`src/sessions.py`、`src/config.py` | 受支持但可演进 | 暂停或缺失条目保持内存会话的宽限秒数；钳制到 0–3600；`0` 表示一遇 `isPlaying=false` 或缺失即按原行为结算 |
+| `CHECKPOINT_INTERVAL_SEC` | 可选 | `60` | `src/main.py`、`src/sessions.py`、`src/config.py` | 受支持但可演进 | 已达到阈值的活跃会话刷新幂等检查点的间隔；钳制到 10–3600 秒 |
 | `DATABASE_URL` | 可选 | `navidrome_stats.db` | `src/database.py` | 受支持但可演进 | 当前语义是 SQLite 文件路径，不是 URL |
 | `STATS_API_TOKEN` | 可选 | 无（匿名访问） | `src/auth.py` | 受支持但可演进 | 设置后保护统计 API 与 OpenAPI；`/health` 保持公开；值不得入库 |
 | `SESSION_COOKIE_SECURE` | 可选 | `false` | `src/auth.py` | 受支持但可演进 | 真值为 `1/true/yes/on` 时登录 Cookie 增加 Secure；应只在 HTTPS 访问路径启用 |
@@ -177,13 +186,13 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 
 ## 5. SQLite schema
 
-数据库接口为“内部”。`schema_meta` 表记录 `schema_version`（当前 **6**）及 `retention_days`（`permanent` 或 1–360）；`init_db()` 在启动时向前迁移并创建索引。兼容来源配置仍复用 `schema_meta`，多服务器配置存储于 `servers` 表。
+数据库接口为“内部”。`schema_meta` 表记录 `schema_version`（当前 **7**）及 `retention_days`（`permanent` 或 1–360）；`init_db()` 在启动时向前迁移、创建索引，并把遗留的未完成 poller 检查点按最后一次持久化时长标记为恢复完成。连接统一使用 5 秒 busy timeout、外键检查和 `synchronous=NORMAL`，初始化时选择 WAL。兼容来源配置仍复用 `schema_meta`，多服务器配置存储于 `servers` 表。
 
 表：`schema_meta`
 
 | 键 | 说明 |
 | --- | --- |
-| `schema_version` | 当前为 `6` |
+| `schema_version` | 当前为 `7` |
 | `retention_days` | `permanent`（默认）或 `1`–`360` 的字符串 |
 | `source_url` | GUI 保存的 Navidrome URL，作为 `NAVIDROME_URL` 缺失时的回退（内部，部署敏感信息） |
 | `source_user` | GUI 保存的 Navidrome 用户名，作为 `NAVIDROME_USER` 缺失时的回退（内部，账户标识） |
@@ -206,10 +215,11 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 | `session_id` | `TEXT` | poller 随机会话幂等 ID；导入/旧记录为空 | 内部标识 |
 | `duration_confidence` | `TEXT` | `reported` 或 `estimated` | 数据质量元数据 |
 | `finalized` / `finalized_at` | `INTEGER` / `TEXT` | 检查点是否完成及完成时间 | 内部状态/行为时间 |
+| `checkpointed_at` | `TEXT` | 最近一次持久化检查点对应的活跃观测时间；启动恢复使用 | 内部状态/行为时间 |
 
 `play_attempts` 保存未达到播放阈值的短播放尝试，字段与 `play_history` 的媒体元数据相同，并额外包含 `duration_sec`、`outcome`、`attempt_id` 与 `duration_confidence`。它用于短播放率分析，不计入正式播放次数。`play_history.source` 为 `poller` 或 `import`。
 
-版本 6 对非空 poller `session_id` 与 `attempt_id` 建立部分唯一索引，并增加 `(source_id, username, track_id)` 查询索引；旧记录和导入记录允许空 ID，因此不被自动去重。
+版本 6 对非空 poller `session_id` 与 `attempt_id` 建立部分唯一索引，并增加 `(source_id, username, track_id)` 查询索引；旧记录和导入记录允许空 ID，因此不被自动去重。版本 7 增加 `checkpointed_at`；启动恢复只更新同一行的 `finalized`/`finalized_at`，不会增加播放次数或推测中断后的时长。
 
 ## 6. 内部 Python 接口
 
@@ -228,8 +238,10 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - `src.database.get_top_albums(limit=..., days=0, db_path=...)`
 - `src.database.get_playback_history(limit=..., days=0, db_path=...)`
 - `src.database.get_weekday_hour_stats(days=30, timezone_name="UTC", db_path=...)`（返回 168 个零填充 `{weekday,hour,count}` 行）
+- `src.database.get_time_bucket_stats(days=30, timezone_name="UTC", db_path=...)`（一次扫描返回 hourly/daily/heatmap）
+- `src.database.recover_incomplete_sessions(db_path=...)`（将遗留未完成检查点按最后持久化时长标记完成）
 - `src.database.resolve_timezone(timezone_name)`（通过 `zoneinfo.ZoneInfo` 校验 IANA 名称；无效则 `ValueError`）
-- `src.sessions.PlaybackSessionTracker(...)`、`process_poll(...)`、`finalize_session(...)`、`finalize_all()`（构造参数 `play_threshold_sec`、`pause_grace_sec`、`stale_threshold_sec`）
+- `src.sessions.PlaybackSessionTracker(...)`、`set_playback_report_supported(...)`、`process_poll(...)`、`finalize_session(...)`、`finalize_all()`（构造参数含 `play_threshold_sec`、`pause_grace_sec`、`stale_threshold_sec`、`checkpoint_interval_sec`、`supports_playback_report`；批量结算尽力处理全部会话后汇总失败）
 - `src.config.parse_clamped_int(...)`、`env_int(...)`
 - `src.main.finalize_session(player_id)`、`polling_loop(client)`
 - `src.source_config.get_saved_source_config(...)`、`set_saved_source_config(...)`、`resolve_source_config(...)`、`resolve_effective_source_config(...)`、`validate_source_url(...)`、`has_full_config(...)`、`redacted_view(...)`

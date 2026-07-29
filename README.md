@@ -14,7 +14,9 @@ It is designed for a single application instance. Multiple Navidrome servers can
 - Shows current playback, listening history, clients, transcoding, time trends, and artist or album rankings.
 - Records below-threshold attempts separately from counted plays.
 - Provides configurable retention and per-user JSON export, import, and deletion.
+- Groups connections, privacy, local preferences, and project information in an accessible settings page; language, theme, timezone, and reduced-motion preferences stay in the browser.
 - Offers optional dashboard and API authentication through `STATS_API_TOKEN`.
+- Provides a responsive filter bar with preset or custom inclusive date ranges and per-server filtering.
 - Serves pinned frontend assets locally; normal dashboard use does not contact a public CDN.
 - Runs as a non-root user in a multi-stage Python 3.11 container.
 
@@ -48,7 +50,7 @@ PLAY_THRESHOLD_SEC=30
 PAUSE_GRACE_SEC=30
 ```
 
-These three `NAVIDROME_*` variables configure the initial or legacy source. Additional servers can be added from **Settings > Server Connections** after startup. Values saved through the settings page are stored in plaintext in the application database; prefer environment variables when that storage model is unsuitable.
+These three `NAVIDROME_*` variables configure the initial or legacy source. Additional servers can be added from **Settings > Connections** after startup. Values saved through the settings page are stored in plaintext in the application database; prefer environment variables when that storage model is unsuitable.
 
 ### 3. Create `compose.yaml`
 
@@ -72,6 +74,7 @@ services:
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
       PLAY_THRESHOLD_SEC: ${PLAY_THRESHOLD_SEC:-30}
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
+      CHECKPOINT_INTERVAL_SEC: ${CHECKPOINT_INTERVAL_SEC:-60}
       SAVE_RETRY_ATTEMPTS: ${SAVE_RETRY_ATTEMPTS:-3}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       DATABASE_URL: /data/navidrome_stats.db
@@ -155,12 +158,13 @@ To restore, stop the service, preserve the current volume, copy a verified backu
 | `POLL_INTERVAL` | `10` | Poll interval in seconds, clamped to 5-300. |
 | `PLAY_THRESHOLD_SEC` | `30` | Active observed seconds required to count a play, clamped to 1-3600. |
 | `PAUSE_GRACE_SEC` | `30` | Seconds to retain a paused or missing in-memory session, clamped to 0-3600. |
+| `CHECKPOINT_INTERVAL_SEC` | `60` | Refresh interval for durable active-session checkpoints, clamped to 10-3600 seconds. |
 | `MAX_POLL_BACKOFF_SEC` | `60` | Maximum upstream failure backoff, clamped to 1-3600 seconds. |
 | `SAVE_RETRY_ATTEMPTS` | `3` | Database save attempts for a session, clamped to 1-10. A failed save remains retryable. |
 | `SESSION_COOKIE_SECURE` | `false` | Set to `true` when the application is reached through HTTPS so the login cookie is marked Secure. |
 | `RETENTION_MAINTENANCE_SEC` | `86400` | Retention cleanup interval, clamped to 60-604800 seconds. |
 
-A track counts once its accumulated active time is greater than or equal to `PLAY_THRESHOLD_SEC`. That threshold creates an idempotent checkpoint; session end updates the same row with the final active duration rather than adding another play. When the server advertises OpenSubsonic playback reports, media position and playback state improve the estimate. Otherwise the service uses poll intervals. Paused intervals are excluded.
+A track counts once its accumulated active time is greater than or equal to `PLAY_THRESHOLD_SEC`. That threshold creates an idempotent checkpoint, which is refreshed every `CHECKPOINT_INTERVAL_SEC`; session end updates the same row with the final active duration rather than adding another play. On startup, an interrupted checkpoint is finalized at its last persisted duration without inventing unobserved listening time. When the server advertises OpenSubsonic playback reports, media position and playback state improve the estimate. Otherwise those extension fields are ignored and the service uses poll intervals. Paused intervals are excluded.
 
 ## Security and Privacy
 
@@ -194,7 +198,8 @@ Python 3.11 is the supported runtime.
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest -q
+ruff check .
+pytest -q --cov=src --cov-report=term-missing --cov-fail-under=80
 uvicorn src.main:app --host 127.0.0.1 --port 39421
 ```
 
@@ -209,6 +214,12 @@ npm run test:e2e
 ```
 
 The browser tests use a temporary SQLite database and intercepted synthetic API data. They do not require a real Navidrome account.
+
+Run the reproducible time-bucket benchmark with synthetic data:
+
+```bash
+python -m scripts.benchmark_stats --rows 100000
+```
 
 ## Documentation
 

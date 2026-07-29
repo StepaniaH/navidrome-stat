@@ -20,19 +20,19 @@ All timestamps are synthetic; no real data is used.
 """
 
 import asyncio
-from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, AsyncMock
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from src.database import (
+    get_player_stats,
+    get_top_albums,
+    get_top_artists,
+    get_transcoding_stats,
     init_db,
     save_play_session,
-    get_top_artists,
-    get_top_albums,
-    get_player_stats,
-    get_transcoding_stats,
 )
 from src.main import app
 

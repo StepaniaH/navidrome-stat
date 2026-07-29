@@ -1,9 +1,10 @@
-import pytest
-from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, patch
 
-from src.main import app
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 from src.auth import login_rate_limiter
+from src.main import app
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,6 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-
 HISTORY_LIMIT_DEFAULT = 10
 HISTORY_LIMIT_MIN = 1
 HISTORY_LIMIT_MAX = 100

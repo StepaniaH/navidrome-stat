@@ -1,6 +1,6 @@
+import uuid
 from datetime import datetime
 from typing import Awaitable, Callable
-import uuid
 
 from src.config import env_int
 
@@ -19,8 +19,15 @@ _DEFAULT_PLAY_THRESHOLD_SEC = env_int(
 _DEFAULT_PAUSE_GRACE_SEC = env_int(
     "PAUSE_GRACE_SEC", default=30, min_value=0, max_value=3600
 )
+_DEFAULT_CHECKPOINT_INTERVAL_SEC = env_int(
+    "CHECKPOINT_INTERVAL_SEC", default=60, min_value=10, max_value=3600
+)
 
 SaveSessionCallback = Callable[[dict], Awaitable[None]]
+
+
+class SessionFinalizationError(RuntimeError):
+    """Redacted batch-finalization failure."""
 
 
 class PlaybackSessionTracker:
@@ -55,6 +62,8 @@ class PlaybackSessionTracker:
         save_attempt: SaveSessionCallback | None = None,
         source_id: str = "legacy",
         source_name: str = "Legacy environment source",
+        supports_playback_report: bool = False,
+        checkpoint_interval_sec: int = _DEFAULT_CHECKPOINT_INTERVAL_SEC,
     ):
         self.active_sessions: dict[str, dict] = {}
         self._save_session = save_session
@@ -64,6 +73,12 @@ class PlaybackSessionTracker:
         self._save_attempt = save_attempt
         self.source_id = source_id
         self.source_name = source_name
+        self.supports_playback_report = supports_playback_report
+        self.checkpoint_interval_sec = checkpoint_interval_sec
+
+    def set_playback_report_supported(self, supported: bool) -> None:
+        """Select the duration contract advertised by the upstream server."""
+        self.supports_playback_report = bool(supported)
 
     async def finalize_session(self, player_id: str) -> None:
         if player_id not in self.active_sessions:
@@ -98,24 +113,42 @@ class PlaybackSessionTracker:
             "last_seen_at": last_active.isoformat(),
             "finalized": finalized,
             "finalized_at": last_active.isoformat() if finalized else None,
+            "checkpointed_at": last_active.isoformat(),
         }
         await self._save_session(payload)
 
     async def _maybe_commit_active_session(self, player_id: str) -> None:
         session = self.active_sessions.get(player_id)
-        if not session or session.get("committed"):
+        if not session:
             return
 
         duration = session.get("active_duration_sec", 0.0)
-        if duration >= self.play_threshold_sec:
-            await self._commit_session(session, int(duration), finalized=False)
-            # Mark committed only after durable persistence succeeds. If the
-            # callback raises, the active session remains eligible for retry.
-            session["committed"] = True
+        if duration < self.play_threshold_sec:
+            return
+        last_checkpoint = session.get("last_checkpoint_duration_sec")
+        if session.get("committed") and (
+            last_checkpoint is not None
+            and duration - last_checkpoint < self.checkpoint_interval_sec
+        ):
+            return
+
+        await self._commit_session(session, int(duration), finalized=False)
+        # Update in-memory checkpoint state only after durable persistence
+        # succeeds. A failed refresh therefore remains eligible for retry.
+        session["committed"] = True
+        session["last_checkpoint_duration_sec"] = duration
 
     async def finalize_all(self) -> None:
+        errors: list[Exception] = []
         for player_id in list(self.active_sessions.keys()):
-            await self.finalize_session(player_id)
+            try:
+                await self.finalize_session(player_id)
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            raise SessionFinalizationError(
+                f"Failed to finalize {len(errors)} playback sessions"
+            )
 
     def _normalize_entries(self, entries) -> list[dict]:
         if isinstance(entries, dict):
@@ -172,15 +205,14 @@ class PlaybackSessionTracker:
             return 1.0
         return rate if rate > 0 else 1.0
 
-    @staticmethod
-    def _has_playback_report(entry: dict) -> bool:
-        return entry.get("state") is not None
+    def _has_playback_report(self, entry: dict) -> bool:
+        return self.supports_playback_report and entry.get("state") is not None
 
-    @staticmethod
-    def _is_playing(entry: dict) -> bool:
-        state = entry.get("state")
-        if isinstance(state, str):
-            return state.lower() in {"starting", "playing"}
+    def _is_playing(self, entry: dict) -> bool:
+        if self.supports_playback_report:
+            state = entry.get("state")
+            if isinstance(state, str):
+                return state.lower() in {"starting", "playing"}
         return bool(entry.get("isPlaying", True))
 
     def _active_delta(self, session: dict, entry: dict, current_time: datetime) -> float:

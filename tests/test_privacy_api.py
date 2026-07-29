@@ -1,6 +1,7 @@
-import pytest
 from datetime import datetime, timedelta, timezone
-from httpx import AsyncClient, ASGITransport
+
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 from src.database import init_db, save_play_session
 from src.main import app

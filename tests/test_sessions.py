@@ -78,11 +78,16 @@ async def test_track_change_updates_early_checkpoint_with_final_duration(tracker
         t2 + timedelta(seconds=1),
     )
 
-    assert save_mock.await_count == 2
-    checkpoint, final = [call.args[0] for call in save_mock.await_args_list]
+    assert save_mock.await_count == 3
+    checkpoint, refreshed, final = [
+        call.args[0] for call in save_mock.await_args_list
+    ]
     assert checkpoint["session_id"] == final["session_id"]
+    assert refreshed["session_id"] == final["session_id"]
     assert checkpoint["duration_sec"] == PLAY_THRESHOLD_SEC
     assert checkpoint["finalized"] is False
+    assert refreshed["duration_sec"] == PLAY_THRESHOLD_SEC + 60
+    assert refreshed["finalized"] is False
     assert final["duration_sec"] == PLAY_THRESHOLD_SEC + 60
     assert final["finalized"] is True
     assert tracker.active_sessions["p1"]["track_id"] == "t2"
@@ -110,7 +115,6 @@ async def test_track_change_finalizes_old_session(tracker, save_mock):
 @pytest.mark.asyncio
 async def test_short_session_discarded(tracker, save_mock):
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-    t1 = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC - 1)
 
     await tracker.process_poll([_entry()], t0)
     await tracker.finalize_session("p1")
@@ -183,6 +187,28 @@ async def test_finalize_all_on_shutdown(tracker, save_mock):
 
     assert save_mock.await_count == 4
     assert tracker.active_sessions == {}
+
+
+@pytest.mark.asyncio
+async def test_finalize_all_continues_after_one_session_fails():
+    save = AsyncMock(
+        side_effect=[
+            RuntimeError("synthetic persistence failure"),
+            None,
+        ]
+    )
+    tracker = PlaybackSessionTracker(save, play_threshold_sec=1)
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    for player_id in ("p1", "p2"):
+        await tracker.process_poll([_entry(player_id=player_id)], t0)
+        tracker.active_sessions[player_id]["active_duration_sec"] = 1
+
+    with pytest.raises(RuntimeError, match="Failed to finalize 1 playback sessions"):
+        await tracker.finalize_all()
+
+    assert "p1" in tracker.active_sessions
+    assert "p2" not in tracker.active_sessions
+    assert save.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -286,7 +312,6 @@ async def test_missing_player_resumed_within_grace(tracker, save_mock):
     t_missing = t0 + timedelta(seconds=10)
     # Within grace (last_active=t0, grace=30): 10 + 15 = 25s since active.
     t_resume = t_missing + timedelta(seconds=15)
-    t_done = t_resume + timedelta(seconds=PLAY_THRESHOLD_SEC)
 
     await tracker.process_poll([_entry()], t0)
     # Player disappears entirely (no entry at all, not a paused entry).
@@ -353,7 +378,8 @@ async def test_missing_player_beyond_grace_finalizes(tracker, save_mock):
 
 
 @pytest.mark.asyncio
-async def test_no_duplicate_commit_on_repeated_active_polls(tracker, save_mock):
+async def test_periodic_checkpoint_refresh_does_not_duplicate_identity(save_mock):
+    tracker = PlaybackSessionTracker(save_mock, checkpoint_interval_sec=60)
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     t1 = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
 
@@ -361,10 +387,16 @@ async def test_no_duplicate_commit_on_repeated_active_polls(tracker, save_mock):
     await tracker.process_poll([_entry()], t1)
     assert tracker.active_sessions["p1"]["committed"] is True
 
-    # Continued active polls must not re-commit the same session.
+    # A short continuation does not refresh; reaching the checkpoint interval
+    # updates the same durable session ID with a fresher duration.
     await tracker.process_poll([_entry()], t1 + timedelta(seconds=30))
+    assert save_mock.await_count == 1
     await tracker.process_poll([_entry()], t1 + timedelta(seconds=60))
-    save_mock.assert_awaited_once()
+    assert save_mock.await_count == 2
+    first, refreshed = [call.args[0] for call in save_mock.await_args_list]
+    assert first["session_id"] == refreshed["session_id"]
+    assert refreshed["duration_sec"] == 90
+    assert refreshed["finalized"] is False
     assert tracker.active_sessions["p1"]["committed"] is True
 
 
@@ -494,7 +526,12 @@ async def test_failed_final_update_keeps_session_for_retry():
 @pytest.mark.asyncio
 async def test_playback_report_state_and_position_exclude_pause():
     save = AsyncMock()
-    tracker = PlaybackSessionTracker(save, play_threshold_sec=15, pause_grace_sec=60)
+    tracker = PlaybackSessionTracker(
+        save,
+        play_threshold_sec=15,
+        pause_grace_sec=60,
+        supports_playback_report=True,
+    )
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
     await tracker.process_poll(
@@ -521,6 +558,25 @@ async def test_playback_report_state_and_position_exclude_pause():
     saved = save.await_args.args[0]
     assert saved["duration_sec"] == 15
     assert saved["duration_confidence"] == "reported"
+
+
+@pytest.mark.asyncio
+async def test_legacy_mode_ignores_unadvertised_playback_report_fields():
+    save = AsyncMock()
+    tracker = PlaybackSessionTracker(save, play_threshold_sec=10)
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    await tracker.process_poll(
+        [{**_entry(), "state": "paused", "positionMs": 0}],
+        t0,
+    )
+    await tracker.process_poll(
+        [{**_entry(), "state": "paused", "positionMs": 10_000}],
+        t0 + timedelta(seconds=10),
+    )
+
+    saved = save.await_args.args[0]
+    assert saved["duration_confidence"] == "estimated"
 
 
 @pytest.mark.asyncio

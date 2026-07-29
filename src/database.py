@@ -1,10 +1,13 @@
-import aiosqlite
 import os
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+import aiosqlite
+
+from src.sqlite import connect_db
+
 DB_PATH = os.getenv("DATABASE_URL", "navidrome_stats.db")
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 LEGACY_SOURCE_ID = "legacy"
 LEGACY_SOURCE_NAME = "Legacy environment source"
 
@@ -57,6 +60,17 @@ def _window_bounds(days: int, tz: ZoneInfo) -> tuple[str | None, str | None]:
     return (_format_utc(start_dt), _format_utc(end_dt))
 
 
+def _date_window_bounds(
+    start_date: date,
+    end_date: date,
+    tz: ZoneInfo,
+) -> tuple[str, str]:
+    """Return UTC bounds for an inclusive local calendar-date range."""
+    start_dt = datetime.combine(start_date, time.min, tzinfo=tz)
+    end_dt = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=tz)
+    return (_format_utc(start_dt), _format_utc(end_dt))
+
+
 def _previous_window_bounds(days: int, tz: ZoneInfo) -> tuple[str | None, str | None]:
     """Return UTC cutoff strings for the previous equal-length window.
 
@@ -76,7 +90,12 @@ def _previous_window_bounds(days: int, tz: ZoneInfo) -> tuple[str | None, str | 
     return (_format_utc(prev_start), _format_utc(start_dt))
 
 
-def _window_predicate(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT) -> tuple[str, list]:
+def _window_predicate(
+    days: int = 0,
+    timezone_name: str = TIMEZONE_DEFAULT,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> tuple[str, list]:
     """Return a parameterized SQL predicate selecting rows inside the window.
 
     ``days <= 0`` means all history (no filter); the returned predicate is
@@ -90,16 +109,28 @@ def _window_predicate(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT) -> t
 
     The returned tuple is ``(predicate, params)``.
     """
-    if days <= 0:
+    if start_date is not None and end_date is not None:
+        start, end = _date_window_bounds(
+            start_date,
+            end_date,
+            resolve_timezone(timezone_name),
+        )
+    elif days <= 0:
         return ("1=1", [])
-    start, end = _window_bounds(days, resolve_timezone(timezone_name))
+    else:
+        start, end = _window_bounds(days, resolve_timezone(timezone_name))
     return (
         "datetime(played_at) >= ? AND datetime(played_at) < ?",
         [start, end],
     )
 
 
-def _previous_window_predicate(days: int, timezone_name: str = TIMEZONE_DEFAULT) -> tuple[str, list]:
+def _previous_window_predicate(
+    days: int,
+    timezone_name: str = TIMEZONE_DEFAULT,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> tuple[str, list]:
     """Return a parameterized SQL predicate for the previous equal-length window.
 
     Only meaningful for finite windows (``days > 0``); for ``days <= 0`` returns
@@ -107,9 +138,16 @@ def _previous_window_predicate(days: int, timezone_name: str = TIMEZONE_DEFAULT)
     history). Bounds are computed in the requested timezone (see
     ``_previous_window_bounds``).
     """
-    if days <= 0:
+    if start_date is not None and end_date is not None:
+        tz = resolve_timezone(timezone_name)
+        span_days = (end_date - start_date).days + 1
+        previous_end = start_date - timedelta(days=1)
+        previous_start = previous_end - timedelta(days=span_days - 1)
+        start, end = _date_window_bounds(previous_start, previous_end, tz)
+    elif days <= 0:
         return ("1=0", [])
-    start, end = _previous_window_bounds(days, resolve_timezone(timezone_name))
+    else:
+        start, end = _previous_window_bounds(days, resolve_timezone(timezone_name))
     if start is None or end is None:
         return ("1=0", [])
     return (
@@ -290,6 +328,13 @@ async def _apply_migrations(db: aiosqlite.Connection) -> None:
         """)
         await _set_schema_version(db, 6)
 
+    if version < 7:
+        async with db.execute("PRAGMA table_info(play_history)") as cursor:
+            history_columns = {row[1] for row in await cursor.fetchall()}
+        if "checkpointed_at" not in history_columns:
+            await db.execute("ALTER TABLE play_history ADD COLUMN checkpointed_at TEXT")
+        await _set_schema_version(db, 7)
+
 
 async def _get_meta_value(db: aiosqlite.Connection, key: str):
     await db.execute("""
@@ -318,7 +363,7 @@ async def _set_meta_value(db: aiosqlite.Connection, key: str, value: str) -> Non
 async def init_db(db_path: str | None = None):
     """Initializes the database and creates the play_history table."""
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path, initialize=True) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS play_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -334,7 +379,32 @@ async def init_db(db_path: str | None = None):
             )
         """)
         await _apply_migrations(db)
+        await _recover_incomplete_sessions(db)
         await db.commit()
+
+
+async def _recover_incomplete_sessions(db: aiosqlite.Connection) -> int:
+    """Finalize durable checkpoints left by an earlier interrupted process."""
+
+    cursor = await db.execute(
+        """
+        UPDATE play_history
+        SET finalized = 1,
+            finalized_at = COALESCE(checkpointed_at, played_at)
+        WHERE session_id IS NOT NULL AND finalized = 0
+        """
+    )
+    return max(cursor.rowcount, 0)
+
+
+async def recover_incomplete_sessions(db_path: str | None = None) -> int:
+    """Public maintenance hook used by tests and operational tooling."""
+
+    path = _path(db_path)
+    async with connect_db(path) as db:
+        recovered = await _recover_incomplete_sessions(db)
+        await db.commit()
+    return recovered
 
 
 async def save_play_session(session: dict, db_path: str | None = None):
@@ -345,11 +415,11 @@ async def save_play_session(session: dict, db_path: str | None = None):
     checkpoint and final duration update to be retried without duplicate rows.
     """
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         columns = (
             "played_at, username, client_name, track_id, title, artist, album, "
             "is_transcoding, listen_duration_sec, source, source_id, source_name, "
-            "session_id, duration_confidence, finalized, finalized_at"
+            "session_id, duration_confidence, finalized, finalized_at, checkpointed_at"
         )
         values = (
             session.get("last_seen_at"),
@@ -368,12 +438,13 @@ async def save_play_session(session: dict, db_path: str | None = None):
             session.get("duration_confidence", "estimated"),
             int(bool(session.get("finalized", False))),
             session.get("finalized_at"),
+            session.get("checkpointed_at", session.get("last_seen_at")),
         )
         if session.get("session_id"):
             await db.execute(
                 f"""
                 INSERT INTO play_history ({columns})
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) WHERE session_id IS NOT NULL DO UPDATE SET
                     played_at=excluded.played_at,
                     username=excluded.username,
@@ -389,7 +460,8 @@ async def save_play_session(session: dict, db_path: str | None = None):
                     source_name=excluded.source_name,
                     duration_confidence=excluded.duration_confidence,
                     finalized=excluded.finalized,
-                    finalized_at=excluded.finalized_at
+                    finalized_at=excluded.finalized_at,
+                    checkpointed_at=excluded.checkpointed_at
                 """,
                 values,
             )
@@ -397,7 +469,7 @@ async def save_play_session(session: dict, db_path: str | None = None):
             await db.execute(
                 f"""
                 INSERT INTO play_history ({columns})
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )
@@ -407,7 +479,7 @@ async def save_play_session(session: dict, db_path: str | None = None):
 async def save_play_attempt(attempt: dict, db_path: str | None = None):
     """Save a below-threshold playback attempt without counting it as a play."""
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         await db.execute("""
             INSERT INTO play_attempts (
                 played_at, username, client_name, track_id, title, artist,
@@ -439,7 +511,7 @@ async def get_short_play_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFA
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
     pred, params = _source_predicate(pred, params, source_id)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(f"""
             SELECT COUNT(*) AS short_count, COALESCE(SUM(duration_sec), 0) AS short_listen_sec
@@ -469,7 +541,7 @@ async def get_source_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
     pred, params = _source_predicate(pred, params, source_id)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(f"""
             SELECT COALESCE(source, 'poller') AS source,
@@ -483,12 +555,14 @@ async def get_source_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
 
 
 async def get_server_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
-                           source_id: str | None = None, db_path: str | None = None):
+                           source_id: str | None = None, db_path: str | None = None,
+                           start_date: date | None = None,
+                           end_date: date | None = None):
     """Return formal play counts grouped by configured server identity."""
     path = _path(db_path)
-    pred, params = _window_predicate(days, timezone_name)
+    pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     where, params = _source_predicate(pred, params, source_id, column="ph.source_id")
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(f"""
             SELECT COALESCE(ph.source_id, ?) AS source_id,
@@ -507,7 +581,7 @@ async def get_server_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
 
 async def list_servers(db_path: str | None = None):
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT id, display_name, url, username, password, enabled FROM servers ORDER BY created_at, id") as cursor:
             return [dict(row) for row in await cursor.fetchall()]
@@ -521,7 +595,7 @@ async def get_server(server_id: str, db_path: str | None = None):
 async def save_server(server: dict, db_path: str | None = None) -> None:
     path = _path(db_path)
     now = datetime.now(timezone.utc).isoformat()
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         await db.execute("""
             INSERT INTO servers (id, display_name, url, username, password, enabled, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -535,7 +609,7 @@ async def save_server(server: dict, db_path: str | None = None) -> None:
 
 async def delete_server(server_id: str, db_path: str | None = None) -> bool:
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         cursor = await db.execute("DELETE FROM servers WHERE id = ?", (server_id,))
         await db.commit()
         return cursor.rowcount > 0
@@ -546,6 +620,8 @@ async def get_player_stats(
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
     source_id: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ):
     """Returns the distribution of client usage based on play counts.
 
@@ -562,9 +638,9 @@ async def get_player_stats(
     ``ZoneInfo`` and never string-interpolated into SQL.
     """
     path = _path(db_path)
-    pred, params = _window_predicate(days, timezone_name)
+    pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
@@ -607,6 +683,8 @@ async def get_transcoding_stats(
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
     source_id: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ):
     """Returns the ratio of transcoded vs direct play counts plus listen time.
 
@@ -623,9 +701,9 @@ async def get_transcoding_stats(
     string-interpolated into SQL.
     """
     path = _path(db_path)
-    pred, params = _window_predicate(days, timezone_name)
+    pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
@@ -667,7 +745,7 @@ async def ping_db(db_path: str | None = None) -> bool:
     """Returns True when the SQLite database is reachable."""
     path = _path(db_path)
     try:
-        async with aiosqlite.connect(path) as db:
+        async with connect_db(path) as db:
             async with db.execute("SELECT 1") as cursor:
                 await cursor.fetchone()
         return True
@@ -680,6 +758,8 @@ async def get_summary(
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
     source_id: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ):
     """Returns aggregate listening statistics for the selected window.
 
@@ -703,9 +783,14 @@ async def get_summary(
     """
     path = _path(db_path)
     tz = resolve_timezone(timezone_name)
-    cur_pred, cur_params = _window_predicate(days, timezone_name)
+    cur_pred, cur_params = _window_predicate(
+        days,
+        timezone_name,
+        start_date,
+        end_date,
+    )
     cur_pred, cur_params = _source_predicate(cur_pred, cur_params, source_id)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
@@ -753,7 +838,8 @@ async def get_summary(
         avg_daily_plays: float | None
         avg_daily_listen_sec: float | None
 
-        if days <= 0:
+        is_custom_window = start_date is not None and end_date is not None
+        if days <= 0 and not is_custom_window:
             denom: int | None = None
             if local_dates:
                 span_days = (max(local_dates) - min(local_dates)).days + 1
@@ -770,7 +856,12 @@ async def get_summary(
             avg_daily_listen_sec = (
                 round(total_listen_sec / active_days, 2) if active_days > 0 else 0.0
             )
-            prev_pred, prev_params = _previous_window_predicate(days, timezone_name)
+            prev_pred, prev_params = _previous_window_predicate(
+                days,
+                timezone_name,
+                start_date,
+                end_date,
+            )
             prev_pred, prev_params = _source_predicate(
                 prev_pred, prev_params, source_id
             )
@@ -811,7 +902,11 @@ async def get_summary(
             "previous_total_listen_sec": previous_total_listen_sec,
             "plays_change_pct": plays_change_pct,
             "listen_change_pct": listen_change_pct,
-            "window_days": days if days > 0 else None,
+            "window_days": (
+                (end_date - start_date).days + 1
+                if is_custom_window
+                else (days if days > 0 else None)
+            ),
         }
 
 
@@ -834,52 +929,19 @@ async def get_hourly_stats(
     The user timezone value is never string-interpolated into SQL and is
     validated via ``ZoneInfo``.
     """
-    path = _path(db_path)
-    tz = resolve_timezone(timezone_name)
-    pred, params = _window_predicate(days, timezone_name)
-    pred, params = _source_predicate(pred, params, source_id)
-    async with aiosqlite.connect(path) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            f"""
-            SELECT played_at AS played_at
-            FROM play_history
-            WHERE {pred}
-            """,
-            params,
-        ) as cursor:
-            rows = await cursor.fetchall()
-
-    counts: dict[int, int] = {}
-    for row in rows:
-        raw = row["played_at"]
-        if not raw:
-            continue
-        text = raw.strip()
-        if text.endswith("Z"):
-            text = text[:-1] + "+00:00"
-        try:
-            dt = datetime.fromisoformat(text)
-        except ValueError:
-            try:
-                dt = datetime.strptime(raw[:19], "%Y-%m-%dT%H:%M:%S")
-                dt = dt.replace(tzinfo=timezone.utc)
-            except ValueError:
-                continue
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        local_hour = dt.astimezone(tz).hour
-        counts[local_hour] = counts.get(local_hour, 0) + 1
-
-    return [{"hour": h, "count": counts[h]} for h in sorted(counts)]
+    buckets = await get_time_bucket_stats(
+        days=days,
+        timezone_name=timezone_name,
+        db_path=db_path,
+        source_id=source_id,
+    )
+    return buckets["hourly"]
 
 
-def _played_at_to_local_date(played_at: str, tz: ZoneInfo) -> date | None:
-    """Convert a stored UTC ``played_at`` ISO string to a local ``date`` in ``tz``.
-
-    Returns ``None`` when the value cannot be parsed. Stored timestamps remain
-    UTC; the timezone only controls date/hour/weekday bucket boundaries here.
-    """
+def _played_at_to_local_datetime(
+    played_at: str,
+    tz: ZoneInfo,
+) -> datetime | None:
     if not played_at:
         return None
     raw = played_at.strip()
@@ -895,19 +957,104 @@ def _played_at_to_local_date(played_at: str, tz: ZoneInfo) -> date | None:
             return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(tz).date()
+    return dt.astimezone(tz)
 
 
-def _local_date_range(days: int, tz: ZoneInfo) -> tuple[date | None, date | None]:
+def _played_at_to_local_date(played_at: str, tz: ZoneInfo) -> date | None:
+    """Convert a stored UTC ``played_at`` ISO string to a local ``date`` in ``tz``.
+
+    Returns ``None`` when the value cannot be parsed. Stored timestamps remain
+    UTC; the timezone only controls date/hour/weekday bucket boundaries here.
+    """
+    local = _played_at_to_local_datetime(played_at, tz)
+    return local.date() if local is not None else None
+
+
+def _local_date_range(
+    days: int,
+    tz: ZoneInfo,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> tuple[date | None, date | None]:
     """Return ``(start_date, end_date)`` for finite windows, both local in ``tz``.
 
     For ``days <= 0`` returns ``(None, None)``; the caller derives the all-history
     range from the database itself.
     """
+    if start_date is not None and end_date is not None:
+        return (start_date, end_date)
     if days <= 0:
         return (None, None)
     today = datetime.now(tz).date()
     return (today - timedelta(days=int(days) - 1), today)
+
+
+async def get_time_bucket_stats(
+    days: int = 30,
+    timezone_name: str = TIMEZONE_DEFAULT,
+    db_path: str | None = None,
+    source_id: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> dict[str, list[dict]]:
+    """Build hourly, daily and weekday/hour buckets from one SQLite scan."""
+
+    path = _path(db_path)
+    tz = resolve_timezone(timezone_name)
+    pred, params = _window_predicate(days, timezone_name, start_date, end_date)
+    pred, params = _source_predicate(pred, params, source_id)
+    async with connect_db(path) as db:
+        async with db.execute(
+            f"SELECT played_at FROM play_history WHERE {pred}",
+            params,
+        ) as cursor:
+            played_at_values = [row[0] for row in await cursor.fetchall()]
+
+    hourly_counts: dict[int, int] = {}
+    daily_counts: dict[date, int] = {}
+    heatmap_counts = {
+        (weekday, hour): 0
+        for weekday in range(WEEKDAY_HOUR_WEEKDAY_COUNT)
+        for hour in range(WEEKDAY_HOUR_HOUR_COUNT)
+    }
+    for played_at in played_at_values:
+        local = _played_at_to_local_datetime(played_at, tz)
+        if local is None:
+            continue
+        hourly_counts[local.hour] = hourly_counts.get(local.hour, 0) + 1
+        local_date = local.date()
+        daily_counts[local_date] = daily_counts.get(local_date, 0) + 1
+        heatmap_counts[(local.weekday(), local.hour)] += 1
+
+    hourly = [
+        {"hour": hour, "count": hourly_counts[hour]}
+        for hour in sorted(hourly_counts)
+    ]
+    if days <= 0 and (start_date is None or end_date is None):
+        if daily_counts:
+            start_date, end_date = min(daily_counts), max(daily_counts)
+        else:
+            start_date = end_date = None
+    else:
+        start_date, end_date = _local_date_range(
+            days,
+            tz,
+            start_date,
+            end_date,
+        )
+    daily = []
+    cursor_date = start_date
+    while cursor_date is not None and end_date is not None and cursor_date <= end_date:
+        daily.append(
+            {"date": cursor_date.isoformat(), "count": daily_counts.get(cursor_date, 0)}
+        )
+        cursor_date += timedelta(days=1)
+    heatmap = [
+        {"weekday": weekday, "hour": hour, "count": heatmap_counts[(weekday, hour)]}
+        for weekday in range(WEEKDAY_HOUR_WEEKDAY_COUNT)
+        for hour in range(WEEKDAY_HOUR_HOUR_COUNT)
+    ]
+    return {"hourly": hourly, "daily": daily, "heatmap": heatmap}
 
 
 async def get_daily_stats(
@@ -928,65 +1075,13 @@ async def get_daily_stats(
     with the timezone. The user timezone value is never string-interpolated
     into SQL and is validated via ``ZoneInfo``.
     """
-    path = _path(db_path)
-    tz = resolve_timezone(timezone_name)
-    pred, params = _window_predicate(days, timezone_name)
-    pred, params = _source_predicate(pred, params, source_id)
-    async with aiosqlite.connect(path) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            f"""
-            SELECT played_at AS played_at
-            FROM play_history
-            WHERE {pred}
-            """,
-            params,
-        ) as cursor:
-            rows = await cursor.fetchall()
-
-    if not rows:
-        if days <= 0:
-            return []
-        start_date, end_date = _local_date_range(days, tz)
-        if start_date is None or end_date is None:
-            return []
-        cursor_date = start_date
-        out: list[dict] = []
-        while cursor_date <= end_date:
-            out.append({"date": cursor_date.isoformat(), "count": 0})
-            cursor_date += timedelta(days=1)
-        return out
-
-    counts: dict[date, int] = {}
-    min_local: date | None = None
-    max_local: date | None = None
-    for row in rows:
-        local = _played_at_to_local_date(row["played_at"], tz)
-        if local is None:
-            continue
-        counts[local] = counts.get(local, 0) + 1
-        if min_local is None or local < min_local:
-            min_local = local
-        if max_local is None or local > max_local:
-            max_local = local
-
-    if min_local is None or max_local is None:
-        return []
-    if days <= 0:
-        start_date, end_date = min_local, max_local
-    else:
-        win_start, win_end = _local_date_range(days, tz)
-        if win_start is None or win_end is None:
-            return []
-        start_date = win_start
-        end_date = win_end
-
-    out = []
-    cursor_date = start_date
-    while cursor_date <= end_date:
-        out.append({"date": cursor_date.isoformat(), "count": counts.get(cursor_date, 0)})
-        cursor_date += timedelta(days=1)
-    return out
+    buckets = await get_time_bucket_stats(
+        days=days,
+        timezone_name=timezone_name,
+        db_path=db_path,
+        source_id=source_id,
+    )
+    return buckets["daily"]
 
 
 WEEKDAY_HOUR_WEEKDAY_COUNT = 7
@@ -1013,52 +1108,13 @@ async def get_weekday_hour_stats(
     The user timezone value is never string-interpolated into SQL and is
     validated via ``ZoneInfo``.
     """
-    path = _path(db_path)
-    tz = resolve_timezone(timezone_name)
-    pred, params = _window_predicate(days, timezone_name)
-    pred, params = _source_predicate(pred, params, source_id)
-    async with aiosqlite.connect(path) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            f"""
-            SELECT played_at AS played_at
-            FROM play_history
-            WHERE {pred}
-            """,
-            params,
-        ) as cursor:
-            rows = await cursor.fetchall()
-
-    counts: dict[tuple[int, int], int] = {}
-    for w in range(WEEKDAY_HOUR_WEEKDAY_COUNT):
-        for h in range(WEEKDAY_HOUR_HOUR_COUNT):
-            counts[(w, h)] = 0
-
-    for row in rows:
-        raw = row["played_at"]
-        if not raw:
-            continue
-        text = raw.strip()
-        if text.endswith("Z"):
-            text = text[:-1] + "+00:00"
-        try:
-            dt = datetime.fromisoformat(text)
-        except ValueError:
-            try:
-                dt = datetime.strptime(raw[:19], "%Y-%m-%dT%H:%M:%S")
-                dt = dt.replace(tzinfo=timezone.utc)
-            except ValueError:
-                continue
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        local = dt.astimezone(tz)
-        counts[(local.weekday(), local.hour)] += 1
-
-    return [
-        {"weekday": w, "hour": h, "count": counts[(w, h)]}
-        for w in range(WEEKDAY_HOUR_WEEKDAY_COUNT)
-        for h in range(WEEKDAY_HOUR_HOUR_COUNT)
-    ]
+    buckets = await get_time_bucket_stats(
+        days=days,
+        timezone_name=timezone_name,
+        db_path=db_path,
+        source_id=source_id,
+    )
+    return buckets["heatmap"]
 
 
 async def get_top_artists(
@@ -1068,6 +1124,8 @@ async def get_top_artists(
     metric: str = "plays",
     db_path: str | None = None,
     source_id: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ):
     """Returns top artists ranked by ``metric`` over the selected window.
 
@@ -1097,6 +1155,8 @@ async def get_top_artists(
         metric=metric,
         db_path=db_path,
         source_id=source_id,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -1107,6 +1167,8 @@ async def get_top_albums(
     metric: str = "plays",
     db_path: str | None = None,
     source_id: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ):
     """Returns top albums ranked by ``metric`` over the selected window.
 
@@ -1121,6 +1183,8 @@ async def get_top_albums(
         metric=metric,
         db_path=db_path,
         source_id=source_id,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -1132,6 +1196,8 @@ async def _get_top_entity(
     metric: str,
     db_path: str | None,
     source_id: str | None,
+    start_date: date | None,
+    end_date: date | None,
 ):
     if metric not in ("plays", "listen_time"):
         # Defensive: callers should validate; reject defensively rather than
@@ -1149,9 +1215,9 @@ async def _get_top_entity(
         value_expr = "COALESCE(SUM(listen_duration_sec), 0)"
 
     path = _path(db_path)
-    pred, params = _window_predicate(days, timezone_name)
+    pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
@@ -1184,6 +1250,8 @@ async def get_playback_history(
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
     source_id: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ):
     """Returns recent tracks with aggregated play counts.
 
@@ -1193,9 +1261,9 @@ async def get_playback_history(
     string-interpolated into SQL.
     """
     path = _path(db_path)
-    pred, params = _window_predicate(days, timezone_name)
+    pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""

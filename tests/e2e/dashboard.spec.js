@@ -103,7 +103,72 @@ test("renders synthetic statistics without executing metadata", async ({ page })
     "Synthetic Live Track",
   );
   expect(await page.evaluate(() => window.__injected)).toBeUndefined();
-  await expect(page.locator("#statsSourceSelect option")).toHaveCount(2);
+  await page.locator("#statsSourceButton").click();
+  await expect(page.locator(".stats-source-option")).toHaveCount(2);
+});
+
+test("desktop header stays on one compact row", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const layout = await page.evaluate(() => {
+    const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+    const header = rect(".dashboard-header");
+    const nextSection = rect("section");
+    const items = [
+      ".dashboard-brand",
+      ".dashboard-filters",
+      ".dashboard-meta",
+      ".dashboard-actions",
+    ].map((selector) => rect(selector));
+    return {
+      headerHeight: Math.round(header.height),
+      headerBottom: Math.round(header.bottom),
+      nextSectionTop: Math.round(nextSection.top),
+      centers: items.map((item) => Math.round(item.top + item.height / 2)),
+      hasLegacyToolbar: Boolean(document.querySelector(".dashboard-toolbar")),
+    };
+  });
+  expect(layout.headerHeight).toBeLessThan(70);
+  expect(Math.max(...layout.centers) - Math.min(...layout.centers)).toBeLessThanOrEqual(1);
+  expect(layout.hasLegacyToolbar).toBe(false);
+  expect(layout.nextSectionTop).toBeGreaterThanOrEqual(layout.headerBottom);
+});
+
+test("history fits the page and footer exposes project links", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const layout = await page.evaluate(() => {
+    const wrap = document.querySelector(".history-table-wrap");
+    const headers = [...document.querySelectorAll(".history-table th")];
+    const footerLinks = [...document.querySelectorAll(".app-footer a")];
+    return {
+      historyOverflow: wrap.scrollWidth - wrap.clientWidth,
+      overflowX: getComputedStyle(wrap).overflowX,
+      visibleHeaders: headers.filter((header) => getComputedStyle(header).display !== "none").length,
+      footer: footerLinks.map((link) => ({
+        text: link.textContent,
+        href: link.href,
+        rel: link.rel,
+      })),
+    };
+  });
+  expect(layout.historyOverflow).toBeLessThanOrEqual(0);
+  expect(layout.overflowX).toBe("hidden");
+  expect(layout.visibleHeaders).toBe(6);
+  expect(layout.footer).toEqual([
+    {
+      text: "GitHub",
+      href: "https://github.com/StepaniaH/navidrome-stat",
+      rel: "noopener noreferrer",
+    },
+    {
+      text: "MIT",
+      href: "https://github.com/StepaniaH/navidrome-stat/blob/main/LICENSE",
+      rel: "noopener noreferrer",
+    },
+  ]);
 });
 
 test("server filter is encoded into historical and realtime requests", async ({
@@ -114,9 +179,33 @@ test("server filter is encoded into historical and realtime requests", async ({
     if (request.url().includes("/api/stats/")) requests.push(request.url());
   });
   await page.goto("/");
-  await page.locator("#statsSourceSelect").selectOption("server-1");
+  await page.locator("#statsSourceButton").click();
+  await page.locator('[data-source-id="server-1"]').click();
   await expect.poll(() =>
     requests.some((url) => url.includes("source_id=server-1")),
+  ).toBe(true);
+});
+
+test("custom date range is encoded into the dashboard request", async ({
+  page,
+}) => {
+  const requests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/stats/dashboard")) requests.push(request.url());
+  });
+  await page.goto("/");
+  await page.locator("#statsWindowButton").click();
+  await page.locator("#customStartDate").fill("2026-07-01");
+  await page.locator("#customEndDate").fill("2026-07-28");
+  await page.locator("#customRangeApply").click();
+  await expect(page.locator("#statsWindowButtonLabel")).toHaveText(
+    "2026-07-01 — 2026-07-28",
+  );
+  await expect.poll(() =>
+    requests.some((url) =>
+      url.includes("start_date=2026-07-01")
+      && url.includes("end_date=2026-07-28")
+    ),
   ).toBe(true);
 });
 
@@ -125,6 +214,11 @@ test("mobile viewport keeps primary content inside the page", async ({ page }) =
   await page.goto("/");
   const layout = await page.evaluate(() => ({
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    historyOverflow:
+      document.querySelector(".history-table-wrap").scrollWidth
+      - document.querySelector(".history-table-wrap").clientWidth,
+    visibleHistoryCells: [...document.querySelector("#historyTable tr").children]
+      .filter((cell) => getComputedStyle(cell).display !== "none").length,
     offenders: [...document.querySelectorAll("body *")]
       .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 1)
       .slice(0, 5)
@@ -136,4 +230,6 @@ test("mobile viewport keeps primary content inside the page", async ({ page }) =
       })),
   }));
   expect(layout.overflow, JSON.stringify(layout.offenders)).toBeLessThanOrEqual(1);
+  expect(layout.historyOverflow).toBeLessThanOrEqual(1);
+  expect(layout.visibleHistoryCells).toBe(6);
 });

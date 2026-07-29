@@ -1,7 +1,10 @@
-import pytest
 import os
-from unittest.mock import patch, MagicMock, AsyncMock
-from src.client import generate_auth, NavidromeClient
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from src.client import NavidromeClient, generate_auth
+
 
 def test_generate_auth():
     token, salt = generate_auth("password")

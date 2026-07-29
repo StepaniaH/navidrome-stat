@@ -26,7 +26,13 @@ jobs:
         run: pip install -r requirements.lock
 
       - name: Run tests
-        run: pytest -q
+        run: pytest -q --cov=src --cov-report=term-missing --cov-fail-under=80
+
+      - name: Lint Python
+        run: ruff check .
+
+      - name: Verify installed dependencies
+        run: pip check
 
       - name: Validate Compose config
         run: docker compose config

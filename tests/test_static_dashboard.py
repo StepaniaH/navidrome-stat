@@ -122,12 +122,12 @@ def test_stats_scope_label_exists(source):
 
 def test_stats_window_label_helper(source):
     block = _function_block(source, "statsWindowLabel")
-    assert "全部历史" in block
-    assert "最近 ${statsDays} 天" in block
+    assert "dashboardMessage('window.allLabel')" in block
+    assert "dashboardMessage('window.daysLabel', { days: statsDays })" in block
 
 
 def test_stats_window_button_click_updates_state_and_calls_fetch(source):
-    block = source[source.index("document.querySelectorAll('.stats-window-btn')") :]
+    block = source[source.index("document.querySelectorAll('.stats-window-option')") :]
     end = block.index("setActiveStatsWindowButton(statsDays);")
     block = block[:end]
     assert "addEventListener('click'" in block
@@ -138,7 +138,8 @@ def test_stats_window_button_click_updates_state_and_calls_fetch(source):
 
 def test_stats_window_subtitle_updates_to_selected_range(source):
     block = _function_block(source, "setActiveStatsWindowButton")
-    assert "${statsWindowLabel()}每日播放次数" in block
+    assert "dashboardMessage('daily.subtitle'" in block
+    assert "window: statsWindowLabel()" in block
 
 
 def test_daily_chart_subtitle_has_id(source):
@@ -181,6 +182,57 @@ def test_dashboard_header_has_no_preference_controls(source):
     assert "statsTimezoneSelect" not in source
 
 
+def test_dashboard_header_uses_single_row_stable_layout(source):
+    header = source[source.index('<header class="dashboard-header">') : source.index("</header>") + len("</header>")]
+    for class_name in (
+        "dashboard-header-main",
+        "dashboard-brand",
+        "dashboard-filters",
+        "dashboard-meta",
+        "dashboard-actions",
+        "filter-trigger-value",
+    ):
+        assert class_name in header
+    assert 'class="visually-hidden"' in header
+    assert "dashboard-toolbar" not in header
+    assert "dashboard-eyebrow" not in header
+    assert "dashboard-subtitle" not in header
+    assert "lg:grid-cols-[" not in header
+    assert "text-[10px]" not in header
+
+
+def test_history_table_has_no_horizontal_scroll_container(source):
+    history = source[source.index('class="history-section') : source.index("</section>", source.index('class="history-section'))]
+    assert 'class="history-table-wrap"' in history
+    assert 'class="history-table text-sm"' in history
+    assert "overflow-x-auto" not in history
+    for column in ("user", "track", "artist", "album", "played", "count"):
+        assert f'history-col-{column}' in history
+    block = _function_block(source, "renderHistoryTable")
+    for column in ("user", "title", "artist", "album", "played", "count"):
+        assert f"history-cell-{column}" in block
+    assert "hidden sm:table-cell" not in history
+    assert "hidden md:table-cell" not in history
+    assert "hidden lg:table-cell" not in history
+
+
+def test_footer_uses_product_and_public_project_links(source):
+    footer = source[source.index('<footer class="app-footer">') : source.index("</footer>") + len("</footer>")]
+    assert "Navidrome Stat" in footer
+    assert 'href="https://github.com/StepaniaH/navidrome-stat"' in footer
+    assert 'href="https://github.com/StepaniaH/navidrome-stat/blob/main/LICENSE"' in footer
+    assert footer.count('target="_blank"') == 2
+    assert footer.count('rel="noopener noreferrer"') == 2
+    assert "正在播放每 10 秒刷新" not in source
+    assert "Now playing refreshes every 10s" not in source
+
+
+def test_dashboard_status_preserves_header_dot_class(source):
+    block = _function_block(source, "setStatus")
+    assert "dot.className = 'dashboard-live-dot '" in block
+    assert "w-2 h-2 rounded-full" not in block
+
+
 def test_timezone_state_and_resolver_exist(source):
     # Global state declared near the other dashboard state variables.
     assert "let statsTimezone = 'browser';" in source
@@ -211,32 +263,35 @@ def test_timezone_change_handler_calls_fetchstats(source):
 
 
 def test_dashboard_reads_shared_timezone_preference(source):
-    assert "localStorage.getItem('navidrome-timezone')" in source
+    assert "window.NavidromeI18n.readPreference('navidrome-timezone')" in source
     assert "localStorage.setItem('navidrome-timezone', next)" not in source
     assert "timezone=${tzParam}" in _function_block(source, "fetchStats")
 
 
 def test_dashboard_has_local_i18n_and_theme_palette(source):
     assert '<html lang="en">' in source
-    assert "localStorage.getItem('navidrome-language') || 'en'" in source
+    assert '<script src="/static/localization.js"></script>' in source
     assert "const dashboardTranslations" in source
+    assert "const dashboardI18n = window.NavidromeI18n.createI18n" in source
     assert "function translateDashboard()" in source
-    assert "localStorage.getItem('navidrome-language')" in source
-    assert "function translateDashboard()" in source
-    assert "localStorage.getItem('navidrome-theme')" in source
+    assert "dashboardI18n.translate()" in source
+    assert "window.NavidromeI18n.readPreference('navidrome-language', 'en')" in source
+    assert "window.NavidromeI18n.readPreference('navidrome-theme', 'frappe')" in source
+    assert "window.NavidromeI18n.readPreference('navidrome-motion', 'system')" in source
+    assert '[data-motion="reduced"] *' in source
     for token in ("#303446", "#292c3c", "#ca9ee6", "#a6d189", "#eff1f5", "#e6e9ef", "#8839ef", "#40a02b"):
         assert token in source
 
 
 def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(source):
     for token in (
-        "dashboardText('上次更新 ', 'Last updated ')",
-        "dashboardText(`活跃 ${activeDays} 天`, `${activeDays} active days`)",
-        "Client listening details",
-        "Listening time",
+        "dashboardMessage('status.lastUpdated'",
+        "dashboardMessage('summary.activeDays'",
+        "'client.detailTitle': 'Client listening details'",
+        "'client.listeningTime': 'Listening time'",
         "dashboardDuration(item.listenSec)",
-        "dashboardText('播放', 'Plays')",
-        "dashboardText(`${statsWindowLabel()}每日播放次数`, `${statsWindowLabel()} plays per day`)",
+        "dashboardMessage('label.play')",
+        "dashboardMessage('daily.subtitle'",
         "subtitle.serverBreakdown",
         "subtitle.history",
         "history.caption",
@@ -244,6 +299,7 @@ def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(sourc
         "metric.listenTime",
     ):
         assert token in source
+    assert "function dashboardText(" not in source
 
 
 def test_historical_fetch_urls_propagate_timezone(source):
@@ -323,7 +379,7 @@ def test_summary_change_badge_elements_exist(source):
 
 def test_format_change_text_helper_exists(source):
     block = _function_block(source, "formatChangeText")
-    assert "vs 上周期" in block
+    assert "dashboardMessage('compare.previous')" in block
     assert "textContent" in block or "" in block  # function body present
     # No raw HTML injection in the badge formatter.
     assert "innerHTML" not in block
@@ -402,7 +458,9 @@ def test_realtime_and_historical_refresh_are_split(source):
 
 
 def test_server_filter_is_safe_and_propagated(source):
-    assert 'id="statsSourceSelect"' in source
+    assert 'id="statsSourceButton"' in source
+    assert 'id="statsSourceMenu"' in source
+    assert '<select id="statsSource' not in source
     assert "let selectedSourceId = '';" in source
     stats = _function_block(source, "fetchStats")
     now_playing = _function_block(source, "fetchNowPlaying")
@@ -411,3 +469,21 @@ def test_server_filter_is_safe_and_propagated(source):
     options = _function_block(source, "updateSourceOptions")
     assert "textContent" in options
     assert "innerHTML" not in options
+
+
+def test_custom_date_range_is_validated_and_propagated(source):
+    assert 'id="customStartDate"' in source
+    assert 'id="customEndDate"' in source
+    assert 'data-range="custom"' in source
+    assert "rangeDays > 366" in source
+    stats = _function_block(source, "fetchStats")
+    assert "&start_date=${encodeURIComponent(customStartDate)}" in stats
+    assert "&end_date=${encodeURIComponent(customEndDate)}" in stats
+
+
+def test_filter_popovers_have_accessible_keyboard_behavior(source):
+    assert 'aria-haspopup="listbox"' in source
+    assert 'role="listbox"' in source
+    assert 'role="option"' in source
+    assert "event.key === 'Escape'" in source
+    assert "closeFilterMenus()" in source

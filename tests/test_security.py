@@ -1,9 +1,7 @@
-import asyncio
 
 import pytest
 
 from src.database import get_playback_history, init_db, save_play_session
-
 
 MALICIOUS_TITLE = '<img src=x onerror="alert(1)">'
 MALICIOUS_USER = '"><script>evil()</script>'

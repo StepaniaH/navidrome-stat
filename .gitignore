@@ -1,6 +1,9 @@
 .venv/
+.coverage
+htmlcov/
 __pycache__/
 *.db
+*.db-*
 .env
 PRD.md
 .alma-snapshots

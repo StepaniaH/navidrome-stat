@@ -14,7 +14,9 @@ Navidrome Statistic 是一个自托管服务。它轮询 Subsonic 的 `getNowPla
 - 展示正在播放、播放历史、客户端、转码、时间趋势以及艺人和专辑排行。
 - 将未达到播放阈值的尝试与正式播放分开记录。
 - 支持配置保留期，以及按用户导出、导入和删除 JSON 数据。
+- 设置页按连接、隐私、本地偏好和项目信息组织；语言、主题、时区与减少动态效果偏好只保存在当前浏览器。
 - 可通过 `STATS_API_TOKEN` 为仪表盘和接口启用认证。
+- 提供响应式筛选栏，支持预设时间、自定义起止日期和按服务器筛选。
 - 固定并自托管前端资源；仪表盘正常使用时不会访问公共 CDN。
 - 使用 Python 3.11 多阶段镜像，并以非 root 用户运行。
 
@@ -48,7 +50,7 @@ PLAY_THRESHOLD_SEC=30
 PAUSE_GRACE_SEC=30
 ```
 
-这三个 `NAVIDROME_*` 变量用于配置初始数据源或兼容旧配置。启动后可以在“设置 > 服务器连接”中添加其他服务器。通过设置页保存的值会以明文形式写入应用数据库；如果不能接受这种存储方式，请优先使用环境变量。
+这三个 `NAVIDROME_*` 变量用于配置初始数据源或兼容旧配置。启动后可以在“设置 > 连接”中添加其他服务器。通过设置页保存的值会以明文形式写入应用数据库；如果不能接受这种存储方式，请优先使用环境变量。
 
 ### 3. 创建 `compose.yaml`
 
@@ -72,6 +74,7 @@ services:
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
       PLAY_THRESHOLD_SEC: ${PLAY_THRESHOLD_SEC:-30}
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
+      CHECKPOINT_INTERVAL_SEC: ${CHECKPOINT_INTERVAL_SEC:-60}
       SAVE_RETRY_ATTEMPTS: ${SAVE_RETRY_ATTEMPTS:-3}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       DATABASE_URL: /data/navidrome_stats.db
@@ -155,12 +158,13 @@ docker compose start navidrome-stat
 | `POLL_INTERVAL` | `10` | 轮询间隔，限制在 5 至 300 秒。 |
 | `PLAY_THRESHOLD_SEC` | `30` | 计为一次播放所需的活跃观测秒数，限制在 1 至 3600。 |
 | `PAUSE_GRACE_SEC` | `30` | 在内存中保留暂停或暂时消失会话的秒数，限制在 0 至 3600。 |
+| `CHECKPOINT_INTERVAL_SEC` | `60` | 活跃会话持久化检查点的刷新间隔，限制在 10 至 3600 秒。 |
 | `MAX_POLL_BACKOFF_SEC` | `60` | 上游故障退避上限，限制在 1 至 3600 秒。 |
 | `SAVE_RETRY_ATTEMPTS` | `3` | 会话数据库写入尝试次数，限制在 1 至 10；失败后会话仍可重试。 |
 | `SESSION_COOKIE_SECURE` | `false` | 应用通过 HTTPS 访问时设为 `true`，使登录 Cookie 带 Secure 标记。 |
 | `RETENTION_MAINTENANCE_SEC` | `86400` | 保留期清理间隔，限制在 60 至 604800 秒。 |
 
-当累计活跃时长大于等于 `PLAY_THRESHOLD_SEC` 时，一首曲目计为一次播放。达到阈值时写入幂等检查点；会话结束时更新同一行的最终活跃时长，不会再增加一次播放。服务器声明支持 OpenSubsonic 播放报告时，会结合媒体位置和播放状态提高估算质量；否则继续按轮询间隔估算。暂停区间不计入时长。
+当累计活跃时长大于等于 `PLAY_THRESHOLD_SEC` 时，一首曲目计为一次播放。达到阈值时写入幂等检查点，之后每隔 `CHECKPOINT_INTERVAL_SEC` 刷新；会话结束时更新同一行的最终活跃时长，不会再增加一次播放。启动时发现异常中断留下的检查点，会按最后一次已持久化时长标记为恢复完成，不推测未观测时长。服务器声明支持 OpenSubsonic 播放报告时，会结合媒体位置和播放状态提高估算质量；未声明时会忽略扩展字段并继续按轮询间隔估算。暂停区间不计入时长。
 
 ## 安全与隐私
 
@@ -194,7 +198,8 @@ docker compose up -d --build
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest -q
+ruff check .
+pytest -q --cov=src --cov-report=term-missing --cov-fail-under=80
 uvicorn src.main:app --host 127.0.0.1 --port 39421
 ```
 
@@ -209,6 +214,12 @@ npm run test:e2e
 ```
 
 浏览器测试使用临时 SQLite 数据库和拦截后的合成接口数据，不需要真实 Navidrome 账户。
+
+可使用合成数据运行可复现的时间分桶基准：
+
+```bash
+python -m scripts.benchmark_stats --rows 100000
+```
 
 ## 项目文档
 
