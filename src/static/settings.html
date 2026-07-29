@@ -1,1025 +1,1574 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="frappe" data-motion="system">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title data-i18n="page.title">设置 · Navidrome Statistics</title>
-    <link rel="stylesheet" href="/static/vendor/tailwind.css">
+    <title data-i18n="page.title">Settings · Navidrome Statistics</title>
     <style>
-        :root, [data-theme="frappe"] {
-            --page-bg: #303446; --panel-bg: #292c3c; --field-bg: #414559; --border: #51576d;
-            --text-main: #c6d0f5; --text-muted: #a5adce; --text-dim: #838ba7;
-            --accent: #ca9ee6; --accent-strong: #f4b8e4; --success: #a6d189; --warning: #e5c890;
-            --error: #e78284; --panel-soft: #363a4f;
+        :root,
+        [data-theme="frappe"] {
+            color-scheme: dark;
+            --page-bg: #303446;
+            --surface: #292c3c;
+            --surface-raised: #303446;
+            --field-bg: #414559;
+            --field-hover: #494d64;
+            --border: #51576d;
+            --border-soft: rgba(165, 173, 206, 0.16);
+            --text: #c6d0f5;
+            --text-muted: #a5adce;
+            --text-dim: #838ba7;
+            --accent: #ca9ee6;
+            --accent-soft: rgba(202, 158, 230, 0.13);
+            --accent-strong: #f4b8e4;
+            --success: #a6d189;
+            --warning: #e5c890;
+            --danger: #e78284;
+            --focus: rgba(202, 158, 230, 0.35);
+            --shadow: 0 18px 44px rgba(20, 20, 30, 0.2);
         }
+
         [data-theme="latte"] {
-            --page-bg: #eff1f5; --panel-bg: #e6e9ef; --field-bg: #dce0e8; --border: #bcc0cc;
-            --text-main: #4c4f69; --text-muted: #5c5f77; --text-dim: #7c7f93;
-            --accent: #8839ef; --accent-strong: #ea76cb; --success: #40a02b; --warning: #df8e1d;
-            --error: #d20f39; --panel-soft: #dce0e8;
+            color-scheme: light;
+            --page-bg: #eff1f5;
+            --surface: #ffffff;
+            --surface-raised: #f5f6fa;
+            --field-bg: #e6e9ef;
+            --field-hover: #dce0e8;
+            --border: #bcc0cc;
+            --border-soft: rgba(76, 79, 105, 0.13);
+            --text: #4c4f69;
+            --text-muted: #5c5f77;
+            --text-dim: #7c7f93;
+            --accent: #8839ef;
+            --accent-soft: rgba(136, 57, 239, 0.09);
+            --accent-strong: #ea76cb;
+            --success: #40a02b;
+            --warning: #df8e1d;
+            --danger: #d20f39;
+            --focus: rgba(136, 57, 239, 0.24);
+            --shadow: 0 18px 44px rgba(76, 79, 105, 0.12);
         }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--page-bg); color: var(--text-main); }
-        [data-theme] .bg-ink-950 { background-color: var(--page-bg) !important; }
-        [data-theme] .bg-ink-900, [data-theme] .bg-ink-900\/60, [data-theme] .bg-ink-900\/80 { background-color: var(--panel-bg) !important; }
-        [data-theme] .bg-ink-800, [data-theme] .bg-ink-800\/40, [data-theme] .bg-ink-800\/60 { background-color: var(--field-bg) !important; }
-        [data-theme] .text-white, [data-theme] .text-slate-100, [data-theme] .text-slate-200 { color: var(--text-main) !important; }
-        [data-theme] .text-slate-300, [data-theme] .text-slate-400 { color: var(--text-muted) !important; }
-        [data-theme] .text-slate-500, [data-theme] .text-slate-600 { color: var(--text-dim) !important; }
-        [data-theme] .border-white\/5, [data-theme] .border-white\/10 { border-color: var(--border) !important; }
-        [data-theme] .text-accent, [data-theme] .text-accent-glow { color: var(--accent) !important; }
-        [data-theme] .bg-accent { background-color: var(--accent) !important; }
-        [data-theme] .text-emerald-300, [data-theme] .text-mint { color: var(--success) !important; }
-        [data-theme] .text-red-300, [data-theme] .text-red-400 { color: var(--error) !important; }
-        input, select { color: var(--text-main); background-color: var(--field-bg); border-color: var(--border); }
-        .source-message { position: static; display: block; clear: both; margin-top: 1rem; min-height: 0; }
-        .mesh-bg {
-            background-image:
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(167, 139, 250, 0.18), transparent),
-                radial-gradient(ellipse 60% 40% at 100% 0%, rgba(52, 211, 153, 0.08), transparent);
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
         }
-        input[type=range] { accent-color: #a78bfa; }
-        .settings-tab {
-            border-left: 2px solid transparent;
+
+        [hidden] {
+            display: none !important;
         }
-        .settings-tab[aria-selected="true"] {
-            background: rgba(167, 139, 250, 0.12);
-            color: #e9d5ff;
-            border-left-color: #34d399;
+
+        html {
+            min-width: 320px;
+            background: var(--page-bg);
         }
+
+        body {
+            min-height: 100vh;
+            margin: 0;
+            background: var(--page-bg);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 15px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        button,
+        input {
+            color: inherit;
+            font: inherit;
+        }
+
+        button,
+        summary,
+        label {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        button {
+            border: 0;
+        }
+
+        a {
+            color: inherit;
+        }
+
+        :focus-visible {
+            outline: 3px solid var(--focus);
+            outline-offset: 2px;
+        }
+
+        .settings-shell {
+            width: min(1120px, calc(100% - 40px));
+            margin: 0 auto;
+            padding: 42px 0 56px;
+        }
+
+        .page-header {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 28px;
+            margin-bottom: 28px;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 12px;
+            color: var(--text-dim);
+            font-size: 13px;
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            color: var(--text);
+        }
+
+        .back-link svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        h1,
+        h2,
+        h3,
+        p {
+            margin: 0;
+        }
+
+        .page-header h1 {
+            color: var(--text);
+            font-size: clamp(27px, 3vw, 34px);
+            font-weight: 680;
+            letter-spacing: -0.035em;
+        }
+
+        .page-description {
+            max-width: 560px;
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .privacy-local-note {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            flex: 0 0 auto;
+            padding-bottom: 4px;
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .privacy-local-note svg {
+            width: 14px;
+            height: 14px;
+            color: var(--success);
+        }
+
         .settings-layout {
             display: grid;
-            gap: 1.5rem;
+            grid-template-columns: 206px minmax(0, 1fr);
+            gap: 30px;
+            align-items: start;
         }
-        @media (min-width: 768px) {
-            .settings-layout { grid-template-columns: 13rem minmax(0, 1fr); align-items: start; }
+
+        .settings-navigation {
+            position: sticky;
+            top: 24px;
+            padding-right: 22px;
+            border-right: 1px solid var(--border-soft);
         }
-        @media (max-width: 767px) {
-            .settings-tab {
-                border-left: 0;
-                border-bottom: 2px solid transparent;
-            }
-            .settings-tab[aria-selected="true"] {
-                border-left: 0;
-                border-bottom-color: #34d399;
-            }
+
+        .nav-group + .nav-group {
+            margin-top: 21px;
         }
-        .retention-mode {
+
+        .nav-group-label {
+            display: block;
+            margin: 0 10px 7px;
+            color: var(--text-dim);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .settings-tab {
             display: flex;
+            width: 100%;
+            min-height: 40px;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            text-align: left;
+            transition: color 140ms ease, background-color 140ms ease;
+        }
+
+        .settings-tab:hover {
+            background: var(--accent-soft);
+            color: var(--text);
+        }
+
+        .settings-tab[aria-selected="true"] {
+            background: var(--accent-soft);
+            color: var(--accent-strong);
+        }
+
+        .settings-tab svg {
+            width: 17px;
+            height: 17px;
+            flex: 0 0 auto;
+            color: currentColor;
+        }
+
+        .settings-tab span {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .settings-content {
+            min-width: 0;
+        }
+
+        .settings-banner {
+            margin-bottom: 14px;
+            padding: 11px 14px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface-raised);
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .settings-banner[data-kind="success"] {
+            border-color: color-mix(in srgb, var(--success) 42%, transparent);
+            color: var(--success);
+        }
+
+        .settings-banner[data-kind="error"] {
+            border-color: color-mix(in srgb, var(--danger) 42%, transparent);
+            color: var(--danger);
+        }
+
+        .settings-panel {
+            border: 1px solid var(--border-soft);
+            border-radius: 14px;
+            background: var(--surface);
+            box-shadow: var(--shadow);
+        }
+
+        .panel-heading {
+            padding: 25px 28px 23px;
+        }
+
+        .panel-heading h2 {
+            color: var(--text);
+            font-size: 19px;
+            font-weight: 670;
+            letter-spacing: -0.015em;
+        }
+
+        .panel-heading p {
+            max-width: 650px;
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .settings-section {
+            padding: 23px 28px;
+            border-top: 1px solid var(--border-soft);
+        }
+
+        .section-heading {
+            display: flex;
+            align-items: start;
+            justify-content: space-between;
+            gap: 20px;
+            margin-bottom: 18px;
+        }
+
+        .section-heading h3 {
+            color: var(--text);
+            font-size: 14px;
+            font-weight: 650;
+        }
+
+        .section-heading p {
+            max-width: 560px;
+            margin-top: 3px;
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .status-line {
+            display: flex;
+            min-height: 45px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .status-label {
+            display: flex;
+            min-width: 0;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            flex: 0 0 auto;
+            border-radius: 50%;
+            background: var(--text-dim);
+        }
+
+        .status-line[data-state="ok"] .status-dot,
+        .status-line[data-state="ready"] .status-dot {
+            background: var(--success);
+        }
+
+        .status-line[data-state="error"] .status-dot {
+            background: var(--danger);
+        }
+
+        .status-line[data-state="loading"] .status-dot,
+        .status-line[data-state="degraded"] .status-dot {
+            background: var(--warning);
+        }
+
+        .status-primary {
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 570;
+        }
+
+        .status-secondary {
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .setting-list {
+            border-top: 1px solid var(--border-soft);
+        }
+
+        .setting-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(240px, 310px);
+            gap: 32px;
+            align-items: center;
+            min-height: 84px;
+            padding: 17px 0;
+            border-bottom: 1px solid var(--border-soft);
+        }
+
+        .setting-row:last-child {
+            border-bottom: 0;
+        }
+
+        .setting-copy strong {
+            display: block;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 620;
+        }
+
+        .setting-copy span {
+            display: block;
+            max-width: 470px;
+            margin-top: 3px;
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .settings-select {
+            position: relative;
+            min-width: 0;
+        }
+
+        .settings-select[data-disabled="true"] {
+            opacity: 0.7;
+        }
+
+        .settings-select-trigger {
+            display: flex;
+            width: 100%;
+            min-height: 42px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 9px 11px 9px 13px;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            background: var(--field-bg);
+            color: var(--text);
+            cursor: pointer;
+            text-align: left;
+            transition: border-color 140ms ease, background-color 140ms ease;
+        }
+
+        .settings-select-trigger:hover,
+        .settings-select[data-open="true"] .settings-select-trigger {
+            border-color: var(--accent);
+            background: var(--field-hover);
+        }
+
+        .settings-select-trigger:disabled {
+            cursor: default;
+        }
+
+        .settings-select-trigger span {
+            min-width: 0;
+            overflow: hidden;
+            font-size: 13px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .settings-select-trigger span[data-placeholder="true"] {
+            color: var(--text-dim);
+        }
+
+        .settings-select-trigger svg {
+            width: 15px;
+            height: 15px;
+            flex: 0 0 auto;
+            color: var(--text-dim);
+            transition: transform 140ms ease;
+        }
+
+        .settings-select[data-open="true"] .settings-select-trigger svg {
+            transform: rotate(180deg);
+        }
+
+        .settings-options {
+            position: absolute;
+            z-index: 60;
+            top: calc(100% + 7px);
+            right: 0;
+            left: 0;
+            max-height: 224px;
+            overflow: auto;
+            padding: 5px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface-raised);
+            box-shadow: 0 16px 36px rgba(17, 18, 28, 0.28);
+        }
+
+        .settings-option {
+            position: relative;
+            display: block;
+            width: 100%;
+            min-height: 38px;
+            padding: 8px 34px 8px 10px;
+            border-radius: 7px;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 13px;
+            text-align: left;
+        }
+
+        .settings-option:hover,
+        .settings-option:focus-visible {
+            background: var(--accent-soft);
+            color: var(--text);
+            outline: 0;
+        }
+
+        .settings-option[aria-selected="true"] {
+            color: var(--accent-strong);
+        }
+
+        .settings-option[aria-selected="true"]::after {
+            position: absolute;
+            top: 9px;
+            right: 12px;
+            content: "✓";
+            color: var(--success);
+            font-size: 13px;
+        }
+
+        .switch {
+            position: relative;
+            width: 43px;
+            height: 24px;
+            justify-self: end;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--field-bg);
+            cursor: pointer;
+            transition: background-color 140ms ease, border-color 140ms ease;
+        }
+
+        .switch::after {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            content: "";
+            transition: transform 140ms ease, background-color 140ms ease;
+        }
+
+        .switch[aria-checked="true"] {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+
+        .switch[aria-checked="true"]::after {
+            background: var(--accent);
+            transform: translateX(19px);
+        }
+
+        .primary-button,
+        .secondary-button,
+        .danger-button,
+        .text-button,
+        .upload-button {
+            display: inline-flex;
+            min-height: 38px;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
-            padding: 0.6rem 0.75rem;
-            border-radius: 0.75rem;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            background-color: rgba(26, 26, 38, 0.6);
-            color: #94a3b8;
-            font-size: 0.875rem;
+            border-radius: 8px;
             cursor: pointer;
-            transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+            font-size: 12px;
+            font-weight: 650;
+            text-decoration: none;
+            transition: filter 140ms ease, border-color 140ms ease, background-color 140ms ease;
         }
-        .retention-mode:hover { color: #e2e8f0; }
-        .retention-mode-active {
-            background-color: rgba(167, 139, 250, 0.16);
-            border-color: rgba(167, 139, 250, 0.6);
-            color: #e9d5ff;
+
+        .primary-button {
+            padding: 8px 15px;
+            background: var(--accent);
+            color: var(--page-bg);
         }
-        .retention-mode input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+        .primary-button:hover {
+            filter: brightness(1.07);
+        }
+
+        .secondary-button,
+        .upload-button {
+            padding: 8px 14px;
+            border: 1px solid var(--border);
+            background: var(--field-bg);
+            color: var(--text);
+        }
+
+        .secondary-button:hover,
+        .upload-button:hover {
+            border-color: var(--accent);
+            background: var(--field-hover);
+        }
+
+        .danger-button {
+            padding: 8px 14px;
+            border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+            background: transparent;
+            color: var(--danger);
+        }
+
+        .danger-button:hover {
+            background: color-mix(in srgb, var(--danger) 9%, transparent);
+        }
+
+        .text-button {
+            min-height: 30px;
+            padding: 5px 7px;
+            background: transparent;
+            color: var(--accent-strong);
+        }
+
+        .text-button:hover {
+            background: var(--accent-soft);
+        }
+
+        .text-button.danger {
+            color: var(--danger);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 15px 17px;
+        }
+
+        .form-field {
+            min-width: 0;
+        }
+
+        .form-field.full {
+            grid-column: 1 / -1;
+        }
+
+        .form-field label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--text-dim);
+            font-size: 11px;
+            font-weight: 650;
+            letter-spacing: 0.04em;
+        }
+
+        .form-field input {
+            width: 100%;
+            min-height: 41px;
+            padding: 9px 11px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--field-bg);
+            color: var(--text);
+            font-size: 13px;
+        }
+
+        .form-field input::placeholder {
+            color: var(--text-dim);
+        }
+
+        .form-field input:focus {
+            border-color: var(--accent);
+            outline: 3px solid var(--focus);
+        }
+
+        .form-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 9px;
+            grid-column: 1 / -1;
+            margin-top: 3px;
+        }
+
+        .source-message {
+            position: static;
+            clear: both;
+            margin-top: 14px;
+            padding: 10px 12px;
+            border-left: 2px solid var(--border);
+            background: var(--surface-raised);
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .source-message[data-kind="success"] {
+            border-left-color: var(--success);
+            color: var(--success);
+        }
+
+        .source-message[data-kind="error"] {
+            border-left-color: var(--danger);
+            color: var(--danger);
+        }
+
+        .server-list {
+            border-top: 1px solid var(--border-soft);
+        }
+
+        .server-row {
+            display: flex;
+            min-height: 62px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            border-bottom: 1px solid var(--border-soft);
+        }
+
+        .server-identity {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .server-identity strong,
+        .server-identity span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .server-identity strong {
+            color: var(--text);
+            font-size: 13px;
+        }
+
+        .server-identity span {
+            color: var(--text-dim);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px;
+        }
+
+        .row-actions {
+            display: flex;
+            flex: 0 0 auto;
+            gap: 2px;
+        }
+
+        .empty-line {
+            padding: 14px 0;
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .retention-choices {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            max-width: 390px;
+        }
+
+        .retention-choice {
+            position: relative;
+            display: flex;
+            min-height: 47px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 9px 11px;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            background: var(--field-bg);
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .retention-choice[data-selected="true"] {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+            color: var(--text);
+        }
+
+        .retention-choice input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+        }
+
+        .retention-choice-copy {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .retention-choice-copy strong {
+            font-size: 12px;
+            font-weight: 640;
+        }
+
+        .retention-choice-copy small {
+            color: var(--text-dim);
+            font-size: 10px;
+        }
+
+        .retention-check {
+            width: 14px;
+            height: 14px;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+        }
+
+        .retention-choice[data-selected="true"] .retention-check {
+            border: 4px solid var(--accent);
+        }
+
+        .retention-slider {
+            max-width: 390px;
+            margin-top: 16px;
+        }
+
+        .retention-slider-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            color: var(--text-dim);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 10px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+        }
+
+        .retention-preview {
+            margin-top: 13px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .inline-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 9px;
+            margin-top: 16px;
+        }
+
+        .storage-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            border-top: 1px solid var(--border-soft);
+            border-bottom: 1px solid var(--border-soft);
+        }
+
+        .storage-metric {
+            min-width: 0;
+            padding: 18px 0;
+        }
+
+        .storage-metric + .storage-metric {
+            padding-left: 24px;
+            border-left: 1px solid var(--border-soft);
+        }
+
+        .storage-metric:first-child {
+            padding-right: 24px;
+        }
+
+        .storage-metric span {
+            display: block;
+            color: var(--text-dim);
+            font-size: 10px;
+            font-weight: 650;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .storage-metric strong {
+            display: block;
+            margin-top: 5px;
+            color: var(--text);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 22px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .storage-metric small {
+            display: block;
+            margin-top: 2px;
+            color: var(--text-dim);
+            font-size: 11px;
+        }
+
+        .user-operations {
+            display: grid;
+            grid-template-columns: minmax(220px, 310px) minmax(0, 1fr);
+            gap: 24px;
+            align-items: start;
+        }
+
+        .user-preview {
+            margin-top: 8px;
+            color: var(--text-dim);
+            font-size: 11px;
+        }
+
+        .operation-groups {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .merge-control {
+            display: flex;
+            width: 100%;
+            align-items: start;
+            justify-content: flex-end;
+            gap: 8px;
+            color: var(--text-dim);
+            font-size: 11px;
+        }
+
+        .merge-control input {
+            margin-top: 2px;
+            accent-color: var(--accent);
+        }
+
+        .merge-control span {
+            max-width: 290px;
+        }
+
+        .privacy-details {
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .privacy-details summary {
+            color: var(--accent-strong);
+            cursor: pointer;
+            font-weight: 640;
+        }
+
+        .privacy-details ul {
+            margin: 12px 0 0;
+            padding-left: 18px;
+        }
+
+        .privacy-details li + li {
+            margin-top: 5px;
+        }
+
+        .about-list {
+            margin: 0;
+        }
+
+        .about-row {
+            display: grid;
+            grid-template-columns: minmax(110px, 0.45fr) minmax(0, 1fr);
+            gap: 20px;
+            padding: 15px 0;
+            border-top: 1px solid var(--border-soft);
+        }
+
+        .about-row dt {
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .about-row dd {
+            margin: 0;
+            color: var(--text);
+            font-size: 13px;
+        }
+
+        .about-row a {
+            color: var(--accent-strong);
+            text-underline-offset: 3px;
+        }
+
+        .login-overlay {
+            position: fixed;
+            z-index: 100;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            padding: 20px;
+            background: rgba(20, 21, 32, 0.82);
+            backdrop-filter: blur(8px);
+        }
+
+        .login-form {
+            width: min(390px, 100%);
+            padding: 25px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--surface);
+            box-shadow: var(--shadow);
+        }
+
+        .login-form h2 {
+            font-size: 18px;
+        }
+
+        .login-form > p {
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .login-form .form-field {
+            margin-top: 18px;
+        }
+
+        .login-form .primary-button {
+            width: 100%;
+            margin-top: 14px;
+        }
+
+        .login-error {
+            margin-top: 10px !important;
+            color: var(--danger) !important;
+        }
+
+        [data-motion="reduced"] *,
+        [data-motion="reduced"] *::before,
+        [data-motion="reduced"] *::after {
+            scroll-behavior: auto !important;
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+        }
+
+        @media (max-width: 760px) {
+            .settings-shell {
+                width: min(100% - 28px, 680px);
+                padding-top: 25px;
+            }
+
+            .page-header {
+                display: block;
+                margin-bottom: 20px;
+            }
+
+            .privacy-local-note {
+                margin-top: 9px;
+            }
+
+            .settings-layout {
+                display: block;
+            }
+
+            .settings-navigation {
+                position: static;
+                margin: 0 0 13px;
+                padding: 0 0 10px;
+                border-right: 0;
+                border-bottom: 1px solid var(--border-soft);
+            }
+
+            #settingsTabBar {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 4px;
+            }
+
+            .nav-group {
+                display: contents;
+            }
+
+            .nav-group + .nav-group {
+                margin-top: 0;
+            }
+
+            .nav-group-label {
+                display: none;
+            }
+
+            .settings-tab {
+                justify-content: center;
+                gap: 6px;
+                padding: 8px 6px;
+                text-align: center;
+            }
+
+            .settings-tab span {
+                font-size: 12px;
+            }
+
+            .panel-heading,
+            .settings-section {
+                padding-right: 20px;
+                padding-left: 20px;
+            }
+
+            .setting-row {
+                grid-template-columns: minmax(0, 1fr) minmax(190px, 250px);
+                gap: 20px;
+            }
+
+            .user-operations {
+                grid-template-columns: 1fr;
+            }
+
+            .operation-groups {
+                justify-content: flex-start;
+            }
+
+            .merge-control {
+                justify-content: flex-start;
+            }
+        }
+
+        @media (max-width: 520px) {
+            .settings-shell {
+                width: calc(100% - 20px);
+                padding-top: 18px;
+                padding-bottom: 30px;
+            }
+
+            .page-header h1 {
+                font-size: 26px;
+            }
+
+            .privacy-local-note {
+                display: none;
+            }
+
+            .settings-tab {
+                min-width: 0;
+                flex-direction: column;
+                gap: 2px;
+            }
+
+            .settings-tab svg {
+                width: 15px;
+                height: 15px;
+            }
+
+            .settings-tab span {
+                max-width: 100%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .settings-panel {
+                border-radius: 11px;
+            }
+
+            .panel-heading,
+            .settings-section {
+                padding: 20px 16px;
+            }
+
+            .setting-row {
+                display: block;
+                min-height: 0;
+                padding: 16px 0;
+            }
+
+            .setting-row > :last-child {
+                width: 100%;
+                margin-top: 11px;
+            }
+
+            .switch {
+                width: 43px !important;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-field.full {
+                grid-column: auto;
+            }
+
+            .form-actions {
+                grid-column: auto;
+            }
+
+            .server-row {
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 8px;
+                padding: 13px 0;
+            }
+
+            .row-actions {
+                margin-left: -7px;
+            }
+
+            .retention-choices {
+                grid-template-columns: 1fr;
+            }
+
+            .storage-metrics {
+                grid-template-columns: 1fr;
+            }
+
+            .storage-metric:first-child {
+                padding-right: 0;
+            }
+
+            .storage-metric + .storage-metric {
+                padding-left: 0;
+                border-top: 1px solid var(--border-soft);
+                border-left: 0;
+            }
+
+            .status-line {
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .about-row {
+                grid-template-columns: 1fr;
+                gap: 3px;
+            }
+        }
     </style>
 </head>
-<body class="mesh-bg text-slate-100 min-h-screen antialiased">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        <header class="mb-6">
-            <a href="/" data-i18n="nav.back" class="text-xs font-mono uppercase tracking-widest text-slate-500 hover:text-accent transition-colors">← 返回统计</a>
-            <h1 data-i18n="page.heading" class="text-2xl font-bold text-white mt-2">设置</h1>
-            <p data-i18n="page.description" class="text-sm text-slate-400 mt-1">管理隐私数据生命周期与 Navidrome 信息来源。</p>
+<body>
+    <div class="settings-shell">
+        <header class="page-header">
+            <div>
+                <a class="back-link" href="/">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="m15 18-6-6 6-6"/>
+                    </svg>
+                    <span data-i18n="nav.back">Back to statistics</span>
+                </a>
+                <h1 data-i18n="page.heading">Settings</h1>
+                <p class="page-description" data-i18n="page.description">Manage connections, data boundaries, and local display preferences.</p>
+            </div>
+            <p class="privacy-local-note">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>
+                    <path d="m9 12 2 2 4-4"/>
+                </svg>
+                <span data-i18n="preferences.description">These options stay in this browser and are never uploaded to the server.</span>
+            </p>
         </header>
 
         <div class="settings-layout">
-            <!-- Left sidebar / top tab bar -->
-            <aside>
-                <nav id="settingsTabBar" class="flex md:flex-col gap-1 sticky top-4" role="tablist" aria-label="设置分类" data-i18n-attr="aria-label:nav.categories">
-                    <button type="button" role="tab" id="tab-source-btn" data-tab="source" aria-selected="true" aria-controls="tab-source"
-                        class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
-                        <svg class="w-4 h-4 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span data-i18n="tab.source">服务器连接</span>
-                    </button>
-                    <button type="button" role="tab" id="tab-privacy-btn" data-tab="privacy" aria-selected="false" aria-controls="tab-privacy"
-                        class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
-                        <svg class="w-4 h-4 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <span data-i18n="tab.privacy">隐私与数据</span>
-                    </button>
-                    <button type="button" role="tab" id="tab-general-btn" data-tab="general" aria-selected="false" aria-controls="tab-general"
-                        class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
-                        <svg class="w-4 h-4 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg><span data-i18n="tab.general">常规</span>
-                    </button>
-                    <button type="button" role="tab" id="tab-appearance-btn" data-tab="appearance" aria-selected="false" aria-controls="tab-appearance"
-                        class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
-                        <svg class="w-4 h-4 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M3 12h18"/></svg><span data-i18n="tab.appearance">外观</span>
-                    </button>
-                    <button type="button" role="tab" id="tab-about-btn" data-tab="about" aria-selected="false" aria-controls="tab-about"
-                        class="settings-tab flex-1 md:flex-none w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 transition-colors hover:text-slate-200 flex items-center gap-2">
-                        <svg class="w-4 h-4 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 16h-1v-4h-1m1-4h.01M12 21a9 9 0 100-18 9 9 0 000 18z"/></svg><span data-i18n="tab.about">关于</span>
-                    </button>
+            <aside class="settings-navigation">
+                <nav id="settingsTabBar" role="tablist" aria-label="Settings categories" data-i18n-attr="aria-label:nav.categories">
+                    <div class="nav-group">
+                        <span class="nav-group-label" data-i18n="nav.group.data">Service &amp; data</span>
+                        <button class="settings-tab" id="tab-source-btn" type="button" role="tab" data-tab="source" aria-controls="tab-source" aria-selected="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <rect x="3" y="4" width="18" height="6" rx="2"/>
+                                <rect x="3" y="14" width="18" height="6" rx="2"/>
+                                <path d="M7 7h.01M7 17h.01"/>
+                            </svg>
+                            <span data-i18n="tab.source">Connections</span>
+                        </button>
+                        <button class="settings-tab" id="tab-privacy-btn" type="button" role="tab" data-tab="privacy" aria-controls="tab-privacy" aria-selected="false" tabindex="-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>
+                                <path d="M9 12h6"/>
+                            </svg>
+                            <span data-i18n="tab.privacy">Privacy</span>
+                        </button>
+                    </div>
+                    <div class="nav-group">
+                        <span class="nav-group-label" data-i18n="nav.group.app">Application</span>
+                        <button class="settings-tab" id="tab-preferences-btn" type="button" role="tab" data-tab="preferences" aria-controls="tab-preferences" aria-selected="false" tabindex="-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6"/>
+                            </svg>
+                            <span data-i18n="tab.preferences">Preferences</span>
+                        </button>
+                    </div>
+                    <div class="nav-group">
+                        <span class="nav-group-label" data-i18n="nav.group.project">Project</span>
+                        <button class="settings-tab" id="tab-about-btn" type="button" role="tab" data-tab="about" aria-controls="tab-about" aria-selected="false" tabindex="-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9"/>
+                                <path d="M12 11v5M12 8h.01"/>
+                            </svg>
+                            <span data-i18n="tab.about">About</span>
+                        </button>
+                    </div>
                 </nav>
             </aside>
 
-            <!-- Right detail panel -->
-            <main class="flex-1 min-w-0 space-y-6">
-                <div id="errorBanner" class="hidden px-4 py-3 rounded-xl bg-red-950/50 border border-red-500/20 text-red-300 text-sm" role="alert"></div>
-                <div id="successBanner" class="hidden px-4 py-3 rounded-xl bg-emerald-950/40 border border-emerald-500/20 text-emerald-300 text-sm" role="status"></div>
+            <main class="settings-content">
+                <div id="settingsBanner" class="settings-banner" role="status" aria-live="polite" hidden></div>
 
-                <div id="tab-privacy" role="tabpanel" aria-labelledby="tab-privacy-btn" class="hidden space-y-6">
-                    <!-- Current policy summary -->
-                    <section class="rounded-2xl bg-ink-900/60 border border-white/5 p-4" aria-labelledby="policyTitle">
-                        <p id="policyTitle" data-i18n="privacy.currentPolicy" class="text-xs text-slate-500 uppercase tracking-wider mb-1">当前策略</p>
-                        <p id="policySummary" data-i18n="loading" class="text-sm text-slate-200">加载中…</p>
-                    </section>
+                <section id="tab-source" class="settings-panel" role="tabpanel" aria-labelledby="tab-source-btn">
+                    <header class="panel-heading">
+                        <h2 data-i18n="source.heading">Navidrome connections</h2>
+                        <p data-i18n="source.description">Manage the servers used to read playback state. Saved changes apply immediately.</p>
+                    </header>
 
-                    <!-- Data retention -->
-                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="retentionTitle">
-                        <h2 id="retentionTitle" data-i18n="privacy.retention" class="text-lg font-semibold text-white mb-4">数据保留</h2>
-
-                        <p id="retentionModeLabel" data-i18n="privacy.retentionMode" class="text-xs text-slate-500 uppercase tracking-wider mb-2">保留模式</p>
-                        <div role="radiogroup" aria-labelledby="retentionModeLabel" class="grid grid-cols-2 gap-2 mb-4">
-                            <label class="retention-mode retention-mode-active">
-                                <input id="modePermanent" type="radio" name="retentionMode" value="permanent" checked>
-                                <span data-i18n="permanent">永久保留</span>
-                            </label>
-                            <label class="retention-mode">
-                                <input id="modeFinite" type="radio" name="retentionMode" value="finite">
-                                <span data-i18n="privacy.finiteRetention">保留指定天数</span>
-                            </label>
-                        </div>
-
-                        <div id="retentionSliderWrap" class="hidden space-y-3 mb-4">
-                            <div class="flex justify-between text-xs text-slate-500 font-mono">
-                                <span data-i18n="days.1">1 天</span>
-                                <span id="retentionValue" data-i18n="days.90">90 天</span>
-                                <span data-i18n="days.360">360 天</span>
-                            </div>
-                            <input id="retentionSlider" type="range" min="1" max="360" value="90" class="w-full">
-                        </div>
-
-                        <p id="retentionPreview" data-i18n="privacy.previewDefault" class="text-sm text-slate-500 mb-4">超出保留期的记录：0 条（预览）</p>
-
-                        <div class="flex flex-wrap gap-3">
-                            <button id="saveRetentionBtn" data-i18n="privacy.saveRetention" type="button" class="px-4 py-2 rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors">保存保留策略</button>
-                            <button id="applyRetentionBtn" data-i18n="privacy.cleanup" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">确认清理过期数据</button>
-                        </div>
-                    </section>
-
-                    <!-- Storage overview (read-only) -->
-                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="storageTitle">
-                        <h2 id="storageTitle" data-i18n="privacy.storage" class="text-lg font-semibold text-white mb-4">数据占用</h2>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
-                            <div class="rounded-xl bg-ink-800/60 border border-white/5 p-4">
-                                <p data-i18n="privacy.currentDatabaseSize" class="text-xs text-slate-500 uppercase tracking-wider mb-1">当前数据库大小</p>
-                                <p id="storageCurrentSize" class="text-2xl font-semibold text-white font-mono tabular-nums">—</p>
-                                <p id="storageCurrentRecords" class="text-xs text-slate-500 mt-1">— 条记录</p>
-                            </div>
-                            <div class="rounded-xl bg-ink-800/60 border border-white/5 p-4">
-                                <p data-i18n="privacy.estimatedStorage" class="text-xs text-slate-500 uppercase tracking-wider mb-1">按当前策略预计</p>
-                                <p id="storageEstimatedSize" class="text-2xl font-semibold text-mint font-mono tabular-nums">—</p>
-                                <p id="storageEstimatedDetail" data-i18n="privacy.moveSlider" class="text-xs text-slate-500 mt-1">拖动滑块查看预计占用</p>
-                            </div>
-                        </div>
-                        <p data-i18n="privacy.storageHint" class="text-xs text-slate-600 mt-3">预计占用随「保留模式」滑块变化。</p>
-                    </section>
-
-                    <!-- Per-user data operations -->
-                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="userDataTitle">
-                        <h2 id="userDataTitle" data-i18n="privacy.userData" class="text-lg font-semibold text-white mb-4">按用户管理数据</h2>
-
-                        <div class="mb-4">
-                            <span data-i18n="privacy.selectUser" class="text-xs text-slate-500 uppercase tracking-wider">选择用户</span>
-                            <div id="userSelect" class="themed-select relative mt-2" data-value="">
-                                <button type="button" id="userSelectBtn" aria-haspopup="listbox" aria-expanded="false"
-                                    class="w-full flex items-center justify-between gap-2 rounded-xl bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-left text-white hover:border-accent/30 focus:outline-none focus:ring-2 focus:ring-accent/40 transition-colors">
-                                    <span id="userSelectLabel" data-i18n="loading" class="truncate text-slate-400">加载中…</span>
-                                    <svg class="w-4 h-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                                    </svg>
-                                </button>
-                                <ul id="userSelectMenu" role="listbox" tabindex="-1"
-                                    class="hidden absolute z-20 mt-1 w-full max-h-52 overflow-auto rounded-xl bg-ink-800 border border-white/10 shadow-card py-1">
-                                </ul>
-                            </div>
-                        </div>
-
-                        <p id="userPreview" data-i18n="privacy.userPreviewDefault" class="text-sm text-slate-500 mb-4">该用户记录数：—</p>
-
-                        <div class="space-y-3">
-                            <div>
-                                <p data-i18n="privacy.export" class="text-xs text-slate-500 uppercase tracking-wider mb-2">导出</p>
-                                <button id="exportBtn" data-i18n="privacy.exportJson" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">导出 JSON</button>
-                            </div>
-                            <div>
-                                <p data-i18n="privacy.import" class="text-xs text-slate-500 uppercase tracking-wider mb-2">导入</p>
-                                <div class="flex flex-wrap items-center gap-3">
-                                    <label class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 cursor-pointer transition-colors">
-                                        <span data-i18n="privacy.importJson">导入 JSON</span>
-                                        <input id="importFile" type="file" accept="application/json,.json" class="hidden">
-                                    </label>
-                                    <label class="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
-                                        <input id="mergeImport" type="checkbox" checked class="w-4 h-4 rounded border-white/20 bg-ink-800 text-accent">
-                                        <span data-i18n="privacy.mergeImport">合并导入（不勾选则先清空该用户再导入）</span>
-                                    </label>
+                    <div class="settings-section">
+                        <div class="status-line">
+                            <div class="status-label">
+                                <span class="status-dot" aria-hidden="true"></span>
+                                <div>
+                                    <p class="status-primary" data-i18n="source.status">Upstream status</p>
+                                    <p id="sourceReadinessValue" class="status-secondary" data-state="unknown">Not checked yet</p>
                                 </div>
                             </div>
+                            <button class="text-button" id="refreshSourceStatus" type="button" data-i18n="common.refresh">Refresh</button>
+                        </div>
+                    </div>
+
+                    <section class="settings-section" aria-labelledby="savedConnectionsTitle">
+                        <div class="section-heading">
                             <div>
-                                <p data-i18n="privacy.delete" class="text-xs text-slate-500 uppercase tracking-wider mb-2">删除</p>
-                                <button id="deleteUserBtn" data-i18n="privacy.deleteUser" type="button" class="px-4 py-2 rounded-lg bg-red-950/60 hover:bg-red-900/60 border border-red-500/30 text-sm text-red-300 transition-colors">删除该用户全部数据</button>
+                                <h3 id="savedConnectionsTitle" data-i18n="source.savedConnections">Saved servers</h3>
+                                <p data-i18n="source.savedConnectionsHelp">Passwords are never returned to this page or exposed by the API.</p>
                             </div>
                         </div>
+                        <div id="serverList" class="server-list"></div>
+                        <p id="serverEmpty" class="empty-line" data-i18n="source.noServers">No servers have been saved.</p>
                     </section>
 
-                    <!-- Privacy notice (collapsible) -->
-                    <details class="rounded-2xl bg-ink-900/60 border border-mint/15 p-5 text-sm text-slate-300 leading-relaxed">
-                        <summary data-i18n="privacy.principles" class="text-mint font-semibold cursor-pointer select-none">隐私原则</summary>
-                        <ul class="list-disc pl-5 space-y-1 text-slate-400 mt-3">
-                            <li data-i18n="privacy.principleRetention">播放数据默认永久保留，只有你主动修改保留策略或删除时才会移除。</li>
-                            <li data-i18n="privacy.principleCleanup">删除与过期清理前会显示影响条数与预计空间，需你明确确认后才会执行。</li>
-                            <li data-i18n="privacy.principleExport">导出仅包含所选用户的数据；服务不会在日志中记录导出内容。</li>
-                            <li data-i18n="privacy.principleNotice">请确保被统计的 Navidrome 用户知悉数据被收集，并由部署方负责告知与合规。</li>
-                        </ul>
-                    </details>
-                </div>
-
-                <div id="tab-source" role="tabpanel" aria-labelledby="tab-source-btn" class="space-y-6">
-                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6" aria-labelledby="sourceTitle">
-                        <h2 id="sourceTitle" data-i18n="source.heading" class="text-lg font-semibold text-white mb-2">服务器连接</h2>
-                        <p data-i18n="source.description" class="text-sm text-slate-400 mb-4">配置 Navidrome 服务地址与认证账户。服务器配置保存后立即应用。</p>
-
-                        <div id="sourceReadiness" class="mb-4 px-3 py-2 rounded-lg bg-ink-800/60 border border-white/5 text-sm text-slate-400">
-                            <span data-i18n="source.upstreamStatus">当前上游状态：</span><span id="sourceReadinessValue" data-i18n="source.unknown" class="text-slate-300">未知</span>
+                    <section class="settings-section" aria-labelledby="connectionFormTitle">
+                        <div class="section-heading">
+                            <div>
+                                <h3 id="connectionFormTitle" data-i18n="source.formHeading">Connection details</h3>
+                                <p data-i18n="source.formDescription">Edit a saved server or fill in the fields below to add one.</p>
+                            </div>
                         </div>
-
-                        <div id="serverList" class="space-y-2 mb-5"></div>
-                        <form id="sourceForm" class="space-y-4" autocomplete="off">
-                            <div class="space-y-1">
-                                <label for="sourceName" data-i18n="source.serverName" class="text-xs text-slate-500 uppercase tracking-wider">服务器名称</label>
-                                <input id="sourceName" name="sourceName" type="text" autocomplete="off"
-                                    class="w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/40"
-                                    data-i18n-attr="placeholder:source.namePlaceholder" placeholder="例如：家庭 Navidrome">
+                        <form id="sourceForm" class="form-grid" autocomplete="off">
+                            <div class="form-field">
+                                <label for="sourceName" data-i18n="source.serverName">Display name</label>
+                                <input id="sourceName" name="sourceName" type="text" autocomplete="off" placeholder="e.g. Home Navidrome" data-i18n-attr="placeholder:source.namePlaceholder">
                             </div>
-                            <div class="space-y-1">
-                                <label for="sourceUrl" data-i18n="source.url" class="text-xs text-slate-500 uppercase tracking-wider">Navidrome URL</label>
-                                <input id="sourceUrl" name="sourceUrl" type="text" autocomplete="off" spellcheck="false"
-                                    class="w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/40"
-                                    placeholder="http://navidrome.example.invalid:4533">
+                            <div class="form-field">
+                                <label for="sourceUrl" data-i18n="source.url">Navidrome URL</label>
+                                <input id="sourceUrl" name="sourceUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://navidrome.example.invalid">
                             </div>
-                            <div class="space-y-1">
-                                <label for="sourceUser" data-i18n="source.username" class="text-xs text-slate-500 uppercase tracking-wider">用户名</label>
-                                <input id="sourceUser" name="sourceUser" type="text" autocomplete="off"
-                                    class="w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/40"
-                                    data-i18n-attr="placeholder:source.usernamePlaceholder" placeholder="账户名">
+                            <div class="form-field">
+                                <label for="sourceUser" data-i18n="source.username">Username</label>
+                                <input id="sourceUser" name="sourceUser" type="text" autocomplete="off" placeholder="Account name" data-i18n-attr="placeholder:source.usernamePlaceholder">
                             </div>
-                            <div class="space-y-1">
-                                <label for="sourcePass" data-i18n="source.password" class="text-xs text-slate-500 uppercase tracking-wider">密码</label>
-                                <input id="sourcePass" name="sourcePass" type="password" autocomplete="new-password"
-                                    class="w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/40"
-                                    data-i18n-attr="placeholder:source.passwordPlaceholder" placeholder="留空则保持不变">
+                            <div class="form-field">
+                                <label for="sourcePass" data-i18n="source.password">Password</label>
+                                <input id="sourcePass" name="sourcePass" type="password" autocomplete="new-password" placeholder="Leave blank to keep current" data-i18n-attr="placeholder:source.passwordPlaceholder">
                             </div>
-                            <div class="flex flex-wrap gap-3">
-                                <button id="saveSourceBtn" data-i18n="source.save" type="submit" class="px-4 py-2 rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors">保存</button>
-                                <button id="testSourceBtn" data-i18n="source.testConnection" type="button" class="px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-white/10 text-sm text-slate-300 transition-colors">测试连接</button>
+                            <div class="form-actions">
+                                <button id="saveSourceBtn" class="primary-button" type="submit">Save connection</button>
+                                <button id="testSourceBtn" class="secondary-button" type="button" data-i18n="source.testConnection">Test current form</button>
                             </div>
                         </form>
+                        <p id="sourceMessage" class="source-message" role="status" aria-live="polite" hidden></p>
+                    </section>
 
-                         <p id="sourceMessage" class="source-message hidden px-4 py-3 rounded-xl text-sm" role="status" aria-live="polite"></p>
-
-                        <details class="mt-5 rounded-xl bg-ink-800/40 border border-white/5 p-4 text-sm text-slate-400 leading-relaxed">
-                            <summary data-i18n="source.envTitle" class="cursor-pointer select-none text-slate-300">环境变量优先级说明</summary>
-                            <p data-i18n="source.envDescription" class="mt-3">环境变量 NAVIDROME_URL、NAVIDROME_USER、NAVIDROME_PASS 始终优先于兼容来源配置。服务器列表中的配置保存后立即应用。</p>
+                    <section class="settings-section">
+                        <details class="privacy-details">
+                            <summary data-i18n="source.envTitle">Environment variable precedence</summary>
+                            <p data-i18n="source.envDescription">NAVIDROME_URL, NAVIDROME_USER, and NAVIDROME_PASS always take precedence over the compatible connection saved here.</p>
                         </details>
                     </section>
-                </div>
+                </section>
 
-                <div id="tab-general" role="tabpanel" aria-labelledby="tab-general-btn" class="hidden space-y-6">
-                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6 space-y-5">
-                        <div><h2 class="text-lg font-semibold text-white" data-i18n="general.heading">常规</h2><p class="text-sm text-slate-400 mt-1" data-i18n="general.description">统计时间使用的时区。</p></div>
-                        <label class="block text-sm text-slate-300"><span data-i18n="general.timezone">统计时区</span><select id="settingsTimezoneSelect" class="mt-2 w-full rounded-lg border px-3 py-2"><option value="browser" data-i18n="timezone.browser">浏览器本地时区</option><option value="UTC">UTC</option></select></label>
+                <section id="tab-privacy" class="settings-panel" role="tabpanel" aria-labelledby="tab-privacy-btn" hidden>
+                    <header class="panel-heading">
+                        <h2 data-i18n="privacy.heading">Privacy &amp; data</h2>
+                        <p data-i18n="privacy.description">Control how long behavioral data is kept, then export or delete records by user.</p>
+                    </header>
+
+                    <div class="settings-section">
+                        <div class="status-line">
+                            <div class="status-label">
+                                <span class="status-dot" aria-hidden="true"></span>
+                                <div>
+                                    <p class="status-primary" data-i18n="privacy.currentPolicy">Current retention policy</p>
+                                    <p id="policySummary" class="status-secondary" data-state="loading" aria-live="polite">Reading the current policy…</p>
+                                </div>
+                            </div>
+                            <button id="policyRetry" class="text-button" type="button" data-i18n="common.retry" hidden>Retry</button>
+                        </div>
+                    </div>
+
+                    <section class="settings-section" aria-labelledby="retentionTitle">
+                        <div class="section-heading">
+                            <div>
+                                <h3 id="retentionTitle" data-i18n="privacy.retention">Data retention</h3>
+                                <p data-i18n="privacy.retentionDescription">Save the policy first. Records are deleted only after you select “Confirm cleanup.”</p>
+                            </div>
+                        </div>
+                        <div class="retention-choices" role="radiogroup" aria-label="Retention mode" data-i18n-attr="aria-label:privacy.retentionMode">
+                            <label class="retention-choice" data-selected="true">
+                                <input id="modePermanent" type="radio" name="retentionMode" value="permanent" checked>
+                                <span class="retention-choice-copy">
+                                    <strong data-i18n="common.permanent">Keep forever</strong>
+                                </span>
+                                <span class="retention-check" aria-hidden="true"></span>
+                            </label>
+                            <label class="retention-choice" data-selected="false">
+                                <input id="modeFinite" type="radio" name="retentionMode" value="finite">
+                                <span class="retention-choice-copy">
+                                    <strong data-i18n="privacy.finiteRetention">Keep for a period</strong>
+                                    <small data-i18n="privacy.finiteHelp">1–360 days</small>
+                                </span>
+                                <span class="retention-check" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                        <div id="retentionSliderWrap" class="retention-slider" hidden>
+                            <div class="retention-slider-labels">
+                                <span>1</span>
+                                <span id="retentionValue">90 days</span>
+                                <span>360</span>
+                            </div>
+                            <input id="retentionSlider" type="range" min="1" max="360" value="90" aria-label="Retention days" data-i18n-attr="aria-label:privacy.finiteRetention">
+                        </div>
+                        <p id="retentionPreview" class="retention-preview">Estimate appears after the policy loads</p>
+                        <div class="inline-actions">
+                            <button id="saveRetentionBtn" class="primary-button" type="button" data-i18n="privacy.saveRetention">Save policy</button>
+                            <button id="applyRetentionBtn" class="secondary-button" type="button" data-i18n="privacy.cleanup">Confirm cleanup</button>
+                        </div>
                     </section>
-                </div>
 
-                <div id="tab-appearance" role="tabpanel" aria-labelledby="tab-appearance-btn" class="hidden space-y-6">
-                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6 space-y-5">
-                         <div><h2 class="text-lg font-semibold text-white" data-i18n="appearance.heading">外观</h2><p class="text-sm text-slate-400 mt-1" data-i18n="appearance.description">偏好仅保存在当前浏览器。</p></div>
-                         <label class="block text-sm text-slate-300"><span data-i18n="appearance.language">语言</span><select id="languageSelect" class="mt-2 w-full rounded-lg border px-3 py-2"><option value="zh-CN">中文</option><option value="en">English</option></select></label>
-                         <label class="block text-sm text-slate-300"><span data-i18n="appearance.theme">主题</span><select id="themeSelect" class="mt-2 w-full rounded-lg border px-3 py-2"><option value="frappe">Catppuccin Frappe</option><option value="latte">Catppuccin Latte</option></select></label>
+                    <section class="settings-section" aria-labelledby="storageTitle">
+                        <div class="section-heading">
+                            <div>
+                                <h3 id="storageTitle" data-i18n="privacy.storage">Data footprint</h3>
+                                <p data-i18n="privacy.storageDescription">These estimates cover the statistics database only, never media files.</p>
+                            </div>
+                        </div>
+                        <div class="storage-metrics">
+                            <div class="storage-metric">
+                                <span data-i18n="privacy.currentDatabaseSize">Current database</span>
+                                <strong id="storageCurrentSize">—</strong>
+                                <small id="storageCurrentRecords">—</small>
+                            </div>
+                            <div class="storage-metric">
+                                <span data-i18n="privacy.estimatedStorage">Estimated with this policy</span>
+                                <strong id="storageEstimatedSize">—</strong>
+                                <small id="storageEstimatedDetail">Estimate appears after the policy loads</small>
+                            </div>
+                        </div>
                     </section>
-                </div>
 
-                <div id="tab-about" role="tabpanel" aria-labelledby="tab-about-btn" class="hidden space-y-6">
-                    <section class="rounded-2xl bg-ink-900/80 border border-white/5 p-6">
-                        <h2 data-i18n="tab.about" class="text-lg font-semibold text-white">关于</h2>
-                        <dl id="aboutDetails" class="mt-4 space-y-2 text-sm text-slate-400">
-                            <div class="flex justify-between gap-4"><dt data-i18n="about.project">项目</dt><dd class="text-slate-200">Navidrome Statistics</dd></div>
-                            <div class="flex justify-between gap-4"><dt data-i18n="about.license">许可证</dt><dd class="text-slate-200">MIT</dd></div>
+                    <section class="settings-section" aria-labelledby="userDataTitle">
+                        <div class="section-heading">
+                            <div>
+                                <h3 id="userDataTitle" data-i18n="privacy.userData">Manage by user</h3>
+                                <p data-i18n="privacy.userDataDescription">Export, import, and delete actions affect only the selected user.</p>
+                            </div>
+                        </div>
+                        <div class="user-operations">
+                            <div>
+                                <div id="userSelect" class="settings-select" data-open="false" data-value="">
+                                    <button id="userSelectButton" class="settings-select-trigger" type="button" data-listbox-trigger aria-haspopup="listbox" aria-expanded="false" aria-controls="userSelectMenu">
+                                        <span data-listbox-label data-placeholder="true">Reading users…</span>
+                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>
+                                    </button>
+                                    <div id="userSelectMenu" class="settings-options" role="listbox" aria-label="User" data-i18n-attr="aria-label:privacy.selectUser" hidden></div>
+                                </div>
+                                <p id="userPreview" class="user-preview">Delete preview: 0 records</p>
+                            </div>
+                            <div class="operation-groups">
+                                <button id="exportBtn" class="secondary-button" type="button" data-i18n="privacy.export">Export JSON</button>
+                                <label class="upload-button">
+                                    <span data-i18n="privacy.import">Import JSON</span>
+                                    <input id="importFile" type="file" accept="application/json,.json" hidden>
+                                </label>
+                                <button id="deleteUserBtn" class="danger-button" type="button" data-i18n="privacy.deleteUser">Delete this user’s data</button>
+                                <label class="merge-control">
+                                    <input id="mergeImport" type="checkbox" checked>
+                                    <span><strong data-i18n="privacy.mergeImport">Merge import</strong> · <span data-i18n="privacy.mergeImportHelp">When off, existing data for this user is cleared first.</span></span>
+                                </label>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="settings-section">
+                        <details class="privacy-details">
+                            <summary data-i18n="privacy.principles">Data boundaries</summary>
+                            <ul>
+                                <li data-i18n="privacy.principleRetention">Playback history, usernames, tracks, artists, albums, and client names are all behavioral data.</li>
+                                <li data-i18n="privacy.principleCleanup">Cleanup and deletion show an impact preview and require another confirmation.</li>
+                                <li data-i18n="privacy.principleExport">Exports contain data for the selected user only; export contents are not logged.</li>
+                                <li data-i18n="privacy.principleNotice">The operator must still confirm access boundaries, notice, backup locations, and the actual retention period.</li>
+                            </ul>
+                        </details>
+                    </section>
+                </section>
+
+                <section id="tab-preferences" class="settings-panel" role="tabpanel" aria-labelledby="tab-preferences-btn" hidden>
+                    <header class="panel-heading">
+                        <h2 data-i18n="preferences.heading">Preferences</h2>
+                        <p data-i18n="preferences.description">These options stay in this browser and are never uploaded to the server.</p>
+                    </header>
+                    <section class="settings-section">
+                        <div class="setting-list">
+                            <div class="setting-row">
+                                <div class="setting-copy">
+                                    <strong data-i18n="preferences.language">Interface language</strong>
+                                    <span data-i18n="preferences.languageHelp">Changes the settings and statistics pages immediately.</span>
+                                </div>
+                                <div id="languageSelect" class="settings-select" data-open="false" data-value="en">
+                                    <button id="languageSelectButton" class="settings-select-trigger" type="button" data-listbox-trigger aria-haspopup="listbox" aria-expanded="false" aria-controls="languageSelectMenu">
+                                        <span data-listbox-label>English</span>
+                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>
+                                    </button>
+                                    <div id="languageSelectMenu" class="settings-options" role="listbox" aria-label="Interface language" data-i18n-attr="aria-label:preferences.language" hidden></div>
+                                </div>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-copy">
+                                    <strong data-i18n="preferences.timezone">Statistics timezone</strong>
+                                    <span data-i18n="preferences.timezoneHelp">“Browser timezone” uses the IANA timezone reported by this device.</span>
+                                </div>
+                                <div id="settingsTimezoneSelect" class="settings-select" data-open="false" data-value="browser">
+                                    <button id="settingsTimezoneSelectButton" class="settings-select-trigger" type="button" data-listbox-trigger aria-haspopup="listbox" aria-expanded="false" aria-controls="settingsTimezoneSelectMenu">
+                                        <span data-listbox-label>Browser timezone</span>
+                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>
+                                    </button>
+                                    <div id="settingsTimezoneSelectMenu" class="settings-options" role="listbox" aria-label="Statistics timezone" data-i18n-attr="aria-label:preferences.timezone" hidden></div>
+                                </div>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-copy">
+                                    <strong data-i18n="preferences.theme">Theme</strong>
+                                    <span data-i18n="preferences.themeHelp">Choose a dark or light palette for the current environment.</span>
+                                </div>
+                                <div id="themeSelect" class="settings-select" data-open="false" data-value="frappe">
+                                    <button id="themeSelectButton" class="settings-select-trigger" type="button" data-listbox-trigger aria-haspopup="listbox" aria-expanded="false" aria-controls="themeSelectMenu">
+                                        <span data-listbox-label>Frappe · Dark</span>
+                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>
+                                    </button>
+                                    <div id="themeSelectMenu" class="settings-options" role="listbox" aria-label="Theme" data-i18n-attr="aria-label:preferences.theme" hidden></div>
+                                </div>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-copy">
+                                    <strong data-i18n="preferences.motion">Reduce motion</strong>
+                                    <span data-i18n="preferences.motionHelp">Disables pulses, transitions, and skeleton animation for motion sensitivity or slower devices.</span>
+                                </div>
+                                <button id="motionToggle" class="switch" type="button" role="switch" aria-checked="false" aria-label="Reduce motion" data-i18n-attr="aria-label:preferences.motion"></button>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-copy">
+                                    <strong data-i18n="preferences.reset">Reset local preferences</strong>
+                                    <span data-i18n="preferences.resetHelp">Restores English, Frappe, browser timezone, and system motion defaults.</span>
+                                </div>
+                                <button id="resetPreferencesBtn" class="secondary-button" type="button" data-i18n="preferences.resetButton">Restore defaults</button>
+                            </div>
+                        </div>
+                    </section>
+                </section>
+
+                <section id="tab-about" class="settings-panel" role="tabpanel" aria-labelledby="tab-about-btn" hidden>
+                    <header class="panel-heading">
+                        <h2 data-i18n="about.heading">About</h2>
+                        <p data-i18n="about.description">Navidrome Statistic is a self-hosted playback status and listening-habits tool.</p>
+                    </header>
+                    <section class="settings-section">
+                        <dl class="about-list">
+                            <div class="about-row">
+                                <dt data-i18n="about.project">Project</dt>
+                                <dd>Navidrome Statistic</dd>
+                            </div>
+                            <div class="about-row">
+                                <dt data-i18n="about.runtime">Runtime</dt>
+                                <dd data-i18n="about.runtimeValue">Self-hosted · local SQLite</dd>
+                            </div>
+                            <div class="about-row">
+                                <dt data-i18n="about.repository">Source</dt>
+                                <dd><a href="https://github.com/StepaniaH/navidrome-stat" target="_blank" rel="noopener noreferrer" data-i18n="about.repositoryValue">GitHub repository</a></dd>
+                            </div>
+                            <div class="about-row">
+                                <dt data-i18n="about.license">License</dt>
+                                <dd><a href="https://github.com/StepaniaH/navidrome-stat/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a></dd>
+                            </div>
+                            <div class="about-row">
+                                <dt data-i18n="about.privacy">Privacy</dt>
+                                <dd><a href="https://github.com/StepaniaH/navidrome-stat/blob/main/docs/privacy.md" target="_blank" rel="noopener noreferrer" data-i18n="about.privacyValue">Read the project privacy guide</a></dd>
+                            </div>
                         </dl>
                     </section>
-                </div>
+                </section>
             </main>
         </div>
     </div>
 
-    <div id="loginOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-ink-950/90 backdrop-blur-sm px-4">
-        <form id="loginForm" class="w-full max-w-sm rounded-2xl bg-ink-900 border border-white/10 p-6 space-y-4">
-            <h2 data-i18n="auth.heading" class="text-lg font-semibold text-white">需要访问令牌</h2>
-            <input id="loginToken" type="password" required class="w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2 text-sm text-white" placeholder="STATS_API_TOKEN" />
-            <p id="loginError" class="hidden text-sm text-red-400"></p>
-            <button data-i18n="auth.login" type="submit" class="w-full rounded-lg bg-accent text-white py-2.5 text-sm">登录</button>
+    <div id="loginOverlay" class="login-overlay" hidden>
+        <form id="loginForm" class="login-form">
+            <h2 data-i18n="auth.heading">Access token required</h2>
+            <p data-i18n="auth.description">Enter the statistics service token provided by the operator.</p>
+            <div class="form-field">
+                <label for="loginToken" data-i18n="auth.token">Access token</label>
+                <input id="loginToken" type="password" required autocomplete="current-password" placeholder="STATS_API_TOKEN">
+            </div>
+            <p id="loginError" class="login-error" hidden></p>
+            <button class="primary-button" type="submit" data-i18n="auth.login">Log in</button>
         </form>
     </div>
 
-    <script>
-         const fetchOptions = { credentials: 'same-origin' };
-         const translations = {
-             'zh-CN': {
-                 'page.title': '设置 · Navidrome Statistics', 'page.heading': '设置', 'page.description': '管理隐私数据生命周期与 Navidrome 信息来源。',
-                 'nav.back': '← 返回统计', 'nav.categories': '设置分类', 'auth.heading': '需要访问令牌', 'auth.login': '登录',
-                 'tab.source': '服务器连接', 'tab.privacy': '隐私与数据', 'tab.general': '常规', 'tab.appearance': '外观', 'tab.about': '关于',
-                 'general.heading': '常规', 'general.description': '统计时间使用的时区。', 'general.timezone': '统计时区', 'timezone.browser': '浏览器本地时区',
-                 'appearance.heading': '外观', 'appearance.description': '偏好仅保存在当前浏览器。', 'appearance.language': '语言', 'appearance.theme': '主题',
-                 'loading': '加载中…', 'none': '暂无用户数据', 'records': '条记录', 'days': '天', 'preview': '预览', 'permanent': '永久保留',
-                 'retention.summaryPermanent': '永久保留：播放历史不会被自动清理。', 'retention.summaryFinite': '保留 {days} 天：超出该天数的记录可被清理（需确认）。',
-                 'storage.permanent': '永久保留，预计占用不变', 'storage.release': '将释放约 {bytes} · 删除 {count} 条',
-                 'retention.permanentPreview': '当前为永久保留，不会自动删除历史记录。', 'retention.preview': '超出保留期（{label}）的记录：{count} 条，预计释放 {bytes}（预览，尚未删除）',
-                 'user.count': '该用户记录数：{count} 条', 'user.deletePreview': '该用户记录数：{count} 条（删除预览）',
-                 'error.retry': '保存失败，请重试。', 'error.unauthorized': '令牌无效', 'error.selectUser': '请先选择用户。',
-                 'source.delete': '删除', 'source.edit': '编辑', 'source.test': '测试', 'source.update': '更新服务器', 'source.testing': '正在测试连接…',
-                 'source.loadFailed': '无法加载服务器列表。', 'source.testFailed': '测试连接失败。', 'source.save': '保存', 'source.saved': '服务器已保存并立即应用。',
-                 'source.nameRequired': '请填写服务器名称。', 'source.urlRequired': '请填写 Navidrome URL。', 'source.userRequired': '请填写用户名。',
-                 'source.configFailed': '无法加载信息来源配置。', 'source.settingsFailed': '无法加载设置，请检查服务是否运行。',
-                 'source.deleteConfirm': '删除服务器「{name}」？', 'source.readiness.ok': '正常（最近轮询成功）', 'source.readiness.error': '异常（上游返回错误）',
-                 'source.readiness.degraded': '未知（仅使用环境变量或上游待轮询）', 'source.unknown': '未知', 'about.project': '项目', 'about.license': '许可证',
-                 'privacy.currentPolicy': '当前策略', 'privacy.retention': '数据保留', 'privacy.retentionMode': '保留模式', 'privacy.finiteRetention': '保留指定天数', 'days.1': '1 天', 'days.90': '90 天', 'days.360': '360 天', 'privacy.previewDefault': '超出保留期的记录：0 条（预览）', 'privacy.saveRetention': '保存保留策略', 'privacy.cleanup': '确认清理过期数据', 'privacy.storage': '数据占用', 'privacy.currentDatabaseSize': '当前数据库大小', 'privacy.estimatedStorage': '按当前策略预计', 'privacy.moveSlider': '拖动滑块查看预计占用', 'privacy.storageHint': '预计占用随「保留模式」滑块变化。', 'privacy.userData': '按用户管理数据', 'privacy.selectUser': '选择用户', 'privacy.userPreviewDefault': '该用户记录数：—', 'privacy.export': '导出', 'privacy.exportJson': '导出 JSON', 'privacy.import': '导入', 'privacy.importJson': '导入 JSON', 'privacy.mergeImport': '合并导入（不勾选则先清空该用户再导入）', 'privacy.delete': '删除', 'privacy.deleteUser': '删除该用户全部数据', 'privacy.principles': '隐私原则', 'privacy.principleRetention': '播放数据默认永久保留，只有你主动修改保留策略或删除时才会移除。', 'privacy.principleCleanup': '删除与过期清理前会显示影响条数与预计空间，需你明确确认后才会执行。', 'privacy.principleExport': '导出仅包含所选用户的数据；服务不会在日志中记录导出内容。', 'privacy.principleNotice': '请确保被统计的 Navidrome 用户知悉数据被收集，并由部署方负责告知与合规。',
-                 'source.heading': '服务器连接', 'source.description': '配置 Navidrome 服务地址与认证账户。服务器配置保存后立即应用。', 'source.upstreamStatus': '当前上游状态：', 'source.serverName': '服务器名称', 'source.namePlaceholder': '例如：家庭 Navidrome', 'source.url': 'Navidrome URL', 'source.username': '用户名', 'source.usernamePlaceholder': '账户名', 'source.password': '密码', 'source.passwordPlaceholder': '留空则保持不变', 'source.save': '保存', 'source.testConnection': '测试连接', 'source.testSuccess': '连接成功', 'source.testFailure': '无法连接到上游 Navidrome', 'source.testIncomplete': '配置不完整，缺少 URL、用户名或密码', 'source.envTitle': '环境变量优先级说明', 'source.envDescription': '环境变量 NAVIDROME_URL、NAVIDROME_USER、NAVIDROME_PASS 始终优先于兼容来源配置。服务器列表中的配置保存后立即应用。',
-                 'about.license': '许可证',
-             },
-             en: {
-                 'page.title': 'Settings · Navidrome Statistics', 'page.heading': 'Settings', 'page.description': 'Manage privacy data lifecycle and Navidrome sources.',
-                 'nav.back': '← Back to statistics', 'nav.categories': 'Settings categories', 'auth.heading': 'Access token required', 'auth.login': 'Log in',
-                 'tab.source': 'Server Connection', 'tab.privacy': 'Privacy & Data', 'tab.general': 'General', 'tab.appearance': 'Appearance', 'tab.about': 'About',
-                 'general.heading': 'General', 'general.description': 'Choose the timezone used for statistics.', 'general.timezone': 'Statistics timezone', 'timezone.browser': 'Browser local timezone',
-                 'appearance.heading': 'Appearance', 'appearance.description': 'Preferences are stored in this browser only.', 'appearance.language': 'Language', 'appearance.theme': 'Theme',
-                 'loading': 'Loading…', 'none': 'No user data', 'records': 'records', 'days': 'days', 'preview': 'Preview', 'permanent': 'Retain forever',
-                 'retention.summaryPermanent': 'Retain forever: playback history will not be cleaned automatically.', 'retention.summaryFinite': 'Retain {days} days: older records can be cleaned up (confirmation required).',
-                 'storage.permanent': 'Retain forever; estimated usage unchanged', 'storage.release': 'Release about {bytes} · delete {count} records',
-                 'retention.permanentPreview': 'Retention is permanent; history will not be deleted automatically.', 'retention.preview': 'Records beyond {label}: {count}, estimated release {bytes} (preview, not deleted)',
-                 'user.count': 'User records: {count}', 'user.deletePreview': 'User records: {count} (delete preview)',
-                 'error.retry': 'Save failed. Please try again.', 'error.unauthorized': 'Invalid token', 'error.selectUser': 'Select a user first.',
-                 'source.delete': 'Delete', 'source.edit': 'Edit', 'source.test': 'Test', 'source.update': 'Update server', 'source.testing': 'Testing connection…',
-                 'source.loadFailed': 'Unable to load server list.', 'source.testFailed': 'Connection test failed.', 'source.save': 'Save', 'source.saved': 'Server saved and applied immediately.',
-                 'source.nameRequired': 'Enter a server name.', 'source.urlRequired': 'Enter a Navidrome URL.', 'source.userRequired': 'Enter a username.',
-                 'source.configFailed': 'Unable to load source configuration.', 'source.settingsFailed': 'Unable to load settings. Check that the service is running.',
-                 'source.deleteConfirm': 'Delete server “{name}”?', 'source.readiness.ok': 'Healthy (last poll succeeded)', 'source.readiness.error': 'Error (upstream returned an error)',
-                 'source.readiness.degraded': 'Unknown (using environment variables or awaiting upstream poll)', 'source.unknown': 'Unknown', 'about.project': 'Project', 'about.license': 'License',
-                 'privacy.currentPolicy': 'Current policy', 'privacy.retention': 'Data retention', 'privacy.retentionMode': 'Retention mode', 'privacy.finiteRetention': 'Retain for a set number of days', 'days.1': '1 day', 'days.90': '90 days', 'days.360': '360 days', 'privacy.previewDefault': 'Records beyond retention: 0 (preview)', 'privacy.saveRetention': 'Save retention policy', 'privacy.cleanup': 'Clean up expired data', 'privacy.storage': 'Storage usage', 'privacy.currentDatabaseSize': 'Current database size', 'privacy.estimatedStorage': 'Estimated with current policy', 'privacy.moveSlider': 'Move the slider to estimate usage', 'privacy.storageHint': 'Estimated usage changes with the retention mode slider.', 'privacy.userData': 'Manage data by user', 'privacy.selectUser': 'Select user', 'privacy.userPreviewDefault': 'User records: —', 'privacy.export': 'Export', 'privacy.exportJson': 'Export JSON', 'privacy.import': 'Import', 'privacy.importJson': 'Import JSON', 'privacy.mergeImport': 'Merge import (otherwise clear this user first)', 'privacy.delete': 'Delete', 'privacy.deleteUser': 'Delete all data for this user', 'privacy.principles': 'Privacy principles', 'privacy.principleRetention': 'Playback data is retained permanently by default and removed only when you change the retention policy or delete it.', 'privacy.principleCleanup': 'The number of affected records and estimated storage are shown before cleanup, and explicit confirmation is required.', 'privacy.principleExport': 'Exports contain only the selected user’s data; the service does not log export contents.', 'privacy.principleNotice': 'Make sure Navidrome users being tracked know that data is collected; the deployer is responsible for notice and compliance.',
-                 'source.heading': 'Server Connection', 'source.description': 'Configure the Navidrome address and credentials. Server changes apply immediately.', 'source.upstreamStatus': 'Current upstream status:', 'source.serverName': 'Server name', 'source.namePlaceholder': 'e.g. Home Navidrome', 'source.url': 'Navidrome URL', 'source.username': 'Username', 'source.usernamePlaceholder': 'Account name', 'source.password': 'Password', 'source.passwordPlaceholder': 'Leave blank to keep current', 'source.save': 'Save', 'source.testConnection': 'Test connection', 'source.testSuccess': 'Connection successful', 'source.testFailure': 'Unable to connect to upstream Navidrome', 'source.testIncomplete': 'Incomplete configuration: URL, username, or password is missing', 'source.envTitle': 'Environment variable precedence', 'source.envDescription': 'NAVIDROME_URL, NAVIDROME_USER, and NAVIDROME_PASS take priority for the legacy source. Server-list changes apply immediately.',
-                 'about.license': 'License',
-             },
-         };
-         function currentLanguage() { return localStorage.getItem('navidrome-language') || 'en'; }
-         function t(key, values = {}) {
-             let value = translations[currentLanguage()]?.[key] || translations.en[key] || key;
-             return Object.entries(values).reduce((text, [name, replacement]) => text.replaceAll(`{${name}}`, String(replacement)), value);
-         }
-         function translatePage() {
-             const language = currentLanguage();
-             document.documentElement.lang = language;
-             document.querySelectorAll('[data-i18n]').forEach((element) => {
-                 element.textContent = t(element.dataset.i18n);
-             });
-             document.querySelectorAll('[data-i18n-attr]').forEach((element) => {
-                 element.dataset.i18nAttr.split(',').forEach((entry) => {
-                     const [attribute, key] = entry.split(':');
-                     if (attribute && key) element.setAttribute(attribute, t(key));
-                 });
-             });
-             const textMap = {
-                 '当前策略': 'Current policy', '加载中…': 'Loading…', '数据保留': 'Data retention', '保留模式': 'Retention mode', '永久保留': 'Retain forever', '保留指定天数': 'Retain for a set number of days',
-                 '1 天': '1 day', '90 天': '90 days', '360 天': '360 days', '超出保留期的记录：0 条（预览）': 'Records beyond retention: 0 (preview)', '保存保留策略': 'Save retention policy', '确认清理过期数据': 'Clean up expired data',
-                 '数据占用': 'Storage usage', '当前数据库大小': 'Current database size', '— 条记录': '— records', '按当前策略预计': 'Estimated with current policy', '拖动滑块查看预计占用': 'Move the slider to estimate usage', '预计占用随「保留模式」滑块变化。': 'Estimated usage changes with the retention mode slider.',
-                 '按用户管理数据': 'Manage data by user', '选择用户': 'Select user', '导出': 'Export', '导出 JSON': 'Export JSON', '导入': 'Import', '导入 JSON': 'Import JSON', '合并导入（不勾选则先清空该用户再导入）': 'Merge import (otherwise clear this user first)', '删除': 'Delete', '删除该用户全部数据': 'Delete all data for this user', '隐私原则': 'Privacy principles',
-                 '服务器连接': 'Server connection', '服务器配置保存后立即应用。': 'Server changes apply immediately.', '当前上游状态：': 'Current upstream status:', '服务器名称': 'Server name', '例如：家庭 Navidrome': 'e.g. Home Navidrome', '用户名': 'Username', '密码': 'Password', '留空则保持不变': 'Leave blank to keep current', '测试连接': 'Test connection', '环境变量优先级说明': 'Environment variable precedence',
-                 '常规': 'General', '统计时间使用的时区。': 'Choose the timezone used for statistics.', '统计时区': 'Statistics timezone', '浏览器本地时区': 'Browser local timezone', '外观': 'Appearance', '偏好仅保存在当前浏览器。': 'Preferences are stored in this browser only.', '语言': 'Language', '主题': 'Theme', '关于': 'About', '需要访问令牌': 'Access token required', '登录': 'Log in'
-             };
-             const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-             while (walker.nextNode()) {
-                 const node = walker.currentNode;
-                 if (node.parentElement.closest('script,style')) continue;
-                 const trimmed = node.nodeValue.trim();
-                 if (!trimmed || !textMap[trimmed]) continue;
-                 const value = currentLanguage() === 'en' ? textMap[trimmed] : trimmed;
-                 node.nodeValue = node.nodeValue.replace(trimmed, value);
-             }
-         }
-         function localized(zh, en) { return currentLanguage() === 'en' ? en : zh; }
-         function localizedCount(count, zhUnit = '条记录', enUnit = 'records') {
-             return `${Number(count).toLocaleString()} ${localized(zhUnit, enUnit)}`;
-         }
-         function refreshLocalizedState() {
-             translatePage();
-             updatePolicySummary();
-             if (storageSnapshot) {
-                 updateStorageDisplay(storageSnapshot);
-                 updateRetentionPreviewText(storageSnapshot);
-             }
-             refreshUserPreview().catch(() => {});
-             loadSourceConfig().catch(() => {});
-             loadSourceReadiness().catch(() => {});
-         }
-        let previewTimer = null;
-        let storageSnapshot = null;
-
-        function formatBytes(bytes) {
-            const value = Number(bytes) || 0;
-            if (value < 1024) return value + ' B';
-            if (value < 1024 * 1024) return (value / 1024).toFixed(1) + ' KB';
-            if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + ' MB';
-            return (value / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-        }
-
-        function showError(msg) {
-            const el = document.getElementById('errorBanner');
-            el.textContent = msg;
-            el.classList.remove('hidden');
-            document.getElementById('successBanner').classList.add('hidden');
-        }
-
-        function showSuccess(msg) {
-            const el = document.getElementById('successBanner');
-            el.textContent = msg;
-            el.classList.remove('hidden');
-            document.getElementById('errorBanner').classList.add('hidden');
-        }
-
-        function showLogin() {
-            document.getElementById('loginOverlay').classList.remove('hidden');
-        }
-
-        async function apiFetch(url, options = {}) {
-            const response = await fetch(url, { ...fetchOptions, ...options });
-            if (response.status === 401) {
-                showLogin();
-                throw new Error('unauthorized');
-            }
-            return response;
-        }
-
-        function getSelectedUsername() {
-            return document.getElementById('userSelect').dataset.value || '';
-        }
-
-        function setSelectedUsername(username, label) {
-            const root = document.getElementById('userSelect');
-            root.dataset.value = username;
-            document.getElementById('userSelectLabel').textContent = label;
-            document.getElementById('userSelectLabel').classList.toggle('text-slate-400', !username);
-            document.getElementById('userSelectLabel').classList.toggle('text-white', Boolean(username));
-        }
-
-        function closeUserMenu() {
-            document.getElementById('userSelectMenu').classList.add('hidden');
-            document.getElementById('userSelectBtn').setAttribute('aria-expanded', 'false');
-        }
-
-        function openUserMenu() {
-            document.getElementById('userSelectMenu').classList.remove('hidden');
-            document.getElementById('userSelectBtn').setAttribute('aria-expanded', 'true');
-        }
-
-        function renderUserOptions(users) {
-            const menu = document.getElementById('userSelectMenu');
-            menu.textContent = '';
-            if (users.length === 0) {
-                setSelectedUsername('', t('none'));
-                const item = document.createElement('li');
-                item.className = 'px-3 py-2 text-sm text-slate-500';
-                item.textContent = t('none');
-                menu.appendChild(item);
-                return;
-            }
-            users.forEach((user) => {
-                const item = document.createElement('li');
-                item.role = 'option';
-                item.dataset.value = user.username;
-                item.className = 'px-3 py-2.5 text-sm text-slate-300 cursor-pointer hover:bg-accent/10 hover:text-accent-glow transition-colors';
-                item.textContent = user.username + ' · ' + localizedCount(user.record_count);
-                item.addEventListener('click', () => {
-                    setSelectedUsername(user.username, user.username + ' · ' + localizedCount(user.record_count));
-                    closeUserMenu();
-                    refreshUserPreview().catch(() => {});
-                });
-                menu.appendChild(item);
-            });
-            const current = getSelectedUsername();
-            const stillExists = users.some((u) => u.username === current);
-            if (!stillExists) {
-                const first = users[0];
-                setSelectedUsername(first.username, first.username + ' · ' + localizedCount(first.record_count));
-            }
-        }
-
-        function updateStorageDisplay(preview) {
-            if (!preview) return;
-            document.getElementById('storageCurrentSize').textContent = formatBytes(preview.database_bytes);
-            document.getElementById('storageCurrentRecords').textContent = localizedCount(preview.total_records);
-
-            const permanent = document.getElementById('modePermanent').checked;
-            if (permanent) {
-                document.getElementById('storageEstimatedSize').textContent = formatBytes(preview.database_bytes);
-                document.getElementById('storageEstimatedDetail').textContent = t('storage.permanent');
-                return;
-            }
-
-            document.getElementById('storageEstimatedSize').textContent =
-                formatBytes(preview.estimated_database_bytes_after);
-            const freed = Math.max(preview.database_bytes - preview.estimated_database_bytes_after, 0);
-            document.getElementById('storageEstimatedDetail').textContent =
-                t('storage.release', { bytes: formatBytes(freed), count: preview.records_to_delete.toLocaleString() });
-        }
-
-        function updateRetentionPreviewText(preview) {
-            const label = preview.retention_days === null ? t('permanent') : preview.retention_days + ' ' + t('days');
-            if (preview.retention_days === null) {
-                document.getElementById('retentionPreview').textContent =
-                    t('retention.permanentPreview');
-                return;
-            }
-            document.getElementById('retentionPreview').textContent =
-                t('retention.preview', { label, count: preview.records_to_delete.toLocaleString(), bytes: formatBytes(Math.max(preview.database_bytes - preview.estimated_database_bytes_after, 0)) });
-        }
-
-        function updatePolicySummary() {
-            const summary = document.getElementById('policySummary');
-            if (!summary) return;
-            const permanent = document.getElementById('modePermanent').checked;
-            if (permanent) {
-                summary.textContent = t('retention.summaryPermanent');
-                return;
-            }
-            const days = document.getElementById('retentionSlider').value;
-            summary.textContent = t('retention.summaryFinite', { days });
-        }
-
-        async function submitLogin(token) {
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ token }),
-            });
-            if (!response.ok) throw new Error('invalid token');
-            document.getElementById('loginOverlay').classList.add('hidden');
-            await bootstrap();
-        }
-
-        function updateRetentionModeVisuals() {
-            document.querySelectorAll('.retention-mode').forEach((el) => {
-                const radio = el.querySelector('input[type="radio"]');
-                if (!radio) return;
-                el.classList.toggle('retention-mode-active', radio.checked);
-            });
-        }
-
-        function getRetentionDaysFromUi() {
-            if (document.getElementById('modePermanent').checked) return null;
-            return Number(document.getElementById('retentionSlider').value);
-        }
-
-        function applyRetentionUi(permanent, days) {
-            document.getElementById('modePermanent').checked = permanent;
-            document.getElementById('modeFinite').checked = !permanent;
-            updateRetentionModeVisuals();
-            document.getElementById('retentionSliderWrap').classList.toggle('hidden', permanent);
-            if (!permanent && days) {
-                document.getElementById('retentionSlider').value = String(days);
-                document.getElementById('retentionValue').textContent = days + ' ' + t('days');
-            }
-            updatePolicySummary();
-        }
-
-        async function refreshRetentionPreview() {
-            const days = getRetentionDaysFromUi();
-            const query = days === null ? '' : '?days=' + days;
-            const response = await apiFetch('/api/privacy/retention/preview' + query);
-            const data = await response.json();
-            storageSnapshot = data;
-            updateStorageDisplay(data);
-            updateRetentionPreviewText(data);
-        }
-
-        function scheduleRetentionPreview() {
-            if (previewTimer) clearTimeout(previewTimer);
-            previewTimer = setTimeout(() => {
-                refreshRetentionPreview().catch(() => {});
-            }, 120);
-        }
-
-        async function loadSettings() {
-            const response = await apiFetch('/api/privacy/settings');
-            const data = await response.json();
-            applyRetentionUi(data.permanent, data.retention_days || 90);
-            await refreshRetentionPreview();
-        }
-
-        async function loadUsers() {
-            const response = await apiFetch('/api/privacy/users');
-            const users = await response.json();
-            renderUserOptions(users);
-            await refreshUserPreview();
-        }
-
-        async function refreshUserPreview() {
-            const username = getSelectedUsername();
-            if (!username) {
-                document.getElementById('userPreview').textContent = t('user.count', { count: 0 });
-                return;
-            }
-            const response = await apiFetch('/api/privacy/users/' + encodeURIComponent(username) + '/delete/preview');
-            const data = await response.json();
-            document.getElementById('userPreview').textContent =
-                t('user.deletePreview', { count: data.records_to_delete.toLocaleString() });
-        }
-
-        document.getElementById('userSelectBtn').addEventListener('click', () => {
-            const menu = document.getElementById('userSelectMenu');
-            if (menu.classList.contains('hidden')) openUserMenu();
-            else closeUserMenu();
-        });
-
-        document.addEventListener('click', (event) => {
-            if (!document.getElementById('userSelect').contains(event.target)) {
-                closeUserMenu();
-            }
-        });
-
-        document.querySelectorAll('input[name="retentionMode"]').forEach((radio) => {
-            radio.addEventListener('change', () => {
-                updateRetentionModeVisuals();
-                const permanent = document.getElementById('modePermanent').checked;
-                document.getElementById('retentionSliderWrap').classList.toggle('hidden', permanent);
-                updatePolicySummary();
-                refreshRetentionPreview().catch(() => {});
-            });
-        });
-
-        document.getElementById('retentionSlider').addEventListener('input', (event) => {
-            document.getElementById('retentionValue').textContent = event.target.value + ' ' + t('days');
-            updatePolicySummary();
-            scheduleRetentionPreview();
-        });
-
-        document.getElementById('saveRetentionBtn').addEventListener('click', async () => {
-            try {
-                const response = await apiFetch('/api/privacy/settings', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ retention_days: getRetentionDaysFromUi() }),
-                });
-                if (!response.ok) throw new Error('save failed');
-                showSuccess(localized('保留策略已保存。', 'Retention policy saved.'));
-                await refreshRetentionPreview();
-            } catch (error) {
-                if (error.message !== 'unauthorized') showError(t('error.retry'));
-            }
-        });
-
-        document.getElementById('applyRetentionBtn').addEventListener('click', async () => {
-            const days = getRetentionDaysFromUi();
-            if (days === null) {
-                showError(localized('当前为永久保留，无需清理。', 'Retention is permanent; no cleanup is needed.'));
-                return;
-            }
-            await refreshRetentionPreview();
-            const previewText = document.getElementById('retentionPreview').textContent;
-            if (!confirm(localized('此操作不可撤销。\n\n' + previewText + '\n\n确定要删除这些过期记录吗？', 'This action cannot be undone.\n\n' + previewText + '\n\nDelete these expired records?'))) return;
-            try {
-                const response = await apiFetch('/api/privacy/retention/apply', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ confirm: true }),
-                });
-                const data = await response.json();
-                showSuccess(localized(`已清理 ${data.deleted} 条过期记录。`, `Deleted ${data.deleted} expired records.`));
-                await loadUsers();
-                await refreshRetentionPreview();
-            } catch (error) {
-                if (error.message !== 'unauthorized') showError(localized('清理失败，请重试。', 'Cleanup failed. Please try again.'));
-            }
-        });
-
-        document.getElementById('exportBtn').addEventListener('click', async () => {
-            const username = getSelectedUsername();
-            if (!username) return showError(t('error.selectUser'));
-            try {
-                const response = await apiFetch('/api/privacy/users/' + encodeURIComponent(username) + '/export');
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = 'navidrome-stat-' + username + '.json';
-                link.click();
-                URL.revokeObjectURL(url);
-                showSuccess(localized(`已导出用户「${username}」的数据。`, `Exported data for user “${username}”.`));
-            } catch (error) {
-                if (error.message !== 'unauthorized') showError(localized('导出失败。', 'Export failed.'));
-            }
-        });
-
-        document.getElementById('importFile').addEventListener('change', async (event) => {
-            const username = getSelectedUsername();
-            const file = event.target.files[0];
-            event.target.value = '';
-            if (!username || !file) return;
-            try {
-                const text = await file.text();
-                const payload = JSON.parse(text);
-                if (!confirm(localized('确定要为「' + username + '」导入 ' + (payload.records?.length || 0) + ' 条记录吗？', `Import ${payload.records?.length || 0} records for “${username}”?`))) return;
-                const response = await apiFetch('/api/privacy/users/' + encodeURIComponent(username) + '/import', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        payload,
-                        merge: document.getElementById('mergeImport').checked,
-                    }),
-                });
-                const data = await response.json();
-                showSuccess(localized(`已导入 ${data.imported} 条记录。`, `Imported ${data.imported} records.`));
-                await loadUsers();
-                await refreshRetentionPreview();
-            } catch (error) {
-                if (error.message !== 'unauthorized') showError(localized('导入失败，请检查 JSON 格式与用户名是否匹配。', 'Import failed. Check the JSON format and username.'));
-            }
-        });
-
-        document.getElementById('deleteUserBtn').addEventListener('click', async () => {
-            const username = getSelectedUsername();
-            if (!username) return showError(t('error.selectUser'));
-            await refreshUserPreview();
-            const preview = document.getElementById('userPreview').textContent;
-            if (!confirm(localized('此操作不可撤销。\n\n' + preview + '\n\n确定删除用户「' + username + '」的全部播放数据吗？', `This action cannot be undone.\n\n${preview}\n\nDelete all playback data for “${username}”?`))) return;
-            try {
-                const response = await apiFetch('/api/privacy/users/' + encodeURIComponent(username) + '/delete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ confirm: true }),
-                });
-                const data = await response.json();
-                showSuccess(localized(`已删除 ${data.deleted} 条记录。`, `Deleted ${data.deleted} records.`));
-                await loadUsers();
-                await refreshRetentionPreview();
-            } catch (error) {
-                if (error.message !== 'unauthorized') showError(localized('删除失败。', 'Delete failed.'));
-            }
-        });
-
-        document.getElementById('loginForm').addEventListener('submit', async (event) => {
-            event.preventDefault();
-            try {
-                await submitLogin(document.getElementById('loginToken').value);
-            } catch (error) {
-                document.getElementById('loginError').textContent = t('error.unauthorized');
-                document.getElementById('loginError').classList.remove('hidden');
-            }
-        });
-
-        // ---- Source config tab ----
-
-        function setSourceMessage(text, kind) {
-            const el = document.getElementById('sourceMessage');
-            el.textContent = text;
-            el.classList.remove('hidden', 'bg-emerald-950/40', 'border-emerald-500/20', 'text-emerald-300',
-                'bg-red-950/50', 'border-red-500/20', 'text-red-300',
-                'bg-ink-800/60', 'border-white/10', 'text-slate-300');
-            if (kind === 'success') {
-                el.classList.add('bg-emerald-950/40', 'border', 'border-emerald-500/20', 'text-emerald-300');
-            } else if (kind === 'error') {
-                el.classList.add('bg-red-950/50', 'border', 'border-red-500/20', 'text-red-300');
-            } else {
-                el.classList.add('bg-ink-800/60', 'border', 'border-white/10', 'text-slate-300');
-            }
-        }
-
-        async function loadServers() {
-            const list = document.getElementById('serverList');
-            if (!list) return;
-            try {
-                const response = await apiFetch('/api/servers');
-                const servers = await response.json();
-                list.replaceChildren();
-                servers.forEach(server => {
-                    const row = document.createElement('div');
-                    row.className = 'flex items-center justify-between gap-3 rounded-lg bg-ink-800/60 border border-white/5 px-3 py-2';
-                    const label = document.createElement('span');
-                    label.className = 'truncate text-sm text-slate-300';
-                    label.textContent = `${server.display_name} · ${server.url}`;
-                    const remove = document.createElement('button');
-                    remove.type = 'button'; remove.className = 'text-xs text-red-300'; remove.textContent = t('source.delete');
-                    const edit = document.createElement('button');
-                    edit.type = 'button'; edit.className = 'text-xs text-accent-glow'; edit.textContent = t('source.edit');
-                    edit.addEventListener('click', () => {
-                        document.getElementById('sourceName').value = server.display_name;
-                        document.getElementById('sourceUrl').value = server.url;
-                        document.getElementById('sourceUser').value = server.username;
-                        document.getElementById('sourcePass').value = '';
-                        document.getElementById('sourceForm').dataset.editingId = server.id;
-                        document.getElementById('saveSourceBtn').textContent = t('source.update');
-                    });
-                    const test = document.createElement('button');
-                    test.type = 'button'; test.className = 'text-xs text-mint'; test.textContent = t('source.test');
-                    test.addEventListener('click', async () => {
-                        setSourceMessage(t('source.testing'), 'info');
-                        try {
-                            const response = await apiFetch(`/api/servers/${encodeURIComponent(server.id)}/test`, { method: 'POST' });
-                            const result = await response.json();
-                            setSourceMessage(result.ok ? t('source.testSuccess') : t('source.testFailure'), result.ok ? 'success' : 'error');
-                        } catch (error) {
-                            if (error.message !== 'unauthorized') setSourceMessage(t('source.testFailed'), 'error');
-                        }
-                    });
-                    remove.addEventListener('click', async () => {
-                        if (!confirm(t('source.deleteConfirm', { name: server.display_name }))) return;
-                        await apiFetch(`/api/servers/${encodeURIComponent(server.id)}`, { method: 'DELETE' });
-                        await loadServers();
-                    });
-                    const actions = document.createElement('span');
-                    actions.className = 'flex shrink-0 gap-3';
-                    actions.append(test, edit, remove);
-                    row.append(label, actions); list.appendChild(row);
-                });
-            } catch (error) { if (error.message !== 'unauthorized') setSourceMessage(t('source.loadFailed'), 'error'); }
-        }
-
-         function applyAppearance() {
-             const theme = localStorage.getItem('navidrome-theme') || 'frappe';
-             const language = localStorage.getItem('navidrome-language') || 'en';
-            document.documentElement.dataset.theme = theme;
-            const themeSelect = document.getElementById('themeSelect');
-            const languageSelect = document.getElementById('languageSelect');
-            if (themeSelect) themeSelect.value = theme;
-             if (languageSelect) languageSelect.value = language;
-             const timezoneSelect = document.getElementById('settingsTimezoneSelect');
-             if (timezoneSelect) timezoneSelect.value = localStorage.getItem('navidrome-timezone') || 'browser';
-             translatePage();
-        }
-
-
-        async function loadSourceConfig() {
-            try {
-                const response = await apiFetch('/api/source/config');
-                const data = await response.json();
-                document.getElementById('sourceUrl').value = data.url || '';
-                document.getElementById('sourceUser').value = data.username || '';
-                document.getElementById('sourcePass').value = '';
-                const passEl = document.getElementById('sourcePass');
-                passEl.placeholder = data.password_configured
-                    ? localized('已配置 · 留空则保持不变', 'Configured · leave blank to keep current')
-                    : t('source.passwordPlaceholder');
-            } catch (error) {
-                if (error.message !== 'unauthorized') setSourceMessage(t('source.configFailed'), 'error');
-            }
-        }
-
-        async function loadSourceReadiness() {
-            try {
-                const response = await apiFetch('/health/ready');
-                const data = await response.json();
-                const upstream = data.checks && data.checks.upstream;
-                let label;
-                if (upstream === 'ok') label = t('source.readiness.ok');
-                else if (upstream === 'error') label = t('source.readiness.error');
-                else if (data.status === 'degraded') label = t('source.readiness.degraded');
-                else label = t('source.unknown');
-                document.getElementById('sourceReadinessValue').textContent = label;
-            } catch (error) {
-                document.getElementById('sourceReadinessValue').textContent = t('source.unknown');
-            }
-        }
-
-        document.getElementById('sourceForm').addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const display_name = document.getElementById('sourceName').value.trim();
-            const url = document.getElementById('sourceUrl').value.trim();
-            const username = document.getElementById('sourceUser').value.trim();
-            const password = document.getElementById('sourcePass').value;
-            if (!display_name) return setSourceMessage(t('source.nameRequired'), 'error');
-            if (!url) return setSourceMessage(t('source.urlRequired'), 'error');
-            if (!username) return setSourceMessage(t('source.userRequired'), 'error');
-            try {
-                const payload = { display_name, url, username, password, enabled: true };
-                const form = document.getElementById('sourceForm');
-                const editingId = form.dataset.editingId;
-                const response = await apiFetch(editingId ? `/api/servers/${encodeURIComponent(editingId)}` : '/api/servers', {
-                    method: editingId ? 'PUT' : 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                if (!response.ok) {
-                    let detail = localized('保存失败。', 'Save failed.');
-                    try { const body = await response.json(); if (body.detail) detail = body.detail; } catch (e) {}
-                    return setSourceMessage(detail, 'error');
-                }
-                document.getElementById('sourcePass').value = '';
-                form.removeAttribute('data-editing-id');
-                document.getElementById('saveSourceBtn').textContent = t('source.save');
-                await loadServers();
-                setSourceMessage(t('source.saved'), 'success');
-            } catch (error) {
-                if (error.message !== 'unauthorized') setSourceMessage(t('error.retry'), 'error');
-            }
-        });
-
-        document.getElementById('testSourceBtn').addEventListener('click', async () => {
-            setSourceMessage(t('source.testing'), 'info');
-            const url = document.getElementById('sourceUrl').value.trim();
-            const username = document.getElementById('sourceUser').value.trim();
-            const password = document.getElementById('sourcePass').value;
-            try {
-                const payload = {};
-                if (url) payload.url = url;
-                if (username) payload.username = username;
-                if (password) payload.password = password;
-                const response = await apiFetch('/api/source/test', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                const data = await response.json();
-                setSourceMessage(data.ok ? t('source.testSuccess') : t('source.testFailure'), data.ok ? 'success' : 'error');
-            } catch (error) {
-                if (error.message !== 'unauthorized') setSourceMessage(t('source.testFailed'), 'error');
-            }
-        });
-
-        function switchSettingsTab(name) {
-            document.querySelectorAll('#settingsTabBar [role="tab"]').forEach((btn) => {
-                const active = btn.dataset.tab === name;
-                btn.setAttribute('aria-selected', active ? 'true' : 'false');
-                if (active) btn.focus({ preventScroll: true });
-            });
-            document.querySelectorAll('main [role="tabpanel"]').forEach((panel) => {
-                if (panel.id === 'tab-' + name) {
-                    panel.classList.remove('hidden');
-                } else {
-                    panel.classList.add('hidden');
-                }
-            });
-            if (name === 'source') {
-                loadSourceReadiness().catch(() => {});
-            }
-        }
-
-        document.querySelectorAll('#settingsTabBar [role="tab"]').forEach((btn) => {
-            btn.addEventListener('click', () => switchSettingsTab(btn.dataset.tab));
-            btn.addEventListener('keydown', (event) => {
-                const tabs = Array.from(document.querySelectorAll('#settingsTabBar [role="tab"]'));
-                const idx = tabs.indexOf(event.currentTarget);
-                let next = -1;
-                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (idx + 1) % tabs.length;
-                else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (idx - 1 + tabs.length) % tabs.length;
-                else if (event.key === 'Home') next = 0;
-                else if (event.key === 'End') next = tabs.length - 1;
-                if (next >= 0) {
-                    event.preventDefault();
-                    switchSettingsTab(tabs[next].dataset.tab);
-                }
-            });
-        });
-
-        async function bootstrap() {
-            try {
-                const statusRes = await fetch('/api/auth/status', fetchOptions);
-                if (statusRes.ok) {
-                    const status = await statusRes.json();
-                    if (status.auth_required) {
-                        const probe = await fetch('/api/privacy/settings', fetchOptions);
-                        if (probe.status === 401) { showLogin(); return; }
-                    }
-                }
-                await loadSettings();
-                await loadUsers();
-                await loadSourceConfig();
-                await loadServers();
-                applyAppearance();
-                document.getElementById('themeSelect').addEventListener('change', (event) => {
-                    localStorage.setItem('navidrome-theme', event.target.value);
-                    applyAppearance();
-                });
-                 document.getElementById('languageSelect').addEventListener('change', (event) => {
-                     localStorage.setItem('navidrome-language', event.target.value);
-                     refreshLocalizedState();
-                 });
-                 document.getElementById('settingsTimezoneSelect').addEventListener('change', (event) => {
-                     localStorage.setItem('navidrome-timezone', event.target.value);
-                 });
-            } catch (error) {
-                showError(t('source.settingsFailed'));
-            }
-        }
-
-        bootstrap();
-    </script>
+    <script src="/static/localization.js"></script>
+    <script src="/static/settings.js"></script>
 </body>
 </html>

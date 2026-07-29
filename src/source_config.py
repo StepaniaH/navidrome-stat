@@ -21,10 +21,8 @@ import os
 from typing import Any, Optional
 from urllib.parse import urlparse
 
-import aiosqlite
-
 from src import database
-
+from src.sqlite import connect_db
 
 SOURCE_URL_KEY = "source_url"
 SOURCE_USER_KEY = "source_user"
@@ -41,7 +39,7 @@ def _path(db_path: str | None = None) -> str:
 
 async def _get_meta(key: str, db_path: str | None = None) -> Optional[str]:
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         async with db.execute(
             "SELECT value FROM schema_meta WHERE key = ?", (key,)
         ) as cursor:
@@ -51,7 +49,7 @@ async def _get_meta(key: str, db_path: str | None = None) -> Optional[str]:
 
 async def _set_meta(key: str, value: str, db_path: str | None = None) -> None:
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         await db.execute(
             """
             INSERT INTO schema_meta (key, value) VALUES (?, ?)

@@ -22,17 +22,17 @@ dependence on real playback data. Cases covered:
 """
 
 import asyncio
-from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, AsyncMock
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from src.database import (
+    get_daily_stats,
+    get_weekday_hour_stats,
     init_db,
     save_play_session,
-    get_weekday_hour_stats,
-    get_daily_stats,
 )
 from src.main import app
 

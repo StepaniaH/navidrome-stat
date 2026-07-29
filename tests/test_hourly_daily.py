@@ -1,11 +1,11 @@
 import asyncio
-from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, AsyncMock
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
-from src.database import init_db, save_play_session, get_hourly_stats, get_daily_stats
+from src.database import get_daily_stats, get_hourly_stats, init_db, save_play_session
 from src.main import app
 
 

@@ -63,6 +63,7 @@ def test_main_poll_interval_invalid_falls_back_to_default(monkeypatch):
         assert reloaded.PLAY_THRESHOLD_SEC == 30
         assert reloaded.PAUSE_GRACE_SEC == 30
         assert reloaded.MAX_POLL_BACKOFF_SEC == 60
+        assert reloaded.CHECKPOINT_INTERVAL_SEC == 60
     finally:
         monkeypatch.delenv("POLL_INTERVAL", raising=False)
         importlib.reload(main_module)
@@ -100,4 +101,17 @@ def test_main_pause_grace_clamped_to_min_zero(monkeypatch):
         assert reloaded.session_tracker.pause_grace_sec == 0
     finally:
         monkeypatch.delenv("PAUSE_GRACE_SEC", raising=False)
+        importlib.reload(main_module)
+
+
+def test_main_checkpoint_interval_clamped_to_min(monkeypatch):
+    monkeypatch.setenv("CHECKPOINT_INTERVAL_SEC", "1")
+    import src.main as main_module
+
+    reloaded = importlib.reload(main_module)
+    try:
+        assert reloaded.CHECKPOINT_INTERVAL_SEC == 10
+        assert reloaded.session_tracker.checkpoint_interval_sec == 10
+    finally:
+        monkeypatch.delenv("CHECKPOINT_INTERVAL_SEC", raising=False)
         importlib.reload(main_module)

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import os
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import aiosqlite
 
-from src.database import DB_PATH, init_db
+from src.database import DB_PATH
+from src.sqlite import connect_db
 
 
 def _path(db_path: str | None = None) -> str:
@@ -81,7 +82,7 @@ async def _set_meta(db: aiosqlite.Connection, key: str, value: str) -> None:
 async def get_retention_days(db_path: str | None = None) -> Optional[int]:
     """Returns retention days, or None for permanent retention."""
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         raw = await _get_meta(db, META_RETENTION_DAYS)
     if raw is None or raw == META_RETENTION_PERMANENT:
         return None
@@ -91,7 +92,7 @@ async def get_retention_days(db_path: str | None = None) -> Optional[int]:
 async def set_retention_days(days: Optional[int], db_path: str | None = None) -> None:
     days = validate_retention_days(days)
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         if days is None:
             await _set_meta(db, META_RETENTION_DAYS, META_RETENTION_PERMANENT)
         else:
@@ -167,7 +168,7 @@ async def _play_attempt_storage_metrics(
 async def get_storage_stats(db_path: str | None = None) -> dict[str, int]:
     path = _path(db_path)
     database_bytes = os.path.getsize(path) if os.path.exists(path) else 0
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         history_records, history_bytes = await _play_history_storage_metrics(db)
         attempt_records, attempt_bytes = await _play_attempt_storage_metrics(db)
     return {
@@ -199,7 +200,7 @@ async def preview_retention_purge(
         }
 
     cutoff = _retention_cutoff_iso(days)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         history_to_delete, history_bytes = await _play_history_storage_metrics(
             db,
             played_before=cutoff,
@@ -239,7 +240,7 @@ async def apply_retention_purge(db_path: str | None = None) -> dict[str, int]:
         }
 
     cutoff = _retention_cutoff_iso(days)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         history_cursor = await db.execute(
             "DELETE FROM play_history WHERE played_at < ?",
             (cutoff,),
@@ -261,7 +262,7 @@ async def apply_retention_purge(db_path: str | None = None) -> dict[str, int]:
 
 async def list_users(db_path: str | None = None) -> list[dict[str, Any]]:
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT username, COUNT(*) AS record_count
@@ -297,7 +298,7 @@ def _row_to_export_record(row: aiosqlite.Row) -> dict[str, Any]:
 
 async def export_user_data(username: str, db_path: str | None = None) -> dict[str, Any]:
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
@@ -463,7 +464,7 @@ async def import_user_data(
     validated_attempts = [_validate_import_attempt(item) for item in attempts]
 
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         await db.execute("BEGIN")
         try:
             if not merge:
@@ -537,7 +538,7 @@ async def import_user_data(
 
 async def preview_delete_user(username: str, db_path: str | None = None) -> dict[str, int]:
     path = _path(db_path)
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         async with db.execute(
             "SELECT COUNT(*) FROM play_history WHERE username = ?",
             (username,),
@@ -557,7 +558,7 @@ async def delete_user_data(username: str, db_path: str | None = None) -> dict[st
     if preview["records_to_delete"] == 0:
         return {"deleted": 0}
 
-    async with aiosqlite.connect(path) as db:
+    async with connect_db(path) as db:
         cursor = await db.execute(
             "DELETE FROM play_history WHERE username = ?",
             (username,),

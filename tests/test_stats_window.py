@@ -18,23 +18,24 @@ clock so this suite has no dependence on real playback data.
 """
 
 import asyncio
-from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, AsyncMock
+from datetime import date, datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from src.database import (
+    get_daily_stats,
+    get_hourly_stats,
+    get_playback_history,
+    get_player_stats,
+    get_summary,
+    get_time_bucket_stats,
+    get_top_albums,
+    get_top_artists,
+    get_transcoding_stats,
     init_db,
     save_play_session,
-    get_summary,
-    get_player_stats,
-    get_transcoding_stats,
-    get_hourly_stats,
-    get_daily_stats,
-    get_top_artists,
-    get_top_albums,
-    get_playback_history,
 )
 from src.main import app
 
@@ -159,6 +160,50 @@ def test_get_summary_zero_previous_window_yields_null_pct(db_path):
     assert summary["previous_total_listen_sec"] == 0
     assert summary["plays_change_pct"] is None
     assert summary["listen_change_pct"] is None
+
+
+def test_custom_date_window_filters_and_zero_fills_inclusive_dates(db_path):
+    asyncio.run(init_db(db_path))
+    for played_at, track_id in [
+        ("2026-01-01T12:00:00Z", "previous"),
+        ("2026-01-03T12:00:00Z", "current-a"),
+        ("2026-01-05T23:59:00Z", "current-b"),
+        ("2026-01-06T00:00:00Z", "outside"),
+    ]:
+        asyncio.run(
+            save_play_session(
+                _session(played_at, track_id=track_id),
+                db_path=db_path,
+            )
+        )
+
+    summary = asyncio.run(
+        get_summary(
+            days=30,
+            timezone_name="UTC",
+            start_date=date(2026, 1, 3),
+            end_date=date(2026, 1, 5),
+            db_path=db_path,
+        )
+    )
+    buckets = asyncio.run(
+        get_time_bucket_stats(
+            days=30,
+            timezone_name="UTC",
+            start_date=date(2026, 1, 3),
+            end_date=date(2026, 1, 5),
+            db_path=db_path,
+        )
+    )
+
+    assert summary["total_plays"] == 2
+    assert summary["window_days"] == 3
+    assert summary["previous_total_plays"] == 1
+    assert buckets["daily"] == [
+        {"date": "2026-01-03", "count": 1},
+        {"date": "2026-01-04", "count": 0},
+        {"date": "2026-01-05", "count": 1},
+    ]
 
 
 def test_get_summary_all_history_disables_comparison(db_path):
@@ -415,6 +460,7 @@ async def test_summary_response_includes_comparison_fields(mock_get):
 async def test_now_playing_endpoint_accepts_no_days_param(_mock):
     # now-playing stays real-time and must not declare a days query.
     import inspect
+
     from src.main import api_now_playing
 
     sig = inspect.signature(api_now_playing)
@@ -509,6 +555,7 @@ async def test_historical_endpoints_reject_invalid_timezone(endpoint):
 @pytest.mark.asyncio
 async def test_heatmap_endpoint_default_window_is_30_days():
     import inspect
+
     from src.main import api_weekday_hour_stats
 
     sig = inspect.signature(api_weekday_hour_stats)

@@ -1,14 +1,14 @@
 import asyncio
-import os
 import logging
+import os
 import uuid
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from contextlib import asynccontextmanager
+from datetime import date, datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
+
 from src.auth import (
     SESSION_COOKIE_NAME,
     is_auth_enabled,
@@ -19,89 +19,37 @@ from src.auth import (
     verify_login_token,
 )
 from src.client import NavidromeClient
+from src.collector_manager import CollectorManager as BaseCollectorManager
+from src.config import env_int
+from src.dashboard_cache import dashboard_snapshot_cache
 from src.database import (
-    init_db,
-    save_play_session,
-    save_play_attempt,
-    get_player_stats,
-    get_transcoding_stats,
-    get_hourly_stats,
-    get_daily_stats,
-    get_top_artists,
-    get_top_albums,
-    get_playback_history,
-    get_summary,
-    get_short_play_stats,
-    get_source_stats,
-    get_weekday_hour_stats,
-    list_servers,
-    get_server,
-    save_server,
-    delete_server,
-    get_server_stats,
     LEGACY_SOURCE_ID,
     LEGACY_SOURCE_NAME,
+    SCHEMA_VERSION,
+    delete_server,
+    get_daily_stats,
+    get_hourly_stats,
+    get_playback_history,
+    get_player_stats,
+    get_server,
+    get_server_stats,
+    get_short_play_stats,
+    get_source_stats,
+    get_summary,
+    get_time_bucket_stats,
+    get_top_albums,
+    get_top_artists,
+    get_transcoding_stats,
+    get_weekday_hour_stats,
+    init_db,
+    list_servers,
     ping_db,
     resolve_timezone,
-    SCHEMA_VERSION,
+    save_play_attempt,
+    save_play_session,
+    save_server,
 )
-from src.runtime_state import runtime_state
-from src.schemas import (
-    HISTORY_LIMIT_DEFAULT,
-    HISTORY_LIMIT_MAX,
-    HISTORY_LIMIT_MIN,
-    AuthStatusResponse,
-    DAILY_DAYS_DEFAULT,
-    DAILY_DAYS_MAX,
-    RANKING_METRIC_DEFAULT,
-    RANKING_METRICS,
-    RANKING_METRIC_VALIDATION_ERROR,
-    STATS_DAYS_ALL,
-    STATS_DAYS_MAX,
-    STATS_DAYS_MIN,
-    STATS_DAYS_DEFAULT,
-    HealthLiveResponse,
-    HistoryItem,
-    HourlyStat,
-    DailyStat,
-    LoginRequest,
-    NowPlayingItem,
-    PlayerStat,
-    TopArtistItem,
-    TopAlbumItem,
-    TOP_LIMIT_DEFAULT,
-    TOP_LIMIT_MAX,
-    TOP_LIMIT_MIN,
-    PrivacySettingsResponse,
-    PrivacySettingsUpdate,
-    ReadinessResponse,
-    RetentionApplyResponse,
-    RetentionPreviewResponse,
-    ConfirmRequest,
-    SourceConfigResponse,
-    SourceConfigUpdate,
-    SourceTestRequest,
-    SourceTestResponse,
-    StorageStatsResponse,
-    ShortPlayStats,
-    SourceStat,
-    SummaryStat,
-    TranscodingStat,
-    UserDeletePreviewResponse,
-    UserDeleteResponse,
-    UserImportRequest,
-    UserImportResponse,
-    UserSummary,
-    TIMEZONE_DEFAULT,
-    TIMEZONE_VALIDATION_ERROR,
-    WeekdayHourStat,
-    ServerResponse,
-    ServerRequest,
-    ServerTestResponse,
-    ServerStat,
-    DashboardSnapshot,
-    AboutResponse,
-)
+from src.metrics import format_prometheus_metrics
 from src.privacy_ops import (
     IMPORT_MAX_PAYLOAD_BYTES,
     RETENTION_MAX_DAYS,
@@ -118,11 +66,64 @@ from src.privacy_ops import (
     set_retention_days,
     validate_retention_days,
 )
-from src.config import env_int
-from src.metrics import format_prometheus_metrics
-from src.dashboard_cache import dashboard_snapshot_cache
+from src.runtime_state import runtime_state
+from src.schemas import (
+    DAILY_DAYS_DEFAULT,
+    DAILY_DAYS_MAX,
+    HISTORY_LIMIT_DEFAULT,
+    HISTORY_LIMIT_MAX,
+    HISTORY_LIMIT_MIN,
+    RANKING_METRIC_DEFAULT,
+    RANKING_METRIC_VALIDATION_ERROR,
+    RANKING_METRICS,
+    STATS_DAYS_ALL,
+    STATS_DAYS_DEFAULT,
+    STATS_DAYS_MAX,
+    STATS_DAYS_MIN,
+    TIMEZONE_DEFAULT,
+    TIMEZONE_VALIDATION_ERROR,
+    TOP_LIMIT_DEFAULT,
+    TOP_LIMIT_MAX,
+    TOP_LIMIT_MIN,
+    AboutResponse,
+    AuthStatusResponse,
+    ConfirmRequest,
+    DailyStat,
+    DashboardSnapshot,
+    HealthLiveResponse,
+    HistoryItem,
+    HourlyStat,
+    LoginRequest,
+    NowPlayingItem,
+    PlayerStat,
+    PrivacySettingsResponse,
+    PrivacySettingsUpdate,
+    ReadinessResponse,
+    RetentionApplyResponse,
+    RetentionPreviewResponse,
+    ServerRequest,
+    ServerResponse,
+    ServerStat,
+    ServerTestResponse,
+    ShortPlayStats,
+    SourceConfigResponse,
+    SourceConfigUpdate,
+    SourceStat,
+    SourceTestRequest,
+    SourceTestResponse,
+    StorageStatsResponse,
+    SummaryStat,
+    TopAlbumItem,
+    TopArtistItem,
+    TranscodingStat,
+    UserDeletePreviewResponse,
+    UserDeleteResponse,
+    UserImportRequest,
+    UserImportResponse,
+    UserSummary,
+    WeekdayHourStat,
+)
 from src.sessions import PlaybackSessionTracker
-from src.version import APP_VERSION, LICENSE, PROJECT_NAME
 from src.source_config import (
     get_saved_source_config,
     has_full_config,
@@ -132,6 +133,7 @@ from src.source_config import (
     set_saved_source_config,
     validate_source_url,
 )
+from src.version import APP_VERSION, LICENSE, PROJECT_NAME
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -149,6 +151,9 @@ PLAY_THRESHOLD_SEC = env_int(
 PAUSE_GRACE_SEC = env_int("PAUSE_GRACE_SEC", default=30, min_value=0, max_value=3600)
 SAVE_RETRY_ATTEMPTS = env_int(
     "SAVE_RETRY_ATTEMPTS", default=3, min_value=1, max_value=10
+)
+CHECKPOINT_INTERVAL_SEC = env_int(
+    "CHECKPOINT_INTERVAL_SEC", default=60, min_value=10, max_value=3600
 )
 
 
@@ -211,6 +216,7 @@ session_tracker = PlaybackSessionTracker(
     _save_play_session_with_logging,
     play_threshold_sec=PLAY_THRESHOLD_SEC,
     pause_grace_sec=PAUSE_GRACE_SEC,
+    checkpoint_interval_sec=CHECKPOINT_INTERVAL_SEC,
     save_attempt=_save_play_attempt_with_logging,
 )
 _runtime_trackers: list[PlaybackSessionTracker] = []
@@ -246,6 +252,7 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
         playback_report = await client.supports_playback_report()
     except Exception:
         playback_report = False
+    tracker.set_playback_report_supported(playback_report)
     logger.info(
         "OpenSubsonic playback report capability: %s",
         "available" if playback_report else "legacy_fallback",
@@ -297,178 +304,31 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
         await asyncio.sleep(sleep_for)
 
 
-@dataclass
-class Collector:
-    client: NavidromeClient
-    tracker: PlaybackSessionTracker
-    task: asyncio.Task
-    config_key: tuple
+def _tracker_for_server(server: dict) -> PlaybackSessionTracker:
+    return PlaybackSessionTracker(
+        lambda session, sid=server["id"], name=server["display_name"]: _save_play_session_with_logging(
+            {**session, "source_id": sid, "source_name": name}
+        ),
+        play_threshold_sec=PLAY_THRESHOLD_SEC,
+        pause_grace_sec=PAUSE_GRACE_SEC,
+        save_attempt=_attempt_callback(server["id"], server["display_name"]),
+        source_id=server["id"],
+        source_name=server["display_name"],
+        checkpoint_interval_sec=CHECKPOINT_INTERVAL_SEC,
+    )
 
 
-class CollectorManager:
+class CollectorManager(BaseCollectorManager):
+    """Application-configured collector manager; kept import-compatible."""
+
     def __init__(self, client_factory, poller, tracker_registry: list):
-        self._client_factory = client_factory
-        self._poller = poller
-        self._tracker_registry = tracker_registry
-        self._lock = asyncio.Lock()
-        self.collectors: dict[str, Collector] = {}
-
-    def _build(self, server: dict):
-        config = {
-            "url": server.get("url"),
-            "user": server.get("username", server.get("user")),
-            "password": server.get("password"),
-        }
-        if not has_full_config(config):
-            raise ValueError("Incomplete server configuration")
-        tracker = PlaybackSessionTracker(
-            lambda session, sid=server["id"], name=server["display_name"]: _save_play_session_with_logging(
-                {**session, "source_id": sid, "source_name": name}
-            ),
-            play_threshold_sec=PLAY_THRESHOLD_SEC,
-            pause_grace_sec=PAUSE_GRACE_SEC,
-            save_attempt=_attempt_callback(server["id"], server["display_name"]),
-            source_id=server["id"],
-            source_name=server["display_name"],
+        super().__init__(
+            client_factory,
+            poller,
+            tracker_registry,
+            tracker_factory=_tracker_for_server,
+            runtime_state=runtime_state,
         )
-        client = self._client_factory(
-            url=config["url"], user=config["user"], password=config["password"]
-        )
-        return client, tracker
-
-    @staticmethod
-    def _config_key(server: dict) -> tuple:
-        return (
-            server.get("url"),
-            server.get("username", server.get("user")),
-            server.get("password"),
-            server.get("display_name"),
-            bool(server.get("enabled", True)),
-        )
-
-    def _sync_runtime_state(self) -> None:
-        runtime_state.client_initialized = bool(self.collectors)
-        runtime_state.polling_task = next(
-            (collector.task for collector in self.collectors.values()), None
-        )
-        active_ids = set(self.collectors)
-        for source_id, collector in self.collectors.items():
-            runtime_state.set_collector_task(source_id, collector.task)
-        for source_id in tuple(runtime_state.collectors):
-            if source_id not in active_ids:
-                runtime_state.set_collector_task(source_id, None)
-
-    async def _activate_unlocked(
-        self,
-        server_id: str,
-        client,
-        tracker,
-        config_key: tuple,
-    ) -> None:
-        task = asyncio.create_task(self._poller(client, tracker))
-        self.collectors[server_id] = Collector(client, tracker, task, config_key)
-        self._tracker_registry.append(tracker)
-        self._sync_runtime_state()
-
-    async def _stop_unlocked(self, server_id: str) -> None:
-        collector = self.collectors.pop(server_id, None)
-        if collector is None:
-            self._sync_runtime_state()
-            return
-        finalize_error = None
-        try:
-            await collector.tracker.finalize_all()
-        except Exception as exc:
-            finalize_error = exc
-        collector.task.cancel()
-        try:
-            await collector.task
-        except asyncio.CancelledError:
-            pass
-        try:
-            await collector.client.close()
-        finally:
-            if collector.tracker in self._tracker_registry:
-                self._tracker_registry.remove(collector.tracker)
-            self._sync_runtime_state()
-        if finalize_error is not None:
-            raise finalize_error
-
-    async def start(self, server: dict) -> None:
-        async with self._lock:
-            if not server.get("enabled", True):
-                return
-            client, tracker = self._build(server)
-            await self._stop_unlocked(server["id"])
-            await self._activate_unlocked(
-                server["id"], client, tracker, self._config_key(server)
-            )
-
-    async def replace(self, server: dict) -> None:
-        async with self._lock:
-            if not server.get("enabled", True):
-                await self._stop_unlocked(server["id"])
-                return
-            client, tracker = self._build(server)
-            try:
-                await self._stop_unlocked(server["id"])
-            except Exception:
-                await client.close()
-                raise
-            await self._activate_unlocked(
-                server["id"], client, tracker, self._config_key(server)
-            )
-
-    async def reconcile(self, servers: list[dict]) -> None:
-        """Converge collectors to the complete desired configuration.
-
-        All changed/new clients are constructed before any running collector
-        is stopped. This makes the legacy-to-multi-server transition and the
-        deletion of the final configured server deterministic.
-        """
-        desired = {
-            server["id"]: server
-            for server in servers
-            if server.get("enabled", True)
-        }
-        async with self._lock:
-            replacements: dict[str, tuple] = {}
-            try:
-                for source_id, server in desired.items():
-                    existing = self.collectors.get(source_id)
-                    config_key = self._config_key(server)
-                    if existing is not None and existing.config_key == config_key:
-                        continue
-                    client, tracker = self._build(server)
-                    replacements[source_id] = (client, tracker, config_key)
-            except Exception:
-                for client, _tracker, _key in replacements.values():
-                    await client.close()
-                raise
-
-            remove_ids = set(self.collectors) - set(desired)
-            change_ids = set(replacements) & set(self.collectors)
-            try:
-                for source_id in sorted(remove_ids | change_ids):
-                    await self._stop_unlocked(source_id)
-                for source_id, (client, tracker, config_key) in replacements.items():
-                    await self._activate_unlocked(
-                        source_id, client, tracker, config_key
-                    )
-            except Exception:
-                for source_id, (client, _tracker, _key) in replacements.items():
-                    if source_id not in self.collectors:
-                        await client.close()
-                raise
-
-    async def stop(self, server_id: str) -> None:
-        async with self._lock:
-            await self._stop_unlocked(server_id)
-
-    async def stop_all(self) -> None:
-        async with self._lock:
-            for server_id in list(self.collectors):
-                await self._stop_unlocked(server_id)
 
 
 collector_manager = CollectorManager(
@@ -854,41 +714,61 @@ async def _build_dashboard_snapshot(
     timezone_name: str,
     metric: str,
     source_id: str | None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> dict:
     source_kwargs = _source_kwargs(source_id)
+    window_kwargs = {
+        "start_date": start_date,
+        "end_date": end_date,
+    }
     (
         summary,
         players,
         transcoding,
-        hourly,
-        daily,
-        heatmap,
+        time_buckets,
         history,
         servers,
         available_servers,
         top_artists,
         top_albums,
     ) = await asyncio.gather(
-        get_summary(days=days, timezone_name=timezone_name, **source_kwargs),
-        get_player_stats(days=days, timezone_name=timezone_name, **source_kwargs),
-        get_transcoding_stats(
-            days=days, timezone_name=timezone_name, **source_kwargs
+        get_summary(
+            days=days,
+            timezone_name=timezone_name,
+            **source_kwargs,
+            **window_kwargs,
         ),
-        get_hourly_stats(days=days, timezone_name=timezone_name, **source_kwargs),
-        get_daily_stats(days=days, timezone_name=timezone_name, **source_kwargs),
-        get_weekday_hour_stats(
-            days=days, timezone_name=timezone_name, **source_kwargs
+        get_player_stats(
+            days=days,
+            timezone_name=timezone_name,
+            **source_kwargs,
+            **window_kwargs,
+        ),
+        get_transcoding_stats(
+            days=days,
+            timezone_name=timezone_name,
+            **source_kwargs,
+            **window_kwargs,
+        ),
+        get_time_bucket_stats(
+            days=days,
+            timezone_name=timezone_name,
+            **source_kwargs,
+            **window_kwargs,
         ),
         get_playback_history(
             limit=HISTORY_LIMIT_DEFAULT,
             days=days,
             timezone_name=timezone_name,
             **source_kwargs,
+            **window_kwargs,
         ),
         get_server_stats(
             days=days,
             timezone_name=timezone_name,
             source_id=source_id,
+            **window_kwargs,
         ),
         list_servers(),
         get_top_artists(
@@ -897,6 +777,7 @@ async def _build_dashboard_snapshot(
             timezone_name=timezone_name,
             metric=metric,
             **source_kwargs,
+            **window_kwargs,
         ),
         get_top_albums(
             limit=TOP_LIMIT_DEFAULT,
@@ -904,15 +785,16 @@ async def _build_dashboard_snapshot(
             timezone_name=timezone_name,
             metric=metric,
             **source_kwargs,
+            **window_kwargs,
         ),
     )
     return {
         "summary": summary,
         "players": players,
         "transcoding": transcoding,
-        "hourly": hourly,
-        "daily": daily,
-        "heatmap": heatmap,
+        "hourly": time_buckets["hourly"],
+        "daily": time_buckets["daily"],
+        "heatmap": time_buckets["heatmap"],
         "history": history,
         "servers": servers,
         "available_servers": [
@@ -930,12 +812,30 @@ async def api_dashboard_snapshot(
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     metric: str = Query(default=RANKING_METRIC_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
 ):
     """Return one cached historical payload; now-playing remains real-time."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     ranking = _validate_ranking_metric(metric)
-    key = (window, tz, ranking, source_id)
+    if (start_date is None) != (end_date is None):
+        raise HTTPException(
+            status_code=422,
+            detail="start_date and end_date must be provided together",
+        )
+    if start_date is not None and end_date is not None:
+        if start_date > end_date:
+            raise HTTPException(
+                status_code=422,
+                detail="start_date must not be after end_date",
+            )
+        if (end_date - start_date).days + 1 > 366:
+            raise HTTPException(
+                status_code=422,
+                detail="custom date range must not exceed 366 days",
+            )
+    key = (window, tz, ranking, source_id, start_date, end_date)
     return await _query_stats(
         lambda: dashboard_snapshot_cache.get_or_create(
             key,
@@ -944,6 +844,8 @@ async def api_dashboard_snapshot(
                 timezone_name=tz,
                 metric=ranking,
                 source_id=source_id,
+                start_date=start_date,
+                end_date=end_date,
             ),
         )
     )

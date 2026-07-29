@@ -1,10 +1,10 @@
 import asyncio
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
-from src.database import init_db, save_play_session, get_top_artists, get_top_albums
+from src.database import get_top_albums, get_top_artists, init_db, save_play_session
 from src.main import app
 
 

@@ -1,7 +1,10 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
+
 from src.main import app
+
 
 @pytest.mark.asyncio
 async def test_health_check():
@@ -151,7 +154,8 @@ async def test_api_now_playing_empty_when_no_sessions():
 
 @pytest.mark.asyncio
 async def test_api_now_playing_returns_active_sessions():
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta, timezone
+
     from src.main import session_tracker
     first_seen = datetime.now(timezone.utc) - timedelta(seconds=65)
     session_tracker.active_sessions.clear()

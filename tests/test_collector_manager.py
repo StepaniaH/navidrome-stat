@@ -168,13 +168,77 @@ async def test_finalize_failure_still_closes_old_and_replacement_clients():
         side_effect=RuntimeError("synthetic finalize failure")
     )
 
-    with pytest.raises(RuntimeError, match="synthetic finalize failure"):
+    with pytest.raises(RuntimeError, match="Failed to finalize collector sessions"):
         await manager.replace(server_config(password="replacement-password"))
 
     clients[0].close.assert_awaited_once()
     clients[1].close.assert_awaited_once()
     assert old.task.cancelled()
     assert manager.collectors == {}
+
+
+@pytest.mark.asyncio
+async def test_stop_all_continues_after_one_collector_finalize_fails():
+    from src.main import CollectorManager
+
+    clients = []
+
+    def client_factory(**_config):
+        client = AsyncMock()
+        clients.append(client)
+        return client
+
+    async def poller(_client, _tracker):
+        await asyncio.Event().wait()
+
+    trackers = []
+    manager = CollectorManager(client_factory, poller, trackers)
+    await manager.start(server_config("server-1"))
+    await manager.start(server_config("server-2"))
+    manager.collectors["server-1"].tracker.finalize_all = AsyncMock(
+        side_effect=RuntimeError("synthetic finalize failure")
+    )
+
+    with pytest.raises(RuntimeError, match="Failed to stop collectors"):
+        await manager.stop_all()
+
+    assert manager.collectors == {}
+    assert trackers == []
+    for client in clients:
+        client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_stops_all_changed_collectors_before_reporting_failure():
+    from src.main import CollectorManager
+
+    clients = []
+
+    def client_factory(**_config):
+        client = AsyncMock()
+        clients.append(client)
+        return client
+
+    async def poller(_client, _tracker):
+        await asyncio.Event().wait()
+
+    manager = CollectorManager(client_factory, poller, [])
+    await manager.start(server_config("server-1"))
+    await manager.start(server_config("server-2"))
+    manager.collectors["server-1"].tracker.finalize_all = AsyncMock(
+        side_effect=RuntimeError("synthetic finalize failure")
+    )
+    replacements = [
+        server_config("server-1", password="replacement-password"),
+        server_config("server-2", password="replacement-password"),
+    ]
+
+    with pytest.raises(RuntimeError, match="Failed to stop collectors"):
+        await manager.reconcile(replacements)
+
+    assert manager.collectors == {}
+    for client in clients:
+        client.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio

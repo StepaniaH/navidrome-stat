@@ -1,6 +1,7 @@
-import pytest
-from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, patch
+
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 from src.main import app, build_readiness_report
 from src.sessions import PlaybackSessionTracker
@@ -76,6 +77,7 @@ async def test_readiness_and_metrics_aggregate_non_paused_runtime_sessions(monke
 async def test_readiness_reports_one_failed_collector(monkeypatch):
     import asyncio
     from datetime import datetime, timezone
+
     import src.main as main
     from src.runtime_state import RuntimeState
 
