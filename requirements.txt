@@ -1,5 +1,5 @@
 # Runtime dependencies (direct). Transitive pins: requirements.lock
-fastapi==0.139.0
+fastapi==0.140.13
 uvicorn==0.51.0
 httpx==0.28.1
 aiosqlite==0.22.1
