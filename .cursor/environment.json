@@ -1,0 +1,14 @@
+{
+  "name": "Navidrome Statistic",
+  "install": "python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements-dev.txt && npm ci",
+  "terminals": [
+    {
+      "name": "dev-server",
+      "command": "PYTHON_DOTENV_DISABLED=1 DATABASE_URL=/tmp/navidrome_stats.db .venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 39421",
+      "description": "Navidrome Statistic FastAPI dev server on http://localhost:39421 (liveness at /health, readiness at /health/ready). It starts with no upstream Navidrome source configured, so /health/ready reports 'degraded' until NAVIDROME_* env vars are provided or a source is added under Settings > Connections. Restart this terminal after changing source configuration."
+    }
+  ],
+  "ports": [
+    { "name": "app", "port": 39421 }
+  ]
+}
