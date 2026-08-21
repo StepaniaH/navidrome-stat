@@ -31,7 +31,7 @@
 | NDS-UI-010 | 分区加载状态与读屏核验 | P2 | 待办 | NDS-UI-001 |
 | NDS-ARCH-001 | 多进程/多副本架构决策 | P2 | 待办 | 部署方确认拓扑；不在 1.0 范围 |
 | NDS-DATA-004 | 原生历史适配器调研 | P2 | 待办 | 公开接口确认；禁止私有库猜测 |
-| NDS-CORE-006 | 认证与空闲轮询正确性 | P1 | 进行中 | 无 |
+| NDS-CORE-006 | 认证与空闲轮询正确性 | P1 | 已完成 | 无 |
 
 已完成（全文见档案；ID 保留）：NDS-SEC-002、NDS-CORE-001、NDS-CORE-002、NDS-CORE-003、NDS-CORE-004、NDS-CORE-005、NDS-DATA-001、NDS-DATA-002、NDS-DATA-003、NDS-API-001、NDS-REL-001、NDS-REL-002、NDS-OPS-001、NDS-TEST-001、NDS-DOC-001、NDS-DOC-002、NDS-CI-001、NDS-SRC-001、NDS-UI-002、NDS-UI-003、NDS-UI-004、NDS-UI-005、NDS-UI-006、NDS-UI-007、NDS-UI-008、NDS-UI-009。
 
@@ -102,7 +102,7 @@
 
 ## NDS-CORE-006 认证与空闲轮询正确性
 
-- **优先级/状态**：P1 / 进行中
+- **优先级/状态**：P1 / 已完成
 - **依赖**：无。不改变认证默认值，不要求部署方确认。
 - **目标**：修复已能从代码证明的错误：非 ASCII 凭据使 `compare_digest` 抛错变成 500；登出 Cookie 未带与登录相同的 Secure/HttpOnly 属性；上游 `status=ok` 且 `nowPlaying` 为 null 被当成轮询失败。
 - **实施步骤**：
@@ -114,7 +114,7 @@
 - **验证命令**：`.venv/bin/python -m pytest -q tests/test_auth.py tests/test_polling_integration.py tests/test_client.py`；`.venv/bin/python -m pytest -q`；`.venv/bin/ruff check .`；`git diff --check`。
 - **涉及文件**：`src/auth.py`、`src/main.py`、`src/client.py`、相关测试、`docs/interfaces.md`、`docs/security.md`、`docs/current-state.md`、`CHANGELOG.md`、本文件。
 - **风险/回滚**：只收紧错误路径与空闲轮询解释。回滚本提交即可。
-- **完成记录**：未填写。
+- **完成记录**：2026-08-21，Cursor Agent。认证改为 UTF-8 字节恒定时间比较；Bearer 方案名大小写不敏感；登出删除 Cookie 使用与登录相同的 path/HttpOnly/SameSite/Secure。`status=ok` 且 `nowPlaying` 为 null 记空闲成功。验证：`.venv/bin/python -m pytest -q` 为 `402 passed`；`.venv/bin/ruff check .` 通过；`.venv/bin/python scripts/check_md_links.py` 通过。提交 `2560449`，PR #27。遗留：未改变默认匿名模式。
 
 ## NDS-DEP-002 基础镜像 digest 与发布来源
 
