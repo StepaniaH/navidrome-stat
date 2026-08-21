@@ -224,11 +224,15 @@ python -m scripts.benchmark_stats --rows 100000
 ## 项目文档
 
 - [项目文档索引](docs/README.md)
+- [贡献指南](CONTRIBUTING.md)
+- [变更记录](CHANGELOG.md)
+- [安全政策](SECURITY.md)
+- [开源版本路线](docs/roadmap.md)
 - [当前实现事实](docs/current-state.md)
 - [接口与配置](docs/interfaces.md)
 - [隐私边界](docs/privacy.md)
 - [安全模型](docs/security.md)
-- [Agent 任务登记](docs/tasks.md)
+- [任务登记](docs/tasks.md)
 
 ## 许可证
 

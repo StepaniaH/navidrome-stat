@@ -224,11 +224,15 @@ python -m scripts.benchmark_stats --rows 100000
 ## Documentation
 
 - [Project documentation map](docs/README.md)
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+- [Security policy](SECURITY.md)
+- [Open-source roadmap](docs/roadmap.md)
 - [Current implementation](docs/current-state.md)
 - [Interfaces and configuration](docs/interfaces.md)
 - [Privacy boundaries](docs/privacy.md)
 - [Security model](docs/security.md)
-- [Agent task register](docs/tasks.md)
+- [Task register](docs/tasks.md)
 
 ## License
 

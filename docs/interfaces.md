@@ -21,7 +21,7 @@
 | `/` | GET | 存在静态文件时返回 `src/static/index.html`；否则 JSON message | 受支持但可演进 | 页面可加载；数据仍受 API 认证约束 |
 | `/health` | GET | `{"status":"ok"}` | 稳定 | 存活探针；始终匿名 |
 | `/health/ready` | GET | JSON：`status`、`checks`、`metrics` | 受支持但可演进 | 就绪探针；指标含 collector 总数/健康数/降级数；任一采集器异常不会被其他采集器成功状态掩盖；`not_ready` 时 HTTP 503；始终匿名 |
-| `/metrics` | GET | Prometheus 文本格式指标 | 受支持但可演进 | 始终匿名；采用 Prometheus exposition format |
+| `/metrics` | GET | Prometheus 文本格式指标 | 受支持但可演进 | 始终匿名（`AUTH_EXEMPT_PATHS`）；采用 Prometheus exposition format；不含用户名或曲目标签。是否应对指标启用认证见 NDS-SEC-003 |
 | `/api/auth/status` | GET | `{"auth_required": bool}` | 受支持但可演进 | 报告是否配置了 `STATS_API_TOKEN` |
 | `/api/auth/login` | POST | `{"status":"ok"}` + 会话 Cookie | 受支持但可演进 | 请求体 token 长度 1–4096；每进程每来源摘要 5 次/分钟，超限返回 429；未启用认证时 404；`SESSION_COOKIE_SECURE` 控制 Secure 标记 |
 | `/api/auth/logout` | POST | `{"status":"ok"}` | 受支持但可演进 | 清除会话 Cookie |
@@ -31,6 +31,7 @@
 | `/api/stats/transcoding` | GET | JSON 数组，元素为 `is_transcoding`、`count`、`total_listen_sec`、`plays_pct`、`listen_sec_pct` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；百分比按当前窗口计算；启用认证时需授权 |
 | `/api/stats/short-plays` | GET | JSON：`short_count`、`counted_count`、`attempt_count`、`short_listen_sec`、`short_play_rate_pct` | 受支持但可演进 | 可选 `days`/`timezone`；短播放记录独立于 `play_history`；这是短播放率，不代表用户主动跳过；启用认证时需授权 |
 | `/api/stats/sources` | GET | JSON 数组，元素为 `source`、`count`、`total_listen_sec` | 受支持但可演进 | 正式播放来源为 `poller` 或 `import`；可选 `days`/`timezone`；启用认证时需授权 |
+| `/api/stats/servers` | GET | JSON 数组，元素为 `source_id`、`source_name`、`count`、`total_listen_sec` | 受支持但可演进 | 按配置的服务器身份聚合正式播放；可选 `days`/`timezone`/`source_id`；启用认证时需授权 |
 | `/api/stats/history` | GET | JSON 数组（见下） | 受支持但可演进 | `limit` 默认 10、范围 1–100；可选 `?days=0`（默认）或 `7–90`；启用认证时需授权 |
 | `/api/stats/hourly` | GET | JSON 数组，元素为 `hour`（0–23）、`count` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；按一天内时段聚合；启用认证时需授权 |
 | `/api/stats/heatmap` | GET | JSON 数组（168 行），元素为 `weekday`（0=周一 … 6=周日）、`hour`（0–23）、`count`（int） | 受支持但可演进 | 默认 `days=30`；接受 `0`（全部历史）或 `7–90`，中间值（1–6）返回 422；网格始终零填充为 7×24=168 单元；启用认证时需授权 |
@@ -56,7 +57,7 @@
 | `/api/servers/{server_id}` | PUT | 同 POST | 受支持但可演进 | 持久化后立即替换、启用或禁用对应 collector；空 password 保留原值；替换前结算旧会话 |
 | `/api/servers/{server_id}` | DELETE | `{"status":"ok"}` | 受支持但可演进 | 删除后立即结算并停止对应 collector；不存在返回 404 |
 | `/api/servers/{server_id}/test` | POST | `{ok: bool, message: str}` | 受支持但可演进 | 使用请求体提交的 URL/用户名/密码测试 Subsonic envelope 状态；失败只返回通用文案 |
-| `/api/about` | GET | 名称、应用版本、schema 版本、功能、许可与项目地址 | 受支持但可演进 | 应用版本来自 `APP_VERSION`，默认 `0.7.0-dev` |
+| `/api/about` | GET | 名称、应用版本、schema 版本、功能列表、许可、`project_url` | 受支持但可演进 | 应用版本来自 `APP_VERSION`，默认 `0.7.0-dev`；`project_url` 当前恒为 `null`（见 NDS-OSS-001） |
 
 当前 history 调用示例：
 
@@ -237,6 +238,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - `src.database.get_top_artists(limit=..., days=0, db_path=...)`
 - `src.database.get_top_albums(limit=..., days=0, db_path=...)`
 - `src.database.get_playback_history(limit=..., days=0, db_path=...)`
+- `src.database.get_short_play_stats(...)`、`get_source_stats(...)`、`get_server_stats(...)`
 - `src.database.get_weekday_hour_stats(days=30, timezone_name="UTC", db_path=...)`（返回 168 个零填充 `{weekday,hour,count}` 行）
 - `src.database.get_time_bucket_stats(days=30, timezone_name="UTC", db_path=...)`（一次扫描返回 hourly/daily/heatmap）
 - `src.database.recover_incomplete_sessions(db_path=...)`（将遗留未完成检查点按最后持久化时长标记完成）

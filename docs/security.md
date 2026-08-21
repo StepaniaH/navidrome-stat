@@ -27,9 +27,10 @@
 | 路径 | 策略 |
 | --- | --- |
 | `/health`、`/health/ready` | 始终公开，供存活/就绪探针使用 |
+| `/metrics` | 始终公开；输出轮询/保存计数等低基数指标，不含用户名或曲目 |
 | `/api/auth/status`、`/api/auth/login` | 公开；login 需正确令牌 |
 | `/api/auth/logout` | 公开；清除会话 Cookie |
-| `/api/stats/*` | 需 `Authorization: Bearer <token>` 或有效会话 Cookie |
+| `/api/stats/*`、`/api/source/*`、`/api/servers*`、`/api/about` | 需 `Authorization: Bearer <token>` 或有效会话 Cookie |
 | `/api/privacy/*` | 需认证（与统计 API 相同策略） |
 | `/`、`/settings`、`/static/*` | 可加载页面；数据请求仍受 API 保护 |
 | `/docs`、`/redoc`、`/openapi.json` | 需认证 |
@@ -75,4 +76,4 @@
 5. 页面网络请求不包含公共 CDN，移动视口无页面级横向溢出。
 6. 登录限流返回 429，HTTPS 部署配置下 Cookie 带 Secure。
 
-对应任务：NDS-SEC-001、NDS-SEC-002、NDS-PRIV-001。
+对应任务：NDS-SEC-001、NDS-SEC-002、NDS-SEC-003、NDS-PRIV-001。漏洞报告入口见仓库根目录 [`SECURITY.md`](../SECURITY.md)，不要把凭据发到公开 issue。
