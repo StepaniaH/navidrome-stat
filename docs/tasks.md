@@ -33,7 +33,7 @@
 | NDS-DATA-004 | 原生历史适配器调研 | P2 | 待办 | 公开接口确认；禁止私有库猜测 |
 | NDS-CORE-006 | 认证与空闲轮询正确性 | P1 | 已完成 | 无 |
 | NDS-CORE-007 | 采集、窗口、保留与观测正确性 | P1 | 已完成 | 无 |
-| NDS-CORE-008 | 导入请求体流式上限 | P2 | 待办 | 无 |
+| NDS-CORE-008 | 导入请求体流式上限 | P2 | 进行中 | 无 |
 
 已完成（全文见档案；ID 保留）：NDS-SEC-002、NDS-CORE-001、NDS-CORE-002、NDS-CORE-003、NDS-CORE-004、NDS-CORE-005、NDS-DATA-001、NDS-DATA-002、NDS-DATA-003、NDS-API-001、NDS-REL-001、NDS-REL-002、NDS-OPS-001、NDS-TEST-001、NDS-DOC-001、NDS-DOC-002、NDS-CI-001、NDS-SRC-001、NDS-UI-002、NDS-UI-003、NDS-UI-004、NDS-UI-005、NDS-UI-006、NDS-UI-007、NDS-UI-008、NDS-UI-009。
 
@@ -138,7 +138,7 @@
 
 ## NDS-CORE-008 导入请求体流式上限
 
-- **优先级/状态**：P2 / 待办
+- **优先级/状态**：P2 / 进行中
 - **依赖**：无。不改变认证默认值；不放宽 5 MiB / 10000 条校验。
 - **目标**：让隐私导入的 5 MiB 上限在缺少 `Content-Length`（例如 chunked）时仍然在读取请求体过程中生效，而不是只在 JSON 已全部进入内存后由 `json.dumps` 再量一次。
 - **实施步骤**：

@@ -66,6 +66,7 @@ from src.privacy_ops import (
     set_retention_days,
     validate_retention_days,
 )
+from src.request_limits import PrivacyImportBodyLimitMiddleware
 from src.runtime_state import runtime_state
 from src.schemas import (
     DAILY_DAYS_DEFAULT,
@@ -608,24 +609,6 @@ def _with_security_headers(response: Response) -> Response:
 
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
-    if (
-        request.method == "POST"
-        and request.url.path.startswith("/api/privacy/users/")
-        and request.url.path.endswith("/import")
-    ):
-        content_length = request.headers.get("content-length")
-        if content_length is not None:
-            try:
-                too_large = int(content_length) > IMPORT_MAX_PAYLOAD_BYTES
-            except ValueError:
-                too_large = True
-            if too_large:
-                return _with_security_headers(
-                    JSONResponse(
-                        {"detail": "Import payload is too large"},
-                        status_code=413,
-                    )
-                )
     response = await call_next(request)
     return _with_security_headers(response)
 
@@ -647,6 +630,13 @@ async def stats_auth_middleware(request: Request, call_next):
     if path.startswith("/api/") or path == "/metrics":
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     return await call_next(request)
+
+
+app.add_middleware(
+    PrivacyImportBodyLimitMiddleware,
+    max_bytes=IMPORT_MAX_PAYLOAD_BYTES,
+    apply_headers=_with_security_headers,
+)
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(STATIC_DIR):

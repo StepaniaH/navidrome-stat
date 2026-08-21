@@ -13,6 +13,7 @@
 | Dashboard | 请求统计 API，使用 ECharts 展示图表和表格 | `src/static/index.html` |
 | Dashboard 缓存 | 进程内短 TTL snapshot 缓存与写入失效 | `src/dashboard_cache.py` |
 | 采集器协调 | 多服务器 collector 构造、替换、清理与失败汇总 | `src/collector_manager.py` |
+| 导入体积上限 | 隐私导入按实际已读字节拒绝超限请求体 | `src/request_limits.py` |
 | SQLite 连接策略 | WAL、busy timeout 与外键连接初始化 | `src/sqlite.py` |
 | 设置页 | 连接、保留策略、按用户数据操作与本地偏好 | `src/static/settings.html`、`src/static/settings.js`、`src/static/localization.js` |
 | 来源配置层 | GUI 保存的 Navidrome 连接配置持久化与解析（env 优先） | `src/source_config.py` |
@@ -61,7 +62,7 @@
 - history 接口按 `source_id, username, track_id` 聚合；跨服务器相同 track ID 不合并。`title`/`artist`/`album` 取自最新插入行（`MAX(id)`），按最近 `played_at` 排序。
 - 播放历史**默认永久保留**；可通过 `/settings` 将保留期设为 1–360 天或恢复永久。
 - 后台任务按 `RETENTION_MAINTENANCE_SEC`（默认 24 小时）自动清理超出保留期的记录；启动时也会执行一次。预览与删除用 `datetime(played_at) < datetime(?)` 比较，cutoff 格式与统计窗口相同，避免带偏移的 ISO 字符串按字典序漏删。
-- 按用户导出格式版本 2 同时包含正式播放与短播放尝试，并保留来源与置信度；导入兼容版本 1/2，限制 5 MiB、10000 条，校验字段长度、带时区时间戳、转码值和 0–7 天时长。HTTP 中间件仅在请求带 `Content-Length` 时提前拒绝超限导入；流式/缺长度请求的上限在 JSON 解析之后（见 NDS-CORE-008）。删除与过期清理的预览及执行统一覆盖两张表。
+- 按用户导出格式版本 2 同时包含正式播放与短播放尝试，并保留来源与置信度；导入兼容版本 1/2，限制 5 MiB、10000 条，校验字段长度、带时区时间戳、转码值和 0–7 天时长。导入请求由 ASGI 中间件按实际已读字节累计，超过 5 MiB 返回 413 且不进入 JSON 解析；JSON 层仍保留二次长度检查。删除与过期清理的预览及执行统一覆盖两张表。
 - poller `session_id` 与 `attempt_id` 使用部分唯一索引提供幂等写入；导入/旧记录没有这些 ID，仍保留追加语义。
 
 完整字段和 API 响应见 [`interfaces.md`](interfaces.md)。
