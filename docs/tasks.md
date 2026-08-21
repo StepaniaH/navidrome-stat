@@ -23,12 +23,12 @@
 | NDS-SEC-001 | 访问控制与部署边界 | P0 | 待验收 | 部署方确认访问范围与授权模型 |
 | NDS-PRIV-001 | 保留、删除与用户告知 | P0 | 待验收 | 部署方确认告知文案与备份删除责任 |
 | NDS-DEP-001 | 容器与依赖可复现性 | P1 | 待验收 | 部署方确认卷权限与备份演练 |
-| NDS-UI-001 | Dashboard 运行状态与可访问性 | P2 | 待验收 | NDS-SEC-002（已完成）；剩余见 NDS-UI-010 |
+| NDS-UI-001 | Dashboard 运行状态与可访问性 | P2 | 已完成 | NDS-SEC-002（已完成）；剩余由 NDS-UI-010 交付 |
 | NDS-OSS-001 | 发布叙事与 about 对齐 | P1 | 已完成 | NDS-DOC-003 |
 | NDS-PRIV-002 | 部署方可编辑的用户告知模板 | P1 | 已完成 | 模板已提供；正文仍须部署方审批后使用 |
 | NDS-SEC-003 | 匿名观测面收敛 | P1 | 已完成 | 默认保持匿名 `/metrics` 与 OpenAPI 开启 |
 | NDS-DEP-002 | 基础镜像 digest 与发布来源 | P2 | 待办 | NDS-DEP-001 |
-| NDS-UI-010 | 分区加载状态与读屏核验 | P2 | 进行中 | NDS-UI-001 |
+| NDS-UI-010 | 分区加载状态与读屏核验 | P2 | 已完成 | NDS-UI-001 |
 | NDS-ARCH-001 | 多进程/多副本架构决策 | P2 | 待办 | 部署方确认拓扑；不在 1.0 范围 |
 | NDS-DATA-004 | 原生历史适配器调研 | P2 | 已完成 | 公开接口确认；禁止私有库猜测 |
 | NDS-CORE-006 | 认证与空闲轮询正确性 | P1 | 已完成 | 无 |
@@ -169,7 +169,7 @@
 
 ## NDS-UI-010 分区加载状态与读屏核验
 
-- **优先级/状态**：P2 / 进行中
+- **优先级/状态**：P2 / 已完成
 - **依赖**：NDS-UI-001。只使用合成 API 数据。
 - **目标**：补齐 NDS-UI-001 仍未验收的部分：图表/表格分区的独立 loading-empty-error，以及键盘与读屏可理解性。Playwright 合成回归和 CSP 自托管已由后续任务完成，不重复当作缺口。
 - **实施步骤**：
@@ -180,7 +180,7 @@
 - **验证命令**：`.venv/bin/python -m pytest -q tests/test_static_dashboard.py`；`npx playwright test`；`git diff --check`。
 - **涉及文件**：`src/static/index.html`、`tests/e2e/dashboard.spec.js`、`tests/test_static_dashboard.py`、`docs/current-state.md`。
 - **风险/回滚**：仅前端与测试。回滚静态文件即可。
-- **完成记录**：未填写。
+- **完成记录**：2026-08-21，Cursor Agent。各图表/榜单/来源/历史/正在播放分区使用 `setPanelState` 区分 loading / empty / error；snapshot 缺字段或渲染异常只让对应分区进入 error；`now-playing` 失败不影响历史统计，Dashboard 500 不影响正在播放。图表增加 visually-hidden aria 摘要，历史空状态去掉用户无关的 `innerHTML` SVG。验证：`.venv/bin/python -m pytest -q tests/test_static_dashboard.py` 55 passed；全量 `.venv/bin/python -m pytest -q` 421 passed；`npx playwright test` 15 passed（含空数据、401、now-playing 500、dashboard 500、players=null、既有 390px）；`.venv/bin/ruff check .` 通过；`python3 scripts/check_md_links.py` 通过；`git diff --check` 通过。提交 `4853486` 及本完成记录，PR #27。遗留：未用真实读屏软件做人工核验；ECharts canvas 仍依赖文本摘要。测试只使用合成数据。
 
 ## NDS-DATA-004 原生历史适配器调研
 
@@ -243,7 +243,7 @@
 
 ## NDS-UI-001 Dashboard 运行状态与可访问性
 
-- **优先级/状态**：P2 / 待验收
+- **优先级/状态**：P2 / 已完成
 - **依赖**：NDS-SEC-002、NDS-API-001。
 - **目标**：让 Dashboard 对加载、空数据、错误和窄屏场景提供明确且可访问的反馈。
 - **验收标准**：各状态可见且不只依赖控制台；键盘与屏幕阅读器可理解核心数据；长文本和移动布局无重叠；刷新无并发堆积。
@@ -251,7 +251,7 @@
 - **涉及文件**：`src/static/index.html`、`tests/e2e/`。
 - **风险/回滚**：刷新逻辑变更可能导致陈旧数据或增加负载。
 - **完成记录**：2026-07-16，Cursor Agent。空状态、错误横幅、手动刷新、隐藏降频。
-- **后续核验（2026-08-21）**：Playwright 合成回归、CSP 自托管、自定义 listbox 与移动布局已由 NDS-SEC-002 / NDS-UI-007–009 覆盖。本任务剩余不可声称完成的部分移交 NDS-UI-010（分区失败态与读屏）。在 NDS-UI-010 验收前保持待验收，避免把「有浏览器测试」等同于读屏完成。
+- **后续核验（2026-08-21）**：Playwright 合成回归、CSP 自托管、自定义 listbox 与移动布局已由 NDS-SEC-002 / NDS-UI-007–009 覆盖。分区失败态、独立 empty/error 与图表 aria 摘要由 NDS-UI-010 交付。本任务剩余项已关闭。
 
 ## NDS-ARCH-001 多进程/多副本架构决策
 

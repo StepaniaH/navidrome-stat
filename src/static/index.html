@@ -1870,6 +1870,8 @@
                 plays: dashboardNumber(peak.count),
             }));
         }
+
+        function renderRankingList({ containerId, panel, data, labelKey, barClass, ariaLabel, metric }) {
             const container = document.getElementById(containerId);
             container.replaceChildren();
             container.setAttribute('role', 'table');

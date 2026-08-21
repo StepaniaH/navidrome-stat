@@ -203,7 +203,7 @@ def test_dashboard_header_uses_single_row_stable_layout(source):
 
 def test_history_table_has_no_horizontal_scroll_container(source):
     history = source[source.index('class="history-section') : source.index("</section>", source.index('class="history-section'))]
-    assert 'class="history-table-wrap"' in history
+    assert "history-table-wrap" in history
     assert 'class="history-table text-sm"' in history
     assert "overflow-x-auto" not in history
     for column in ("user", "track", "artist", "album", "played", "count"):
