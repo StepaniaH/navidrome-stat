@@ -4,7 +4,7 @@ import importlib
 
 import pytest
 
-from src.config import env_int, parse_clamped_int
+from src.config import env_flag, env_int, parse_clamped_int
 
 
 @pytest.mark.parametrize(
@@ -115,3 +115,17 @@ def test_main_checkpoint_interval_clamped_to_min(monkeypatch):
     finally:
         monkeypatch.delenv("CHECKPOINT_INTERVAL_SEC", raising=False)
         importlib.reload(main_module)
+
+
+def test_env_flag_defaults_and_truthy_values(monkeypatch):
+    monkeypatch.delenv("NDS_TEST_FLAG", raising=False)
+    assert env_flag("NDS_TEST_FLAG", default=True) is True
+    assert env_flag("NDS_TEST_FLAG", default=False) is False
+    monkeypatch.setenv("NDS_TEST_FLAG", "true")
+    assert env_flag("NDS_TEST_FLAG", default=False) is True
+    monkeypatch.setenv("NDS_TEST_FLAG", "YES")
+    assert env_flag("NDS_TEST_FLAG", default=False) is True
+    monkeypatch.setenv("NDS_TEST_FLAG", "0")
+    assert env_flag("NDS_TEST_FLAG", default=True) is False
+    monkeypatch.setenv("NDS_TEST_FLAG", "nope")
+    assert env_flag("NDS_TEST_FLAG", default=True) is False

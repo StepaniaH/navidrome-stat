@@ -20,7 +20,7 @@ from src.auth import (
 )
 from src.client import NavidromeClient
 from src.collector_manager import CollectorManager as BaseCollectorManager
-from src.config import env_int
+from src.config import env_flag, env_int
 from src.dashboard_cache import dashboard_snapshot_cache
 from src.database import (
     LEGACY_SOURCE_ID,
@@ -133,7 +133,7 @@ from src.source_config import (
     set_saved_source_config,
     validate_source_url,
 )
-from src.version import APP_VERSION, LICENSE, PROJECT_NAME
+from src.version import APP_VERSION, LICENSE, PROJECT_NAME, PROJECT_URL
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -155,6 +155,7 @@ SAVE_RETRY_ATTEMPTS = env_int(
 CHECKPOINT_INTERVAL_SEC = env_int(
     "CHECKPOINT_INTERVAL_SEC", default=60, min_value=10, max_value=3600
 )
+OPENAPI_ENABLED = env_flag("OPENAPI_ENABLED", default=True)
 
 
 def _exception_kind(exc: Exception) -> str:
@@ -559,9 +560,29 @@ async def lifespan(app: FastAPI):
     runtime_state.polling_task = None
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/docs" if OPENAPI_ENABLED else None,
+    redoc_url="/redoc" if OPENAPI_ENABLED else None,
+    openapi_url="/openapi.json" if OPENAPI_ENABLED else None,
+)
 
-AUTH_EXEMPT_PATHS = frozenset({"/health", "/health/ready", "/metrics", "/api/auth/login", "/api/auth/status"})
+ALWAYS_AUTH_EXEMPT_PATHS = frozenset(
+    {"/health", "/health/ready", "/api/auth/login", "/api/auth/status"}
+)
+
+
+def _metrics_require_auth() -> bool:
+    """Return True when /metrics should follow STATS_API_TOKEN."""
+    return env_flag("STATS_METRICS_AUTH", default=False)
+
+
+def _is_auth_exempt(path: str) -> bool:
+    if path in ALWAYS_AUTH_EXEMPT_PATHS:
+        return True
+    if path == "/metrics":
+        return not _metrics_require_auth()
+    return False
 
 
 def _with_security_headers(response: Response) -> Response:
@@ -610,13 +631,15 @@ async def stats_auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     path = request.url.path
-    if path in AUTH_EXEMPT_PATHS:
+    if _is_auth_exempt(path):
         return await call_next(request)
     if is_authorized(request):
         return await call_next(request)
-    if path.startswith("/api/"):
-        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     if path in ("/docs", "/redoc", "/openapi.json"):
+        if not OPENAPI_ENABLED:
+            return await call_next(request)
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    if path.startswith("/api/") or path == "/metrics":
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     return await call_next(request)
 
@@ -1471,9 +1494,14 @@ async def api_servers_test(server_id: str, body: ServerRequest | None = None):
 
 @app.get("/api/about", response_model=AboutResponse)
 async def api_about():
-    return AboutResponse(name=PROJECT_NAME, version=APP_VERSION, schema_version=SCHEMA_VERSION,
-                         features=["多 Navidrome 服务器", "播放历史统计", "隐私数据管理", "本地外观偏好"],
-                         license=LICENSE, project_url=None)
+    return AboutResponse(
+        name=PROJECT_NAME,
+        version=APP_VERSION,
+        schema_version=SCHEMA_VERSION,
+        features=["多 Navidrome 服务器", "播放历史统计", "隐私数据管理", "本地外观偏好"],
+        license=LICENSE,
+        project_url=PROJECT_URL,
+    )
 
 
 if __name__ == "__main__":

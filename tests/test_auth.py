@@ -83,6 +83,28 @@ async def test_openapi_blocked_when_auth_enabled():
 
 
 @pytest.mark.asyncio
+async def test_openapi_routes_absent_when_disabled(monkeypatch):
+    import importlib
+
+    import src.main as main_module
+
+    monkeypatch.setenv("OPENAPI_ENABLED", "false")
+    reloaded = importlib.reload(main_module)
+    try:
+        assert reloaded.OPENAPI_ENABLED is False
+        async with AsyncClient(
+            transport=ASGITransport(app=reloaded.app), base_url="http://test"
+        ) as ac:
+            openapi = await ac.get("/openapi.json")
+            docs = await ac.get("/docs")
+        assert openapi.status_code == 404
+        assert docs.status_code == 404
+    finally:
+        monkeypatch.delenv("OPENAPI_ENABLED", raising=False)
+        importlib.reload(main_module)
+
+
+@pytest.mark.asyncio
 async def test_auth_status_reports_requirement():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):

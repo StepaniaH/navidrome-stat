@@ -49,6 +49,31 @@ async def test_metrics_accessible_without_auth_when_token_configured():
 
 
 @pytest.mark.asyncio
+async def test_metrics_require_auth_when_flag_enabled(monkeypatch):
+    monkeypatch.setenv("STATS_METRICS_AUTH", "true")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+            denied = await ac.get("/metrics")
+            allowed = await ac.get(
+                "/metrics",
+                headers={"Authorization": "Bearer synthetic-secret-token"},
+            )
+    assert denied.status_code == 401
+    assert denied.json()["detail"] == "Unauthorized"
+    assert allowed.status_code == 200
+    assert "navidrome_stat_poll_success_total" in allowed.text
+
+
+@pytest.mark.asyncio
+async def test_metrics_stay_public_when_auth_flag_set_without_token(monkeypatch):
+    monkeypatch.setenv("STATS_METRICS_AUTH", "true")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value=None):
+            response = await ac.get("/metrics")
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_readiness_and_metrics_aggregate_non_paused_runtime_sessions(monkeypatch):
     import src.main as main
 
