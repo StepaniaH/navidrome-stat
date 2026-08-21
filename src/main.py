@@ -285,7 +285,13 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
                 )
             else:
                 entries = NavidromeClient.now_playing_entries(data)
-                await tracker.process_poll(entries, current_time)
+                try:
+                    await tracker.process_poll(entries, current_time)
+                except Exception as exc:
+                    logger.error(
+                        "Play persistence failed after successful poll (type=%s)",
+                        _exception_kind(exc),
+                    )
                 runtime_state.record_poll_success(current_time, tracker.source_id)
                 consecutive_failures = 0
 

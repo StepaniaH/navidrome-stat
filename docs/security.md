@@ -41,7 +41,7 @@
 
 ## 3. 前端与供应链
 
-- 用户数据通过 `textContent` 渲染，服务端不执行 HTML 转义（由浏览器安全插入文本节点）。
+- 用户数据通过 `textContent` 渲染，服务端不执行 HTML 转义（由浏览器安全插入文本节点）。客户端饼图使用 ECharts HTML tooltip 时，动态 `client_name` 会先做实体转义。
 - Tailwind CSS 与 ECharts 使用固定版本构建并随应用从 `/static/vendor/` 提供；正常页面加载不依赖公共 CDN。
 - CSP 的脚本和样式来源仅允许 `'self'`，并保留当前页面所需的内联脚本/样式许可；同时发送 `X-Content-Type-Options`、`X-Frame-Options` 与 `Referrer-Policy`。
 - 合成恶意媒体元数据、服务器筛选和移动视口由 Playwright 浏览器测试覆盖；CI 重新构建本地资产后执行。

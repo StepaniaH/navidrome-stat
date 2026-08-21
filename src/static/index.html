@@ -1295,6 +1295,15 @@
             document.getElementById(emptyId).classList.toggle('hidden', hasData);
         }
 
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         function renderPlayerChart(data) {
             const legend = document.getElementById('playerChartLegend');
             legend.replaceChildren();
@@ -1359,6 +1368,13 @@
                 ...chartBase,
                 color: colorPalette,
                 legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+                tooltip: {
+                    ...chartBase.tooltip,
+                    formatter: (params) => {
+                        const name = escapeHtml(params.name || '');
+                        return `${name}<br/>${dashboardMessage('label.play')} ${dashboardPlays(params.value)}`;
+                    },
+                },
                 series: [{
                     name: 'Clients',
                     type: 'pie',

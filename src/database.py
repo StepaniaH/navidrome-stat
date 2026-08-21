@@ -72,22 +72,21 @@ def _date_window_bounds(
 
 
 def _previous_window_bounds(days: int, tz: ZoneInfo) -> tuple[str | None, str | None]:
-    """Return UTC cutoff strings for the previous equal-length window.
+    """Return UTC cutoff strings for the previous equal-length local window.
 
     Only meaningful for finite windows (``days > 0``); returns ``(None, None)``
-    otherwise. The previous window is ``[start - N days, start)`` in UTC, where
-    ``start`` is the current window's lower bound.
+    otherwise. The previous window is the ``days`` local calendar days
+    immediately before the current window's first local date, matching custom
+    date-range comparison. Subtracting the current window's UTC timedelta
+    would shift the bound by ±1 hour across DST transitions.
     """
     if days <= 0:
         return (None, None)
-    cur_start, cur_end = _window_bounds(days, tz)
-    if cur_start is None or cur_end is None:
-        return (None, None)
-    start_dt = datetime.strptime(cur_start, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-    end_dt = datetime.strptime(cur_end, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-    span = end_dt - start_dt
-    prev_start = start_dt - span
-    return (_format_utc(prev_start), _format_utc(start_dt))
+    today_local = datetime.now(tz).date()
+    current_start = today_local - timedelta(days=int(days) - 1)
+    previous_end = current_start - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=int(days) - 1)
+    return _date_window_bounds(previous_start, previous_end, tz)
 
 
 def _window_predicate(

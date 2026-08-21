@@ -440,6 +440,8 @@ def test_client_legend_and_transcoding_percentages_exist(source):
     assert "transcoding_rate_pct" in player_block
     assert "textContent" in player_block
     assert "innerHTML" not in player_block
+    assert "escapeHtml(params.name" in player_block
+    assert "function escapeHtml(" in source
 
     transcode_block = _function_block(source, "renderTranscodingChart")
     assert "playsPct" in transcode_block

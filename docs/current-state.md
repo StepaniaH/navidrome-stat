@@ -22,7 +22,7 @@
 
 1. FastAPI lifespan 调用 `init_db()`，再由 `CollectorManager` 为启用且配置完整的服务器创建 client、tracker 与轮询任务。
 2. 无多服务器记录时，lifespan 调用 `resolve_effective_source_config()`（环境变量 > 已保存 DB 值）解析兼容来源；多服务器记录由 `servers` 表提供。`NavidromeClient` 每次请求生成六位 salt 和 MD5 token。
-3. `CollectorManager` 对完整的期望服务器配置做协调，并按服务器 ID 独立管理 `NavidromeClient`、`PlaybackSessionTracker`、task 与轮询健康状态。首次创建多服务器配置会移除 legacy collector，删除最后一项时可恢复完整的 legacy 配置；未变化的 collector 不重启。轮询先探测 `/rest/getOpenSubsonicExtensions`，上游声明 `playbackReport` 时使用 `state`、`positionMs`、`playbackRate`，否则保持 `getNowPlaying` 轮询兼容。`status=ok` 且 `nowPlaying` 缺失或为 JSON `null` 时按无人播放处理，不记为轮询失败。
+3. `CollectorManager` 对完整的期望服务器配置做协调，并按服务器 ID 独立管理 `NavidromeClient`、`PlaybackSessionTracker`、task 与轮询健康状态。首次创建多服务器配置会移除 legacy collector，删除最后一项时可恢复完整的 legacy 配置；未变化的 collector 不重启。轮询先探测 `/rest/getOpenSubsonicExtensions`，上游声明 `playbackReport` 时使用 `state`、`positionMs`、`playbackRate`，否则保持 `getNowPlaying` 轮询兼容。`status=ok` 且 `nowPlaying` 缺失或为 JSON `null` 时按无人播放处理，不记为轮询失败。上游 `status=ok` 后会话落库失败只增加 save 计数，仍记 poll success，不触发轮询退避。
 4. 同一播放器继续播放同一 `track_id` 时累加 `active_duration_sec`（每次活跃观测累加距上一次活跃观测的时间），更新 `last_active_at` 与 `last_seen_at`；暂停或缺失的轮询不累加时长也不更新 `last_active_at`；换曲立即结算旧会话。
 5. 每个 poller 会话有随机 `session_id`。达到 `PLAY_THRESHOLD_SEC` 时以该 ID 创建幂等检查点，之后按 `CHECKPOINT_INTERVAL_SEC` 刷新，结束时更新同一行的最终活跃时长并标记 `finalized`，因此不会重复增加播放次数。启动时把遗留的未完成检查点按最后一次持久化时长标记为恢复完成，不推测中断后的时长。数据库临时失败不会把会话静默标成已保存；最多按 `SAVE_RETRY_ATTEMPTS` 重试，仍失败则保留内存状态供后续观测或关闭结算重试。时长同时登记 `reported` 或 `estimated` 置信度。
 6. Dashboard 历史数据通过 `/api/stats/dashboard` 一次获取，进程内缓存 60 秒、最多 64 个键，播放与隐私写入后失效。缓存按 key 合并并发构建，不同 key 不因全局锁互相阻塞，失效期间完成的旧构建不会回填。页面可见时历史每 60 秒刷新、正在播放每 10 秒刷新；隐藏时暂停实时刷新并把历史间隔延长至 300 秒。预设/自定义日期、时区、排行指标和服务器筛选共同构成 snapshot 键。桌面顶部为无外层卡片的单行应用栏，标题、时间、服务器、状态、更新时间与操作同一基线；760px 以下才把筛选分组到第二行。自定义 listbox 保留键盘与可访问性语义；服务器选择器只接收 `id` 与 `display_name`，不会下发连接地址或凭据。最近播放在桌面使用固定比例六列表格且不产生横向滚动，640px 以下将同一六字段记录改排为纵向信息块；页脚左右展示产品名与公开 GitHub/MIT 链接。Tailwind CSS 与 ECharts 固定版本并由 `/static/vendor/` 同源提供。
@@ -40,7 +40,7 @@
 - 切换为不同的活跃曲目会立即结算旧会话。
 - `listen_duration_sec` 为活跃观测时长（向下取整），不含暂停后的挂钟时间。
 - 活跃会话由 `PlaybackSessionTracker` 维护，只存在于单个进程内。已达到阈值的会话有数据库检查点；未达到阈值的内存会话在异常退出时仍可能丢失。多 worker 或多副本之间不共享状态。
-- `NavidromeClient` 由 `CollectorManager` 创建；配置替换、禁用、删除或 lifespan 关闭时执行 `close()`。批量结算/关闭会继续处理其他会话和 collector，完成清理后再汇总抛出脱敏错误。轮询失败时指数退避后继续下一轮，上限由 `MAX_POLL_BACKOFF_SEC` 控制。
+- `NavidromeClient` 由 `CollectorManager` 创建；配置替换、禁用、删除或 lifespan 关闭时执行 `close()`。`replace`/`reconcile` 在旧会话 finalize 失败后仍启动替换采集器，只记录脱敏错误；`stop`/`stop_all` 会继续清理其余 collector，完成后再汇总抛出脱敏错误。上游轮询失败时指数退避后继续下一轮，上限由 `MAX_POLL_BACKOFF_SEC` 控制；落库失败不走该退避。
 
 ## 3. 持久化与查询
 
@@ -49,7 +49,7 @@
 - 每次写入或查询仍打开独立 aiosqlite 连接，但统一启用 5 秒 busy timeout、外键检查与 `synchronous=NORMAL`；初始化时选择 WAL。该策略只面向单机 SQLite，不支持共享网络文件系统或多副本。
 - `played_at` 保存结算时 `last_seen_at` 的 ISO 8601 字符串，当前由应用产生时包含 UTC 偏移。
 - 播放器和转码统计按已落库记录数聚合，不按监听秒数聚合。
-- 历史窗口由 `_window_predicate(...)`/`_previous_window_predicate(...)` 输出参数化 SQL 谓词；`days<=0` 表示全部历史，有限预设按所选时区的本地自然日计算。Dashboard snapshot 还支持成对的 `start_date`/`end_date`，以包含首尾日期的本地日期闭区间查询，前周期为前一个等长日期段，最大 366 天；日期和时区从不字符串拼接进 SQL。
+- 历史窗口由 `_window_predicate(...)`/`_previous_window_predicate(...)` 输出参数化 SQL 谓词；`days<=0` 表示全部历史，有限预设按所选时区的本地自然日计算，上一窗口也是紧挨着的等长本地日历日（跨 DST 不按当前窗口 UTC 时长前移）。Dashboard snapshot 还支持成对的 `start_date`/`end_date`，以包含首尾日期的本地日期闭区间查询，前周期为前一个等长日期段，最大 366 天；日期和时区从不字符串拼接进 SQL。
 - `get_daily_stats(days=30)`（API `GET /api/stats/daily?days=`，默认 30，接受 `0` 或 `7–90`）按日聚合，`days=0` 不附加日期过滤。
 - `get_summary(days=0)` 返回 `/api/stats/summary` 的窗口对比字段（`active_days`、`average_daily_*`、`previous_total_*`、`*_change_pct`、`window_days`）；有限窗口按 `active_days` 平均，`days=0` 按最早至最晚播放日的包含天数平均。
 - `get_player_stats()` 返回每个客户端的播放次数、总/平均收听秒数、转码次数与转码率；`get_transcoding_stats()` 同时返回播放占比与收听时长占比。
@@ -60,7 +60,7 @@
 - 所有聚合查询（summary/players/transcoding/hourly/heatmap/daily/top-artists/top-albums/history）都接受可选 `timezone_name` 参数（默认 `UTC`），仅用于 Python 端 bucket 边界与有限窗口的 UTC 截止计算；时间戳仍以 UTC ISO 字符串存储。
 - history 接口按 `source_id, username, track_id` 聚合；跨服务器相同 track ID 不合并。`title`/`artist`/`album` 取自最新插入行（`MAX(id)`），按最近 `played_at` 排序。
 - 播放历史**默认永久保留**；可通过 `/settings` 将保留期设为 1–360 天或恢复永久。
-- 后台任务按 `RETENTION_MAINTENANCE_SEC`（默认 24 小时）自动清理超出保留期的记录；启动时也会执行一次。
+- 后台任务按 `RETENTION_MAINTENANCE_SEC`（默认 24 小时）自动清理超出保留期的记录；启动时也会执行一次。预览与删除用 `datetime(played_at) < datetime(?)` 比较，cutoff 格式与统计窗口相同，避免带偏移的 ISO 字符串按字典序漏删。
 - 按用户导出格式版本 2 同时包含正式播放与短播放尝试，并保留来源与置信度；导入兼容版本 1/2，限制 5 MiB、10000 条，校验字段长度、带时区时间戳、转码值和 0–7 天时长。删除与过期清理的预览及执行统一覆盖两张表。
 - poller `session_id` 与 `attempt_id` 使用部分唯一索引提供幂等写入；导入/旧记录没有这些 ID，仍保留追加语义。
 
@@ -69,7 +69,7 @@
 ## 4. HTTP 与前端
 
 - 应用包含 `/`、`/settings`、存活/就绪/指标、认证、统计、隐私、兼容来源、多服务器与 about API。可选 `STATS_API_TOKEN` 保护业务 API。
-- `/health` 与 `/health/ready` 始终公开。`/metrics` 默认公开；设置 `STATS_METRICS_AUTH=true` 且配置了 `STATS_API_TOKEN` 时需认证。启用令牌后 `/docs`、`/redoc`、`/openapi.json` 与 `/api/*`（登录/状态除外）需要认证。`OPENAPI_ENABLED=false` 时 OpenAPI 路由不存在。
+- `/health` 与 `/health/ready` 始终公开。`/metrics` 默认公开；设置 `STATS_METRICS_AUTH=true` 且配置了 `STATS_API_TOKEN` 时需认证。`navidrome_stat_polling_task_up` 在存在 collector 时要求全部轮询任务存活，与就绪探针一致。启用令牌后 `/docs`、`/redoc`、`/openapi.json` 与 `/api/*`（登录/状态除外）需要认证。`OPENAPI_ENABLED=false` 时 OpenAPI 路由不存在。
 - `GET /api/stats/servers` 按配置的服务器身份聚合正式播放次数与收听秒数；Dashboard snapshot 的 `servers` 字段使用同一数据。`available_servers` 仅含 `id` 与 `display_name`。
 - `GET /api/about` 返回名称、`APP_VERSION`（缺省 `0.7.0-dev`）、schema 版本、功能列表、MIT 与公开 `project_url`（GitHub 仓库地址）。
 - `POST /api/auth/login` 在启用认证时设置 httpOnly、SameSite=Lax 会话 Cookie；`SESSION_COOKIE_SECURE=true` 时增加 Secure。`POST /api/auth/logout` 删除 Cookie 时使用同一组属性。Bearer 方案名大小写不敏感。非 ASCII 凭据返回 401，不会因 `compare_digest` 抛错变成 500。登录有每进程每来源摘要 5 次/分钟限制，摘要使用进程随机盐且不保存原始客户端地址。
@@ -77,7 +77,7 @@
 - FastAPI 在 `OPENAPI_ENABLED` 为真（默认）时提供 `/openapi.json`、`/docs` 和 `/redoc`；为假时不注册这些路由。
 - history 的 `limit` 使用 FastAPI `Query` 校验，范围 1–100，默认 10。统计窗口 `days` 使用 FastAPI `Query` 校验（`ge=0, le=90`）并由 `_validate_stats_days` 进一步拒绝 `1–6`；`0` 表示全部历史。`daily` 默认 `30`，其他历史端点默认 `0`（全部历史）以保留既有调用方行为；`now-playing` 不接受 `days`。所有历史端点还接受可选 `timezone` 查询参数（IANA 名称，默认 `UTC`），经 `_validate_stats_timezone` 与 `zoneinfo.ZoneInfo` 校验，非法值返回 422；`now-playing` 不接受 `timezone`。`/api/stats/heatmap` 默认 `days=30`，返回 168 行零填充网格。
 - Dashboard 的 Tailwind CSS 和 ECharts 固定版本并同源加载；CSP 的脚本与样式来源仅为 `'self'`（保留既有内联脚本/样式许可）。
-- 页面提供可见的错误横幅、手动刷新按钮和上次更新时间；历史表格用户数据用 `textContent` 渲染。
+- 页面提供可见的错误横幅、手动刷新按钮和上次更新时间；历史表格与客户端图例的用户数据用 `textContent` 渲染。客户端饼图的 ECharts HTML tooltip 对 `client_name` 做实体转义。
 - 设置页（`/settings`）按「连接、隐私、偏好、关于」提供四个顶级分区；桌面使用带分组标签的左侧导航，760px 以下改排为四列顶部导航。每个分区只有一个主表面，内部用分隔行组织状态、配置与危险操作，不再使用多层卡片。设置页不存在原生 `<select>`：语言、主题、时区和动态用户选择均使用同一个可键盘操作的 listbox 控制器，支持方向键、Home/End、Escape、外部点击与 ARIA 选中态。连接分区包含多服务器 CRUD、Navidrome URL/用户名/密码表单、保存和测试连接；变更保存后立即应用。隐私策略以 `loading/ready/error` 动态状态独立渲染，不带静态翻译键，因此成功加载或切换语言后不会被覆盖回“加载中…”，失败时显示可重试状态。偏好合并原常规与外观，提供语言、Catppuccin Frappe/Latte、浏览器/UTC 时区、减少动态效果与恢复默认值；这些偏好只在浏览器 `localStorage` 中。密码输入为 `type=password`，GET 仅返回 `password_configured: bool`，从不渲染密码。
 - Dashboard 与设置页共同加载 `src/static/localization.js`：语言值先按支持列表规范化，缺失键回退英语，动态值使用具名占位插值，`data-i18n` 只用于静态文案。两页的动态操作、状态、数值单位和错误文案均通过翻译键生成，不保留中英文文字二选一函数；新增语言时只需补齐该语言消息表。`navidrome-motion=reduced` 同时关闭两页的脉冲、骨架和过渡动画。
 

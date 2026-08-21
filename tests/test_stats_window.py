@@ -20,11 +20,15 @@ clock so this suite has no dependence on real playback data.
 import asyncio
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from src.database import (
+    _format_utc,
+    _previous_window_bounds,
+    _window_bounds,
     get_daily_stats,
     get_hourly_stats,
     get_playback_history,
@@ -160,6 +164,60 @@ def test_get_summary_zero_previous_window_yields_null_pct(db_path):
     assert summary["previous_total_listen_sec"] == 0
     assert summary["plays_change_pct"] is None
     assert summary["listen_change_pct"] is None
+
+
+def test_previous_window_uses_local_calendar_days_across_dst(monkeypatch, db_path):
+    """Preset previous windows follow local midnights, not UTC-span subtraction."""
+    import src.database as database
+
+    tz = ZoneInfo("America/New_York")
+    frozen = datetime(2024, 3, 12, 15, 0, tzinfo=tz)
+
+    class FrozenDateTime:
+        @staticmethod
+        def now(tz=None):
+            if tz is None:
+                return frozen.astimezone(timezone.utc).replace(tzinfo=None)
+            return frozen.astimezone(tz)
+
+        combine = staticmethod(datetime.combine)
+
+    monkeypatch.setattr(database, "datetime", FrozenDateTime)
+
+    start, end = _previous_window_bounds(7, tz)
+    expected_start = _format_utc(datetime(2024, 2, 28, 0, 0, tzinfo=tz))
+    expected_end = _format_utc(datetime(2024, 3, 6, 0, 0, tzinfo=tz))
+    assert (start, end) == (expected_start, expected_end)
+
+    current_start, current_end = _window_bounds(7, tz)
+    utc_span = datetime.fromisoformat(current_end.replace(" ", "T") + "+00:00") - (
+        datetime.fromisoformat(current_start.replace(" ", "T") + "+00:00")
+    )
+    naive_previous_start = datetime.fromisoformat(
+        current_start.replace(" ", "T") + "+00:00"
+    ) - utc_span
+    assert _format_utc(naive_previous_start) != start
+
+    asyncio.run(init_db(db_path))
+    # 2024-02-28 00:30 EST is inside the local previous window, but would sit
+    # before a UTC-span previous start (2024-02-28 01:00 EST).
+    asyncio.run(
+        save_play_session(
+            _session("2024-02-28T05:30:00+00:00", track_id="dst-previous"),
+            db_path=db_path,
+        )
+    )
+    asyncio.run(
+        save_play_session(
+            _session("2024-03-12T16:00:00+00:00", track_id="dst-current"),
+            db_path=db_path,
+        )
+    )
+    summary = asyncio.run(
+        get_summary(days=7, timezone_name="America/New_York", db_path=db_path)
+    )
+    assert summary["total_plays"] == 1
+    assert summary["previous_total_plays"] == 1
 
 
 def test_custom_date_window_filters_and_zero_fills_inclusive_dates(db_path):

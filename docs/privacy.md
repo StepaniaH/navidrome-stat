@@ -27,7 +27,7 @@
 - Docker 默认部署将 SQLite 文件保存在挂载到 `/data` 的命名卷中。该卷以及从中复制的备份同时包含明文收听行为数据，并可能包含通过设置页保存的服务器凭据；卷、备份和恢复环境必须使用与数据库相同或更严格的访问控制。
 - 播放历史**默认永久保留**（用户确认，2026-07-16）；保留期可在 1–360 天与永久之间切换，变更后需预览并确认才执行清理。
 - 按用户导出格式版本 2 同时携带正式播放和短播放尝试，并包含来源与时长置信度；不导出内部 `session_id`/`attempt_id`。附件固定命名为 `navidrome-stat-export.json`，用户名不会进入文件名。导入兼容版本 1/2，最大 5 MiB、10000 条，校验字段长度、带时区时间戳、转码值和 0–7 天时长。
-- 保留预览、存储统计和实际清理统一覆盖 `play_history` 与 `play_attempts`，只返回总计及分表条数，不返回或记录曲目内容。按用户删除同样覆盖两张表。
+- 保留预览、存储统计和实际清理统一覆盖 `play_history` 与 `play_attempts`，只返回总计及分表条数，不返回或记录曲目内容。过期判断使用 `datetime(played_at)` 与统计窗口相同的 UTC cutoff 格式。按用户删除同样覆盖两张表。
 - 启用 `STATS_API_TOKEN` 时，统计 API、隐私 API 与 OpenAPI 需 Bearer 令牌或登录会话；`/health` 探针仍匿名。`/metrics` 默认仍匿名（不含用户名或曲目标签），可设 `STATS_METRICS_AUTH=true` 要求同一认证。未设置令牌时仅适用于可信网络。
 - Tailwind CSS 与 ECharts 已固定版本并从本服务 `/static/vendor/` 提供，正常页面加载不向公共 CDN 发请求；CSP 的脚本与样式来源仅允许同源。用户/媒体/服务器显示名均通过 `textContent` 或节点属性安全写入。
 - 页面语言、主题、统计时区和减少动态效果偏好只保存在当前浏览器的 `localStorage`，不包含用户名、曲目或凭据；其中只有统计时区会解析为已登记的 IANA 名称并发送到统计 API，用于日期/小时分桶。设置页“恢复默认值”仅删除 `navidrome-language`、`navidrome-theme`、`navidrome-timezone` 与 `navidrome-motion`，不会删除或读取播放数据。

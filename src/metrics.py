@@ -39,7 +39,7 @@ def format_prometheus_metrics(active_sessions: int) -> str:
         "# HELP navidrome_stat_upstream_error_code Last upstream Subsonic error code (-1 if none).",
         "# TYPE navidrome_stat_upstream_error_code gauge",
         f"navidrome_stat_upstream_error_code {upstream_error_code}",
-        "# HELP navidrome_stat_polling_task_up 1 if the polling task is alive, 0 otherwise.",
+        "# HELP navidrome_stat_polling_task_up 1 if every collector polling task is alive, 0 otherwise.",
         "# TYPE navidrome_stat_polling_task_up gauge",
         f"navidrome_stat_polling_task_up {polling_task_up}",
     ]

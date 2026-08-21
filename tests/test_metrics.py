@@ -128,3 +128,42 @@ async def test_readiness_reports_one_failed_collector(monkeypatch):
     assert report["metrics"]["collector_count"] == 2
     assert report["metrics"]["healthy_collector_count"] == 1
     assert report["metrics"]["degraded_collector_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_polling_task_up_requires_every_collector_alive(monkeypatch):
+    import asyncio
+
+    import src.metrics as metrics
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState()
+    alive = asyncio.create_task(asyncio.Event().wait())
+    finished = asyncio.create_task(asyncio.sleep(0))
+    await finished
+    state.set_collector_task("server-a", alive)
+    state.set_collector_task("server-b", finished)
+    monkeypatch.setattr(metrics, "runtime_state", state)
+    try:
+        assert state.polling_task_alive() is False
+        body = metrics.format_prometheus_metrics(0)
+        assert "navidrome_stat_polling_task_up 0\n" in body
+        assert "every collector polling task is alive" in body
+    finally:
+        alive.cancel()
+        await asyncio.gather(alive, return_exceptions=True)
+
+    both_alive = asyncio.create_task(asyncio.Event().wait())
+    other_alive = asyncio.create_task(asyncio.Event().wait())
+    state = RuntimeState()
+    state.set_collector_task("server-a", both_alive)
+    state.set_collector_task("server-b", other_alive)
+    monkeypatch.setattr(metrics, "runtime_state", state)
+    try:
+        assert state.polling_task_alive() is True
+        body = metrics.format_prometheus_metrics(0)
+        assert "navidrome_stat_polling_task_up 1\n" in body
+    finally:
+        both_alive.cancel()
+        other_alive.cancel()
+        await asyncio.gather(both_alive, other_alive, return_exceptions=True)

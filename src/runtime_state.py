@@ -87,7 +87,7 @@ class RuntimeState:
 
     def polling_task_alive(self) -> bool:
         if self.collectors:
-            return any(collector.task_alive() for collector in self.collectors.values())
+            return all(collector.task_alive() for collector in self.collectors.values())
         return self.polling_task is not None and not self.polling_task.done()
 
     def collector_snapshot(self, source_id: str) -> dict:
