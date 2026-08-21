@@ -33,7 +33,7 @@
 | NDS-DATA-004 | 原生历史适配器调研 | P2 | 待办 | 公开接口确认；禁止私有库猜测 |
 | NDS-CORE-006 | 认证与空闲轮询正确性 | P1 | 已完成 | 无 |
 | NDS-CORE-007 | 采集、窗口、保留与观测正确性 | P1 | 已完成 | 无 |
-| NDS-CORE-008 | 导入请求体流式上限 | P2 | 进行中 | 无 |
+| NDS-CORE-008 | 导入请求体流式上限 | P2 | 已完成 | 无 |
 
 已完成（全文见档案；ID 保留）：NDS-SEC-002、NDS-CORE-001、NDS-CORE-002、NDS-CORE-003、NDS-CORE-004、NDS-CORE-005、NDS-DATA-001、NDS-DATA-002、NDS-DATA-003、NDS-API-001、NDS-REL-001、NDS-REL-002、NDS-OPS-001、NDS-TEST-001、NDS-DOC-001、NDS-DOC-002、NDS-CI-001、NDS-SRC-001、NDS-UI-002、NDS-UI-003、NDS-UI-004、NDS-UI-005、NDS-UI-006、NDS-UI-007、NDS-UI-008、NDS-UI-009。
 
@@ -138,7 +138,7 @@
 
 ## NDS-CORE-008 导入请求体流式上限
 
-- **优先级/状态**：P2 / 进行中
+- **优先级/状态**：P2 / 已完成
 - **依赖**：无。不改变认证默认值；不放宽 5 MiB / 10000 条校验。
 - **目标**：让隐私导入的 5 MiB 上限在缺少 `Content-Length`（例如 chunked）时仍然在读取请求体过程中生效，而不是只在 JSON 已全部进入内存后由 `json.dumps` 再量一次。
 - **实施步骤**：
@@ -148,9 +148,9 @@
   4. 更新 `docs/interfaces.md` 兼容说明：仍是 5 MiB，只是执行点前移。
 - **验收标准**：缺少 `Content-Length` 的超限导入不会把完整 body 交给 JSON 解析；默认匿名模式不变；无 schema 变更。
 - **验证命令**：`.venv/bin/python -m pytest -q tests/test_privacy_api.py tests/test_privacy_ops.py`；`.venv/bin/python -m pytest -q`；`.venv/bin/ruff check .`；`git diff --check`。
-- **涉及文件**：预计 `src/main.py`、`src/privacy_ops.py`、相关测试、`docs/interfaces.md`、`docs/security.md`、本文件。
+- **涉及文件**：`src/request_limits.py`、`src/main.py`、`tests/test_request_limits.py`、`tests/test_privacy_api.py`、`docs/interfaces.md`、`docs/current-state.md`、`docs/security.md`、`docs/privacy.md`、`CHANGELOG.md`、本文件。
 - **风险/回滚**：错误截断合法流式客户端。保留 JSON 层二次校验作为回滚安全网。
-- **完成记录**：未填写。
+- **完成记录**：2026-08-21，Cursor Agent。新增 `PrivacyImportBodyLimitMiddleware`：导入 POST 按实际已读字节累计，超过 `IMPORT_MAX_PAYLOAD_BYTES` 或非法/`Content-Length` 过大时返回 413，并排空剩余 chunk，不调用 `import_user_data`。合法小于上限的分块请求仍 200。JSON 层 `json.dumps` 检查保留。无 schema 或认证默认值变更。验证：`.venv/bin/python -m pytest -q tests/test_privacy_api.py tests/test_privacy_ops.py tests/test_request_limits.py` 通过；全量 `.venv/bin/python -m pytest -q` 为 `414 passed`；`.venv/bin/ruff check .` 通过；`.venv/bin/python scripts/check_md_links.py` 通过；`git diff --check` 通过。提交 `7a7e8e3`，PR #27。遗留：上限只作用于隐私导入路径，其他 POST 仍无通用请求体封顶。
 
 ## NDS-DEP-002 基础镜像 digest 与发布来源
 
