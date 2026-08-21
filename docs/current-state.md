@@ -69,12 +69,12 @@
 ## 4. HTTP 与前端
 
 - 应用包含 `/`、`/settings`、存活/就绪/指标、认证、统计、隐私、兼容来源、多服务器与 about API。可选 `STATS_API_TOKEN` 保护业务 API。
-- `/health`、`/health/ready` 与 `/metrics` 始终公开。启用令牌后 `/docs`、`/redoc`、`/openapi.json` 与 `/api/*`（登录/状态除外）需要认证。
+- `/health` 与 `/health/ready` 始终公开。`/metrics` 默认公开；设置 `STATS_METRICS_AUTH=true` 且配置了 `STATS_API_TOKEN` 时需认证。启用令牌后 `/docs`、`/redoc`、`/openapi.json` 与 `/api/*`（登录/状态除外）需要认证。`OPENAPI_ENABLED=false` 时 OpenAPI 路由不存在。
 - `GET /api/stats/servers` 按配置的服务器身份聚合正式播放次数与收听秒数；Dashboard snapshot 的 `servers` 字段使用同一数据。`available_servers` 仅含 `id` 与 `display_name`。
-- `GET /api/about` 返回名称、`APP_VERSION`（缺省 `0.7.0-dev`）、schema 版本、功能列表与 MIT；`project_url` 当前为 `null`。
+- `GET /api/about` 返回名称、`APP_VERSION`（缺省 `0.7.0-dev`）、schema 版本、功能列表、MIT 与公开 `project_url`（GitHub 仓库地址）。
 - `POST /api/auth/login` 在启用认证时设置 httpOnly、SameSite=Lax 会话 Cookie；`SESSION_COOKIE_SECURE=true` 时增加 Secure。登录有每进程每来源摘要 5 次/分钟限制，摘要使用进程随机盐且不保存原始客户端地址。
 - 响应附加 CSP、`nosniff`、`DENY` 框架与 `no-referrer` 策略。
-- FastAPI 自动提供默认 OpenAPI 路由（通常为 `/openapi.json`、`/docs` 和 `/redoc`），代码未显式关闭或定制。
+- FastAPI 在 `OPENAPI_ENABLED` 为真（默认）时提供 `/openapi.json`、`/docs` 和 `/redoc`；为假时不注册这些路由。
 - history 的 `limit` 使用 FastAPI `Query` 校验，范围 1–100，默认 10。统计窗口 `days` 使用 FastAPI `Query` 校验（`ge=0, le=90`）并由 `_validate_stats_days` 进一步拒绝 `1–6`；`0` 表示全部历史。`daily` 默认 `30`，其他历史端点默认 `0`（全部历史）以保留既有调用方行为；`now-playing` 不接受 `days`。所有历史端点还接受可选 `timezone` 查询参数（IANA 名称，默认 `UTC`），经 `_validate_stats_timezone` 与 `zoneinfo.ZoneInfo` 校验，非法值返回 422；`now-playing` 不接受 `timezone`。`/api/stats/heatmap` 默认 `days=30`，返回 168 行零填充网格。
 - Dashboard 的 Tailwind CSS 和 ECharts 固定版本并同源加载；CSP 的脚本与样式来源仅为 `'self'`（保留既有内联脚本/样式许可）。
 - 页面提供可见的错误横幅、手动刷新按钮和上次更新时间；历史表格用户数据用 `textContent` 渲染。
@@ -85,13 +85,13 @@
 
 - Docker 镜像采用多阶段构建：builder 阶段基于 `python:3.11-slim` 安装 `build-essential` 并在 `/opt/venv` 中安装 `requirements.lock`；runner 阶段同样基于 `python:3.11-slim`，仅复制 `/opt/venv`，不保留 `build-essential`，并以非 root 用户 `appuser`（UID 1000）运行；镜像预建由该用户拥有的 `/data` 持久化目录。
 - Uvicorn 在容器和 `src/main.py` 直接运行路径中绑定 `0.0.0.0:39421`。
-- 仓库 [`docker-compose.yml`](../docker-compose.yml) 将宿主机 `39421` 映射到容器同端口，以命名卷挂载 `/data`，容器内数据库路径默认为 `/data/navidrome_stats.db`。Compose 会读取项目目录 `.env` 做**文件内变量替换**，但只有写在 `environment:` 里的键会进入容器；未列出的变量（例如 `SESSION_COOKIE_SECURE`）不会自动注入。README 中的独立 `compose.yaml` 示例列出了更多键。
+- 仓库 [`docker-compose.yml`](../docker-compose.yml) 将宿主机 `39421` 映射到容器同端口，以命名卷挂载 `/data`，容器内数据库路径默认为 `/data/navidrome_stats.db`。Compose 会读取项目目录 `.env` 做**文件内变量替换**，并且把 `environment:` 中列出的键注入容器（含 `SESSION_COOKIE_SECURE`、`STATS_METRICS_AUTH`、`OPENAPI_ENABLED`）。未列出的变量不会自动注入。
 - Compose 声明存活健康检查（`GET /health`），未将上游失败配置为容器重启条件。
 - `requirements.txt`、`requirements.lock` 与 `requirements-dev.txt` 固定运行与测试依赖版本；Docker 使用 `requirements.lock` 安装。
 - 仓库提供 `.dockerignore`，构建上下文排除 `.env`、数据库、测试与文档。
 - 代码提供可选 `STATS_API_TOKEN` 访问控制，但没有 TLS 终止、反向代理或备份自动化；这些部署边界仍需由实际环境提供，当前仓库无法证明。
 - 支持的运行时是 Python 3.11（Dockerfile 与 CI）。仓库可在其他 3.x 上启动，但不构成已验证矩阵。
-- 公开 git 标签有 `v0.5.0`–`v0.7.0`；`v0.5.0` 与 `v0.5.3` 指向同一提交。`v0.7.0` 之后 `main` 仍有未打标签的 Dashboard 变更，因此缺省 `APP_VERSION` 为 `0.7.0-dev`。GitHub Releases 在 2026-08-21 核验时没有独立 Release 对象；tag `v*` 仍会触发 Docker Hub 多架构推送。
+- 公开 git 标签有 `v0.5.0`–`v0.7.0`；`v0.5.0` 与 `v0.5.3` 指向同一提交。`v0.7.0` 之后 `main` 仍有未打标签的 Dashboard 变更，因此缺省 `APP_VERSION` 为 `0.7.0-dev`。tag `v*` 会推送 Docker Hub 多架构镜像并尝试创建 GitHub Release。
 
 ## 6. 测试现状
 
@@ -118,7 +118,7 @@
 - README 计数语义（`>= PLAY_THRESHOLD_SEC`）、播放中检查点、轮询驱动、Compose 服务名与端口已与代码对齐。
 - 前端公共 CDN 已移除并有合成浏览器回归；真实部署的 TLS、授权和网络暴露仍需部署方验收。
 - 默认匿名访问仍可用；公网暴露需设置 `STATS_API_TOKEN` 或反向代理（见 `docs/security.md`）。
-- 2026-08-21 已补登此前漏记的 `GET /api/stats/servers`，并写明 `/metrics` 匿名、`project_url=null`、仓库 Compose 的环境变量注入范围。
+- 2026-08-21 已补登 `GET /api/stats/servers`。`/metrics` 默认仍匿名，可用 `STATS_METRICS_AUTH` 在已配置令牌时改为需认证。`project_url` 现返回公开 GitHub 仓库地址。
 - NDS-SRC-001 完成记录中的「热更新未实现」已被 NDS-REL-002 取代；NDS-DEP-001 中「非 root 未做」已被 Dockerfile `appuser` 取代。仍待验收的是部署方确认项，不是这些代码缺口。
 
 已完成任务全文见 [`tasks-completed.md`](tasks-completed.md)。后续开源阶段见 [`roadmap.md`](roadmap.md)。

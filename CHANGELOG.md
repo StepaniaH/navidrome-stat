@@ -8,6 +8,10 @@ This file is reconstructed from public git tags and merge commits. It does not c
 
 - Dashboard filter bar, custom date range, settings information architecture, and localization runtime (merged to `main` after `v0.7.0` via PR #7).
 - Documentation map, contributor/security entry points, and the open-source roadmap.
+- `/api/about` now returns the public GitHub repository URL.
+- Tagged image publishes also create a GitHub Release.
+- Optional `STATS_METRICS_AUTH` protects `/metrics` when `STATS_API_TOKEN` is set. Optional `OPENAPI_ENABLED=false` unregisters OpenAPI routes. Defaults keep previous anonymous metrics and enabled docs.
+- Repository Compose file passes `SESSION_COOKIE_SECURE`, retry/backoff, metrics, and OpenAPI flags into the container.
 
 ## [0.7.0] - 2026-07-28
 

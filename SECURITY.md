@@ -20,7 +20,7 @@ Whether private advisories are enabled is a repository-owner setting and is not 
 Documented in [`docs/security.md`](docs/security.md) and [`docs/privacy.md`](docs/privacy.md):
 
 - Without `STATS_API_TOKEN`, the dashboard and statistics APIs are anonymous and must stay on a trusted network.
-- `/health`, `/health/ready`, and `/metrics` are currently reachable without a token.
+- `/health`, `/health/ready` remain reachable without a token. `/metrics` is public by default; set `STATS_METRICS_AUTH=true` when `STATS_API_TOKEN` is configured if the metrics endpoint should not be anonymous.
 - Settings-page Navidrome passwords are stored in plaintext in SQLite when saved through the GUI. Prefer environment variables if that is unacceptable.
 - The application does not terminate TLS.
 

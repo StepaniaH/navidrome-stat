@@ -13,7 +13,7 @@ Navidrome Statistic 是 **Navidrome / Subsonic 的自托管伴侣**：轮询 `ge
 - 单应用实例。一个实例可管理多个 Navidrome 服务器；多个本服务副本采集同一数据源会重复计数（见 NDS-ARCH-001）。
 - 行为数据默认按隐私数据处理，而不是匿名遥测。仓库不发送使用情况、崩溃报告或播放元数据到第三方。
 - 不读取 Navidrome 私有数据库，不绑定未登记的私有 API。原生收听历史若要接入，必须先有公开、可验证的接口（NDS-DATA-004）。
-- 可选共享口令 `STATS_API_TOKEN` 保护统计与设置 API；`/health` 与 `/metrics` 当前始终匿名。TLS、反向代理和公网暴露由部署方负责（NDS-SEC-001）。
+- 可选共享口令 `STATS_API_TOKEN` 保护统计与设置 API；`/health` 始终匿名。`/metrics` 默认匿名，可用 `STATS_METRICS_AUTH` 在已配置令牌时改为需认证。TLS、反向代理和公网暴露由部署方负责（NDS-SEC-001）。
 - 运行时契约是 **Python 3.11**（Dockerfile 与 CI）。其他解释器版本可能能跑，但不构成已验证承诺。
 
 当前版本叙事（代码事实）：
@@ -23,9 +23,9 @@ Navidrome Statistic 是 **Navidrome / Subsonic 的自托管伴侣**：轮询 `ge
 | 应用默认版本 | `APP_VERSION` 缺省 `0.7.0-dev`（`src/version.py`） |
 | 已打 git 标签 | `v0.5.0`–`v0.7.0` |
 | 领先标签的提交 | `v0.7.0` 之后还有 Dashboard UX 收敛（PR #7） |
-| GitHub Releases | 核验时无 Release 对象；镜像发布由 tag `v*` 触发 Docker Hub |
+| GitHub Releases | `v*` 镜像推送成功后由工作流创建；仓库核验时可能尚无历史 Release 对象 |
 | 公开镜像 | `stepaniah/navidrome-statistic`（amd64/arm64） |
-| `/api/about` 的 `project_url` | 当前固定为 `null` |
+| `/api/about` 的 `project_url` | 公开仓库 `https://github.com/StepaniaH/navidrome-stat` |
 
 ## 2. 阶段
 
@@ -37,13 +37,14 @@ Navidrome Statistic 是 **Navidrome / Subsonic 的自托管伴侣**：轮询 `ge
 
 已具备：双语 README、MIT、CI（pytest / Ruff / Compose / Markdown 链接 / Docker smoke / Playwright）、Dependabot、按 tag 推镜像、可选认证、隐私导出/删除、自托管前端。
 
-本阶段文档工作由 NDS-DOC-003 交付。仍待执行：
+本阶段文档工作由 NDS-DOC-003 交付。工程收口：
 
 | 任务 | 作用 |
 | --- | --- |
-| NDS-OSS-001 | 把 git 标签、CHANGELOG、GitHub Release 与 `/api/about` 对齐 |
+| NDS-OSS-001 | git 标签发布时创建 GitHub Release；`/api/about` 返回公开仓库 URL |
+| NDS-SEC-003 | `/metrics` 与 OpenAPI 可配置；默认保持兼容 |
+| NDS-PRIV-002 | 空白告知模板已提供；正文须部署方审批后才算完成告知 |
 | NDS-SEC-001、NDS-PRIV-001、NDS-DEP-001 | 保持待验收：仓库无法代替部署方确认访问范围、告知文案、卷权限 |
-| NDS-PRIV-002 | 提供可编辑、无真实数据的用户告知模板，文案须部署方审批 |
 
 阶段出口：打一枚包含 CHANGELOG 的版本标签，并创建对应 GitHub Release；文档声明「单实例 / 明文 SQLite / 可选口令」而不是「生产即开即用」。建议版本为 **0.8.0**（含标签后未发布的 Dashboard 变更），而不是直接宣称 1.0。
 
@@ -53,7 +54,7 @@ Navidrome Statistic 是 **Navidrome / Subsonic 的自托管伴侣**：轮询 `ge
 
 | 任务 | 作用 |
 | --- | --- |
-| NDS-SEC-003 | `/metrics` 与 OpenAPI 的暴露策略可配置；避免匿名指标口成为公网信息面 |
+| NDS-SEC-003 | `/metrics` 默认仍匿名；生产若公网暴露指标口应打开 `STATS_METRICS_AUTH` |
 | NDS-DEP-002 | 钉扎基础镜像 digest、记录发布来源 |
 | NDS-UI-001 / NDS-UI-010 | 补齐分区加载状态与读屏核验；浏览器合成测试已存在，不能再当作未做 |
 | NDS-API-001 遗留 | 明确 OpenAPI 公开策略（关闭、仅认证后可见、或保持现状并写入兼容承诺） |

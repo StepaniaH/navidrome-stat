@@ -76,7 +76,10 @@ services:
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
       CHECKPOINT_INTERVAL_SEC: ${CHECKPOINT_INTERVAL_SEC:-60}
       SAVE_RETRY_ATTEMPTS: ${SAVE_RETRY_ATTEMPTS:-3}
+      MAX_POLL_BACKOFF_SEC: ${MAX_POLL_BACKOFF_SEC:-60}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      STATS_METRICS_AUTH: ${STATS_METRICS_AUTH:-false}
+      OPENAPI_ENABLED: ${OPENAPI_ENABLED:-true}
       DATABASE_URL: /data/navidrome_stats.db
     restart: unless-stopped
     healthcheck:
@@ -155,6 +158,8 @@ To restore, stop the service, preserve the current volume, copy a verified backu
 | `NAVIDROME_PASS` | None | Initial Subsonic password. |
 | `DATABASE_URL` | `navidrome_stats.db` | SQLite file path. The Docker example uses `/data/navidrome_stats.db`. |
 | `STATS_API_TOKEN` | Empty | Protects the dashboard, statistics APIs, settings APIs, and OpenAPI routes when set. |
+| `STATS_METRICS_AUTH` | `false` | When `true` and `STATS_API_TOKEN` is set, `/metrics` requires the same authentication as the statistics APIs. |
+| `OPENAPI_ENABLED` | `true` | Set to `false` to unregister `/docs`, `/redoc`, and `/openapi.json`. |
 | `POLL_INTERVAL` | `10` | Poll interval in seconds, clamped to 5-300. |
 | `PLAY_THRESHOLD_SEC` | `30` | Active observed seconds required to count a play, clamped to 1-3600. |
 | `PAUSE_GRACE_SEC` | `30` | Seconds to retain a paused or missing in-memory session, clamped to 0-3600. |
@@ -171,7 +176,7 @@ A track counts once its accumulated active time is greater than or equal to `PLA
 - Without `STATS_API_TOKEN`, the dashboard and APIs are anonymous. Use that mode only on a trusted network.
 - The application does not terminate TLS. Place it behind a correctly configured HTTPS reverse proxy before remote access.
 - SQLite stores usernames, media metadata, listening timestamps, and settings-page credentials in plaintext.
-- Inform affected Navidrome users before collecting their listening activity and choose an appropriate retention period under **Settings > Privacy & Data**.
+- Inform affected Navidrome users before collecting their listening activity and choose an appropriate retention period under **Settings > Privacy & Data**. A fill-in template is in [`docs/privacy-notice.template.md`](docs/privacy-notice.template.md); it is not legal advice.
 - Protect `.env`, the Docker volume, backups, browser access, and reverse-proxy logs.
 - Tailwind CSS and ECharts are pinned and served by the application itself. The browser CSP permits only same-origin scripts and styles.
 - User exports use a fixed filename, include counted plays and short attempts, and can be imported from format version 1 or 2. Imports are bounded to 5 MiB and 10,000 records and validate timestamps, lengths, and duration ranges.

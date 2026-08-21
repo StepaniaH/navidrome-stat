@@ -76,7 +76,10 @@ services:
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
       CHECKPOINT_INTERVAL_SEC: ${CHECKPOINT_INTERVAL_SEC:-60}
       SAVE_RETRY_ATTEMPTS: ${SAVE_RETRY_ATTEMPTS:-3}
+      MAX_POLL_BACKOFF_SEC: ${MAX_POLL_BACKOFF_SEC:-60}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      STATS_METRICS_AUTH: ${STATS_METRICS_AUTH:-false}
+      OPENAPI_ENABLED: ${OPENAPI_ENABLED:-true}
       DATABASE_URL: /data/navidrome_stats.db
     restart: unless-stopped
     healthcheck:
@@ -155,6 +158,8 @@ docker compose start navidrome-stat
 | `NAVIDROME_PASS` | 无 | 初始 Subsonic 密码。 |
 | `DATABASE_URL` | `navidrome_stats.db` | SQLite 文件路径；Docker 示例使用 `/data/navidrome_stats.db`。 |
 | `STATS_API_TOKEN` | 空 | 设置后保护仪表盘、统计接口、设置接口和 OpenAPI 路由。 |
+| `STATS_METRICS_AUTH` | `false` | 为 `true` 且已设置 `STATS_API_TOKEN` 时，`/metrics` 需要与统计接口相同的认证。 |
+| `OPENAPI_ENABLED` | `true` | 设为 `false` 时不注册 `/docs`、`/redoc` 和 `/openapi.json`。 |
 | `POLL_INTERVAL` | `10` | 轮询间隔，限制在 5 至 300 秒。 |
 | `PLAY_THRESHOLD_SEC` | `30` | 计为一次播放所需的活跃观测秒数，限制在 1 至 3600。 |
 | `PAUSE_GRACE_SEC` | `30` | 在内存中保留暂停或暂时消失会话的秒数，限制在 0 至 3600。 |
@@ -171,7 +176,7 @@ docker compose start navidrome-stat
 - 未设置 `STATS_API_TOKEN` 时，仪表盘和接口允许匿名访问，只应在可信网络中使用。
 - 应用本身不终止 TLS。远程访问前，应部署配置正确的 HTTPS 反向代理。
 - SQLite 以明文保存用户名、媒体元数据、收听时间，以及通过设置页保存的凭据。
-- 收集播放活动前应告知受影响的 Navidrome 用户，并在“设置 > 隐私与数据”中选择适当的保留期。
+- 收集播放活动前应告知受影响的 Navidrome 用户，并在“设置 > 隐私与数据”中选择适当的保留期。可复制 [`docs/privacy-notice.template.md`](docs/privacy-notice.template.md) 自行编辑，该模板不是法律意见。
 - 应保护 `.env`、Docker 卷、备份、浏览器访问和反向代理日志。
 - Tailwind CSS 和 ECharts 固定版本并由应用自身提供；浏览器 CSP 只允许同源脚本和样式。
 - 用户导出使用固定文件名，包含正式播放与短播放尝试；可导入第 1 或第 2 版格式。导入限制为 5 MiB、10000 条，并校验时间、字段长度和时长范围。

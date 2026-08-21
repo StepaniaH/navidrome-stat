@@ -7,7 +7,7 @@
 **部署 / 使用**
 
 1. [`../README.md`](../README.md) 或 [`../README.zh-CN.md`](../README.zh-CN.md)
-2. [`privacy.md`](privacy.md)、[`security.md`](security.md)
+2. [`privacy.md`](privacy.md)、[`security.md`](security.md)、[`privacy-notice.template.md`](privacy-notice.template.md)
 3. [`../CHANGELOG.md`](../CHANGELOG.md)
 
 **贡献 / 开源协作**
@@ -33,6 +33,7 @@
 | `current-state.md` | 可由代码、配置、测试直接证明的现状和差异 | 尚未实现的目标状态 |
 | `interfaces.md` | 对内外接口字段、稳定性、约束和变更流程 | 真实密码、token、服务器地址或数据库内容 |
 | `privacy.md` | 数据类别、处理路径、风险和人工确认项 | 对未知部署环境的推断 |
+| `privacy-notice.template.md` | 部署方可复制的空白告知草稿 | 已填写的机构名、法规或联系方式 |
 | `security.md` | 威胁模型、认证边界、CSP 与部署回滚 | 真实地址、令牌或代理配置 |
 | `roadmap.md` | 开源阶段、产品边界、与任务 ID 的对应 | 第二份待办列表或日历工期 |
 | `tasks.md` | 可执行步骤、依赖、验收、验证和状态 | 未经验证的“已完成”声明 |

@@ -24,9 +24,9 @@
 | NDS-PRIV-001 | 保留、删除与用户告知 | P0 | 待验收 | 部署方确认告知文案与备份删除责任 |
 | NDS-DEP-001 | 容器与依赖可复现性 | P1 | 待验收 | 部署方确认卷权限与备份演练 |
 | NDS-UI-001 | Dashboard 运行状态与可访问性 | P2 | 待验收 | NDS-SEC-002（已完成）；剩余见 NDS-UI-010 |
-| NDS-OSS-001 | 发布叙事与 about 对齐 | P1 | 待办 | NDS-DOC-003 |
-| NDS-PRIV-002 | 部署方可编辑的用户告知模板 | P1 | 待办 | NDS-PRIV-001 文案审批 |
-| NDS-SEC-003 | 匿名观测面收敛 | P1 | 待办 | NDS-SEC-001 |
+| NDS-OSS-001 | 发布叙事与 about 对齐 | P1 | 已完成 | NDS-DOC-003 |
+| NDS-PRIV-002 | 部署方可编辑的用户告知模板 | P1 | 已完成 | 模板已提供；正文仍须部署方审批后使用 |
+| NDS-SEC-003 | 匿名观测面收敛 | P1 | 已完成 | 默认保持匿名 `/metrics` 与 OpenAPI 开启 |
 | NDS-DEP-002 | 基础镜像 digest 与发布来源 | P2 | 待办 | NDS-DEP-001 |
 | NDS-UI-010 | 分区加载状态与读屏核验 | P2 | 待办 | NDS-UI-001 |
 | NDS-ARCH-001 | 多进程/多副本架构决策 | P2 | 待办 | 部署方确认拓扑；不在 1.0 范围 |
@@ -54,7 +54,7 @@
 
 ## NDS-OSS-001 发布叙事与 about 对齐
 
-- **优先级/状态**：P1 / 待办
+- **优先级/状态**：P1 / 已完成
 - **依赖**：NDS-DOC-003。不把真实 Docker Hub 凭据或私有邮箱写入仓库。
 - **目标**：让 git 标签、CHANGELOG、GitHub Release 与 `/api/about` 描述同一版本；补上公开项目 URL（仅使用已公开的 GitHub 仓库地址）。
 - **实施步骤**：
@@ -63,14 +63,14 @@
   3. 用现有 `v*` 工作流打标签时同步创建 GitHub Release 说明（可摘自 CHANGELOG）。
   4. 文档说明 `v0.5.0` 与 `v0.5.3` 指向同一提交，钉扎镜像时避开该歧义。
 - **验收标准**：一次标签发布后，镜像标签、CHANGELOG 标题与 about 版本一致；文档无真实凭据。
-- **验证命令**：`pytest -q tests/test_main.py`（若改 about）；`python3 scripts/check_md_links.py`；`git diff --check`。
+- **验证命令**：`pytest -q tests/test_about.py`；`python3 scripts/check_md_links.py`；`git diff --check`。
 - **涉及文件**：预计 `src/version.py`、`src/main.py`、`CHANGELOG.md`、`.github/workflows/docker-publish.yml`、`docs/interfaces.md`。
 - **风险/回滚**：about 增加公开仓库 URL 不是敏感值；版本字符串变化只影响展示。回滚代码与文档即可。
-- **完成记录**：未填写。
+- **完成记录**：2026-08-21，Cursor Agent。`project_url` 改为公开仓库地址常量；tag `v*` 在镜像推送成功后创建 GitHub Release。`APP_VERSION` 仍为 `0.7.0-dev`。未打新版本标签。验证并入本轮全量测试。
 
 ## NDS-PRIV-002 部署方可编辑的用户告知模板
 
-- **优先级/状态**：P1 / 待办
+- **优先级/状态**：P1 / 已完成
 - **依赖**：NDS-PRIV-001。告知正文必须由部署方审批；AI 不得代填机构名、法规名称或承诺条款。
 - **目标**：提供一份不含真实用户与地址的告知草稿，部署方复制后自行编辑。
 - **实施步骤**：
@@ -81,11 +81,11 @@
 - **验证命令**：`python3 scripts/check_md_links.py`；`git diff --check`。
 - **涉及文件**：预计 `docs/privacy-notice.template.md`、`docs/privacy.md`、README。
 - **风险/回滚**：仅文档。不得把模板写成已生效的合规声明。
-- **完成记录**：未填写。
+- **完成记录**：2026-08-21，Cursor Agent。新增 `docs/privacy-notice.template.md`，空白项均标「需用户人工确认/编辑」，未填写机构、法规或联系方式。双语 README 与 `docs/privacy.md` 已链接并声明非法律意见。遗留：部署方编辑后的文本不得提交含真实个人信息的版本；NDS-PRIV-001 仍待验收。
 
 ## NDS-SEC-003 匿名观测面收敛
 
-- **优先级/状态**：P1 / 待办
+- **优先级/状态**：P1 / 已完成
 - **依赖**：NDS-SEC-001。不改变未设置 `STATS_API_TOKEN` 时的可信网络匿名模式，除非部署方确认新的安全默认值。
 - **目标**：让 `/metrics` 与 FastAPI OpenAPI 路由的匿名暴露成为可配置行为，并登记兼容策略。
 - **实施步骤**：
@@ -97,7 +97,7 @@
 - **验证命令**：`pytest -q tests/test_auth.py tests/test_metrics.py tests/test_security.py`；`pytest -q`；`git diff --check`。
 - **涉及文件**：预计 `src/main.py`、`src/auth.py`、相关测试、`docs/security.md`、`docs/interfaces.md`。
 - **风险/回滚**：错误默认值会让现有 Prometheus 抓取失败。新选项默认关闭（保持匿名 `/metrics`）可回滚。
-- **完成记录**：未填写。
+- **完成记录**：2026-08-21，Cursor Agent。新增 `STATS_METRICS_AUTH`（默认 false）与 `OPENAPI_ENABLED`（默认 true）。启用令牌且打开指标认证时，未授权 `/metrics` 返回 401。关闭 OpenAPI 后 `/docs` 与 `/openapi.json` 为 404。仓库 Compose 补齐 `SESSION_COOKIE_SECURE` 等注入。验证：`.venv/bin/python -m pytest -q` 为 `396 passed`；Ruff 与 Markdown 链接通过。遗留：公网部署是否打开 `STATS_METRICS_AUTH` 仍由部署方决定。
 
 ## NDS-DEP-002 基础镜像 digest 与发布来源
 

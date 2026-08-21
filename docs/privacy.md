@@ -28,7 +28,7 @@
 - 播放历史**默认永久保留**（用户确认，2026-07-16）；保留期可在 1–360 天与永久之间切换，变更后需预览并确认才执行清理。
 - 按用户导出格式版本 2 同时携带正式播放和短播放尝试，并包含来源与时长置信度；不导出内部 `session_id`/`attempt_id`。附件固定命名为 `navidrome-stat-export.json`，用户名不会进入文件名。导入兼容版本 1/2，最大 5 MiB、10000 条，校验字段长度、带时区时间戳、转码值和 0–7 天时长。
 - 保留预览、存储统计和实际清理统一覆盖 `play_history` 与 `play_attempts`，只返回总计及分表条数，不返回或记录曲目内容。按用户删除同样覆盖两张表。
-- 启用 `STATS_API_TOKEN` 时，统计 API、隐私 API 与 OpenAPI 需 Bearer 令牌或登录会话；`/health` 探针仍匿名。未设置时仅适用于可信网络。
+- 启用 `STATS_API_TOKEN` 时，统计 API、隐私 API 与 OpenAPI 需 Bearer 令牌或登录会话；`/health` 探针仍匿名。`/metrics` 默认仍匿名（不含用户名或曲目标签），可设 `STATS_METRICS_AUTH=true` 要求同一认证。未设置令牌时仅适用于可信网络。
 - Tailwind CSS 与 ECharts 已固定版本并从本服务 `/static/vendor/` 提供，正常页面加载不向公共 CDN 发请求；CSP 的脚本与样式来源仅允许同源。用户/媒体/服务器显示名均通过 `textContent` 或节点属性安全写入。
 - 页面语言、主题、统计时区和减少动态效果偏好只保存在当前浏览器的 `localStorage`，不包含用户名、曲目或凭据；其中只有统计时区会解析为已登记的 IANA 名称并发送到统计 API，用于日期/小时分桶。设置页“恢复默认值”仅删除 `navidrome-language`、`navidrome-theme`、`navidrome-timezone` 与 `navidrome-motion`，不会删除或读取播放数据。
 - `/health/ready` 仅输出聚合指标与状态枚举，不含服务器地址、用户名或曲目信息；`httpx` 请求日志级别为 WARNING。
@@ -81,4 +81,4 @@
 7. 错误响应、日志和测试产物是否不包含真实敏感值。
 8. 即将提交的 diff、issue 与 PR 描述是否不含真实主机、凭据、邮箱或播放明细。
 
-对应实施工作见 [`tasks.md`](tasks.md)。隐私相关任务在人工确认未完成时只能标记为“阻塞”或“待验收”，不得标记“已完成”。告知模板见 NDS-PRIV-002，不得由 AI 代填法规或机构名。
+对应实施工作见 [`tasks.md`](tasks.md)。隐私相关任务在人工确认未完成时只能标记为“阻塞”或“待验收”，不得标记“已完成”。部署方可复制 [`privacy-notice.template.md`](privacy-notice.template.md) 自行编辑，不得由 AI 代填法规或机构名。

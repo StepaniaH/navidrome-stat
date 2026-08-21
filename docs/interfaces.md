@@ -21,7 +21,7 @@
 | `/` | GET | 存在静态文件时返回 `src/static/index.html`；否则 JSON message | 受支持但可演进 | 页面可加载；数据仍受 API 认证约束 |
 | `/health` | GET | `{"status":"ok"}` | 稳定 | 存活探针；始终匿名 |
 | `/health/ready` | GET | JSON：`status`、`checks`、`metrics` | 受支持但可演进 | 就绪探针；指标含 collector 总数/健康数/降级数；任一采集器异常不会被其他采集器成功状态掩盖；`not_ready` 时 HTTP 503；始终匿名 |
-| `/metrics` | GET | Prometheus 文本格式指标 | 受支持但可演进 | 始终匿名（`AUTH_EXEMPT_PATHS`）；采用 Prometheus exposition format；不含用户名或曲目标签。是否应对指标启用认证见 NDS-SEC-003 |
+| `/metrics` | GET | Prometheus 文本格式指标 | 受支持但可演进 | 默认匿名；`STATS_METRICS_AUTH=true` 且已设置 `STATS_API_TOKEN` 时需 Bearer 或会话 Cookie。不含用户名或曲目标签。探针请使用 `/health` |
 | `/api/auth/status` | GET | `{"auth_required": bool}` | 受支持但可演进 | 报告是否配置了 `STATS_API_TOKEN` |
 | `/api/auth/login` | POST | `{"status":"ok"}` + 会话 Cookie | 受支持但可演进 | 请求体 token 长度 1–4096；每进程每来源摘要 5 次/分钟，超限返回 429；未启用认证时 404；`SESSION_COOKIE_SECURE` 控制 Secure 标记 |
 | `/api/auth/logout` | POST | `{"status":"ok"}` | 受支持但可演进 | 清除会话 Cookie |
@@ -57,7 +57,7 @@
 | `/api/servers/{server_id}` | PUT | 同 POST | 受支持但可演进 | 持久化后立即替换、启用或禁用对应 collector；空 password 保留原值；替换前结算旧会话 |
 | `/api/servers/{server_id}` | DELETE | `{"status":"ok"}` | 受支持但可演进 | 删除后立即结算并停止对应 collector；不存在返回 404 |
 | `/api/servers/{server_id}/test` | POST | `{ok: bool, message: str}` | 受支持但可演进 | 使用请求体提交的 URL/用户名/密码测试 Subsonic envelope 状态；失败只返回通用文案 |
-| `/api/about` | GET | 名称、应用版本、schema 版本、功能列表、许可、`project_url` | 受支持但可演进 | 应用版本来自 `APP_VERSION`，默认 `0.7.0-dev`；`project_url` 当前恒为 `null`（见 NDS-OSS-001） |
+| `/api/about` | GET | 名称、应用版本、schema 版本、功能列表、许可、`project_url` | 受支持但可演进 | 应用版本来自 `APP_VERSION`，默认 `0.7.0-dev`；`project_url` 为公开仓库 `https://github.com/StepaniaH/navidrome-stat` |
 
 当前 history 调用示例：
 
@@ -118,7 +118,7 @@ GET /api/stats/heatmap?days=0&timezone=America/New_York
 - `plays_change_pct` / `listen_change_pct`：`(current - previous) / previous * 100`，`previous` 为 0 或 `days=0` 时为 `null`。
 - `window_days`：有限窗口回显请求的 `days`；`days=0` 时为 `null`。
 
-FastAPI 默认还生成 OpenAPI JSON 和交互文档路由。因为代码没有显式配置其路径或可用性，这些接口登记为“待确认”，不应在外部集成中视为稳定契约。
+FastAPI 默认还生成 OpenAPI JSON 和交互文档路由（`/openapi.json`、`/docs`、`/redoc`）。未设置 `STATS_API_TOKEN` 时匿名可访问；设置后需认证。`OPENAPI_ENABLED=false` 时这些路由不注册，返回 404。该开关稳定性为「受支持但可演进」。
 
 ### 错误行为
 
@@ -177,7 +177,9 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 | `PAUSE_GRACE_SEC` | 可选 | `30` | `src/main.py`、`src/sessions.py`、`src/config.py` | 受支持但可演进 | 暂停或缺失条目保持内存会话的宽限秒数；钳制到 0–3600；`0` 表示一遇 `isPlaying=false` 或缺失即按原行为结算 |
 | `CHECKPOINT_INTERVAL_SEC` | 可选 | `60` | `src/main.py`、`src/sessions.py`、`src/config.py` | 受支持但可演进 | 已达到阈值的活跃会话刷新幂等检查点的间隔；钳制到 10–3600 秒 |
 | `DATABASE_URL` | 可选 | `navidrome_stats.db` | `src/database.py` | 受支持但可演进 | 当前语义是 SQLite 文件路径，不是 URL |
-| `STATS_API_TOKEN` | 可选 | 无（匿名访问） | `src/auth.py` | 受支持但可演进 | 设置后保护统计 API 与 OpenAPI；`/health` 保持公开；值不得入库 |
+| `STATS_API_TOKEN` | 可选 | 无（匿名访问） | `src/auth.py` | 受支持但可演进 | 设置后保护统计 API 与 OpenAPI；`/health` 与默认的 `/metrics` 仍公开；值不得入库 |
+| `STATS_METRICS_AUTH` | 可选 | `false` | `src/main.py`、`src/config.py` | 受支持但可演进 | 真值为 `1/true/yes/on` 时，若同时设置了 `STATS_API_TOKEN`，`/metrics` 需要与统计 API 相同的认证；未设置令牌时该开关无效 |
+| `OPENAPI_ENABLED` | 可选 | `true` | `src/main.py`、`src/config.py` | 受支持但可演进 | 假值（非 `1/true/yes/on`）时不注册 `/docs`、`/redoc`、`/openapi.json` |
 | `SESSION_COOKIE_SECURE` | 可选 | `false` | `src/auth.py` | 受支持但可演进 | 真值为 `1/true/yes/on` 时登录 Cookie 增加 Secure；应只在 HTTPS 访问路径启用 |
 | `SAVE_RETRY_ATTEMPTS` | 可选 | `3` | `src/main.py`、`src/config.py` | 受支持但可演进 | 数据库会话保存尝试次数；钳制到 1–10，最终失败会话仍保持可重试 |
 | `RETENTION_MAINTENANCE_SEC` | 可选 | `86400` | `src/main.py` | 内部 | 后台保留期清理间隔（秒）；钳制到 60–604800 |
@@ -244,7 +246,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - `src.database.recover_incomplete_sessions(db_path=...)`（将遗留未完成检查点按最后持久化时长标记完成）
 - `src.database.resolve_timezone(timezone_name)`（通过 `zoneinfo.ZoneInfo` 校验 IANA 名称；无效则 `ValueError`）
 - `src.sessions.PlaybackSessionTracker(...)`、`set_playback_report_supported(...)`、`process_poll(...)`、`finalize_session(...)`、`finalize_all()`（构造参数含 `play_threshold_sec`、`pause_grace_sec`、`stale_threshold_sec`、`checkpoint_interval_sec`、`supports_playback_report`；批量结算尽力处理全部会话后汇总失败）
-- `src.config.parse_clamped_int(...)`、`env_int(...)`
+- `src.config.parse_clamped_int(...)`、`env_int(...)`、`env_flag(...)`
 - `src.main.finalize_session(player_id)`、`polling_loop(client)`
 - `src.source_config.get_saved_source_config(...)`、`set_saved_source_config(...)`、`resolve_source_config(...)`、`resolve_effective_source_config(...)`、`validate_source_url(...)`、`has_full_config(...)`、`redacted_view(...)`
 
@@ -265,3 +267,8 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 3. 实现代码和自动化测试，同一变更更新本文与 [`current-state.md`](current-state.md)。
 4. 若数据类别、日志或暴露范围变化，同步更新 [`privacy.md`](privacy.md) 并完成所需人工确认。
 5. 运行任务验证命令、全量测试、链接检查和 `git diff --check`，记录实际结果后才能标记完成。
+
+近期兼容结论：
+
+- 2026-08-21（NDS-OSS-001）：`GET /api/about` 的 `project_url` 从 `null` 改为公开仓库 URL。把 `null` 当作缺失的旧客户端仍可工作；这是字段填充，不是删除。无 schema 变更。
+- 2026-08-21（NDS-SEC-003）：新增 `STATS_METRICS_AUTH`（默认 `false`）与 `OPENAPI_ENABLED`（默认 `true`）。未设置时行为与此前一致：匿名 `/metrics`、OpenAPI 路由存在（启用令牌时 OpenAPI 仍需认证）。无数据库迁移。

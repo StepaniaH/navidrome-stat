@@ -27,17 +27,17 @@
 | 路径 | 策略 |
 | --- | --- |
 | `/health`、`/health/ready` | 始终公开，供存活/就绪探针使用 |
-| `/metrics` | 始终公开；输出轮询/保存计数等低基数指标，不含用户名或曲目 |
+| `/metrics` | 默认公开；`STATS_METRICS_AUTH=true` 且已设置 `STATS_API_TOKEN` 时需认证。输出轮询/保存计数等低基数指标，不含用户名或曲目 |
 | `/api/auth/status`、`/api/auth/login` | 公开；login 需正确令牌 |
 | `/api/auth/logout` | 公开；清除会话 Cookie |
 | `/api/stats/*`、`/api/source/*`、`/api/servers*`、`/api/about` | 需 `Authorization: Bearer <token>` 或有效会话 Cookie |
 | `/api/privacy/*` | 需认证（与统计 API 相同策略） |
 | `/`、`/settings`、`/static/*` | 可加载页面；数据请求仍受 API 保护 |
-| `/docs`、`/redoc`、`/openapi.json` | 需认证 |
+| `/docs`、`/redoc`、`/openapi.json` | 需认证；`OPENAPI_ENABLED=false` 时路由不存在（404） |
 
 **反向代理替代方案**：可在代理层统一做 Basic/OIDC 认证，此时可不设置 `STATS_API_TOKEN`，但须确保代理覆盖所有外部入口。
 
-登录失败按客户端地址的进程内 HMAC 摘要限制为 5 次/分钟。摘要使用每次进程启动生成的随机盐，不保存原始地址，也不作为持久化审计日志。该措施只用于降低在线猜测速度，不替代反向代理限流。HTTPS 部署应设置 `SESSION_COOKIE_SECURE=true`；应用无法自动判断代理外部协议。
+登录失败按客户端地址的进程内 HMAC 摘要限制为 5 次/分钟。摘要使用每次进程启动生成的随机盐，不保存原始地址，也不作为持久化审计日志。该措施只用于降低在线猜测速度，不替代反向代理限流。HTTPS 部署应设置 `SESSION_COOKIE_SECURE=true`；应用无法自动判断代理外部协议。公网部署若暴露指标抓取口，应设置 `STATS_METRICS_AUTH=true`。不需要交互式 API 文档时可设 `OPENAPI_ENABLED=false`。
 
 ## 3. 前端与供应链
 
@@ -76,4 +76,4 @@
 5. 页面网络请求不包含公共 CDN，移动视口无页面级横向溢出。
 6. 登录限流返回 429，HTTPS 部署配置下 Cookie 带 Secure。
 
-对应任务：NDS-SEC-001、NDS-SEC-002、NDS-SEC-003、NDS-PRIV-001。漏洞报告入口见仓库根目录 [`SECURITY.md`](../SECURITY.md)，不要把凭据发到公开 issue。
+对应任务：NDS-SEC-001、NDS-SEC-002、NDS-SEC-003、NDS-PRIV-001。漏洞报告入口见仓库根目录 [`SECURITY.md`](../SECURITY.md)，不要把凭据发到公开 issue。部署方可编辑的告知模板见 [`privacy-notice.template.md`](privacy-notice.template.md)。
