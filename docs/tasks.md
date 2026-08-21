@@ -32,7 +32,7 @@
 | NDS-ARCH-001 | 多进程/多副本架构决策 | P2 | 待办 | 部署方确认拓扑；不在 1.0 范围 |
 | NDS-DATA-004 | 原生历史适配器调研 | P2 | 待办 | 公开接口确认；禁止私有库猜测 |
 | NDS-CORE-006 | 认证与空闲轮询正确性 | P1 | 已完成 | 无 |
-| NDS-CORE-007 | 采集、窗口、保留与观测正确性 | P1 | 进行中 | 无 |
+| NDS-CORE-007 | 采集、窗口、保留与观测正确性 | P1 | 已完成 | 无 |
 
 已完成（全文见档案；ID 保留）：NDS-SEC-002、NDS-CORE-001、NDS-CORE-002、NDS-CORE-003、NDS-CORE-004、NDS-CORE-005、NDS-DATA-001、NDS-DATA-002、NDS-DATA-003、NDS-API-001、NDS-REL-001、NDS-REL-002、NDS-OPS-001、NDS-TEST-001、NDS-DOC-001、NDS-DOC-002、NDS-CI-001、NDS-SRC-001、NDS-UI-002、NDS-UI-003、NDS-UI-004、NDS-UI-005、NDS-UI-006、NDS-UI-007、NDS-UI-008、NDS-UI-009。
 
@@ -119,7 +119,7 @@
 
 ## NDS-CORE-007 采集、窗口、保留与观测正确性
 
-- **优先级/状态**：P1 / 进行中
+- **优先级/状态**：P1 / 已完成
 - **依赖**：无。不改变认证默认值，不钉扎镜像 digest，不引入多副本。
 - **目标**：修复已能从代码证明的错误：collector 替换在 finalize 失败后停掉采集且不拉起新任务；预设 `days` 的上一窗口在 DST 下偏离本地午夜；保留清理用字符串比较 `played_at`；上游成功但落库失败被记成轮询失败并退避；`/metrics` 的 polling-up 与就绪探针 `all` 语义不一致；客户端饼图 tooltip 把 `client_name` 当 HTML。
 - **实施步骤**：
@@ -133,7 +133,7 @@
 - **验证命令**：`.venv/bin/python -m pytest -q tests/test_collector_manager.py tests/test_stats_window.py tests/test_privacy_ops.py tests/test_polling_integration.py tests/test_metrics.py tests/test_static_dashboard.py`；`.venv/bin/python -m pytest -q`；`.venv/bin/ruff check .`；`git diff --check`。
 - **涉及文件**：`src/collector_manager.py`、`src/database.py`、`src/privacy_ops.py`、`src/main.py`、`src/runtime_state.py`、`src/metrics.py`、`src/static/index.html`、相关测试、`docs/interfaces.md`、`docs/current-state.md`、`docs/security.md`、`CHANGELOG.md`、本文件。
 - **风险/回滚**：替换失败时 HTTP 不再因旧会话 finalize 失败而 503（配置已应用）。回滚本提交即可。
-- **完成记录**：未填写。
+- **完成记录**：2026-08-21，Cursor Agent。`replace`/`reconcile` 在旧会话 finalize 失败后仍启动新 collector；预设上一窗口改为本地日历日；保留预览/删除使用 `datetime(played_at)`；上游 `status=ok` 后落库失败只记 save/脱敏错误，不增加 poll failure 或退避；`polling_task_alive` 与就绪探针一样要求全部 collector 任务存活；客户端饼图 HTML tooltip 转义 `client_name`。无 schema 或认证默认值变更。验证：`.venv/bin/python -m pytest -q tests/test_collector_manager.py tests/test_stats_window.py tests/test_privacy_ops.py tests/test_polling_integration.py tests/test_metrics.py tests/test_static_dashboard.py` 通过；全量 `.venv/bin/python -m pytest -q` 为 `406 passed`；`.venv/bin/ruff check .` 通过；`.venv/bin/python scripts/check_md_links.py` 通过；`git diff --check` 通过。提交 `380c4ce` 及后续测试修复，PR #27。遗留：请求体 5 MiB 上限仍只作用在已缓冲 JSON，ASGI 流式上限未做；DST 验证使用合成 `America/New_York` 2024-03-12，不是生产时区配置。
 
 ## NDS-DEP-002 基础镜像 digest 与发布来源
 

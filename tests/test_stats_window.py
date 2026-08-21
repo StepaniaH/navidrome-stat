@@ -173,14 +173,12 @@ def test_previous_window_uses_local_calendar_days_across_dst(monkeypatch, db_pat
     tz = ZoneInfo("America/New_York")
     frozen = datetime(2024, 3, 12, 15, 0, tzinfo=tz)
 
-    class FrozenDateTime:
-        @staticmethod
-        def now(tz=None):
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
             if tz is None:
                 return frozen.astimezone(timezone.utc).replace(tzinfo=None)
             return frozen.astimezone(tz)
-
-        combine = staticmethod(datetime.combine)
 
     monkeypatch.setattr(database, "datetime", FrozenDateTime)
 
