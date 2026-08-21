@@ -66,7 +66,7 @@
 - **验证命令**：`pytest -q tests/test_about.py`；`python3 scripts/check_md_links.py`；`git diff --check`。
 - **涉及文件**：预计 `src/version.py`、`src/main.py`、`CHANGELOG.md`、`.github/workflows/docker-publish.yml`、`docs/interfaces.md`。
 - **风险/回滚**：about 增加公开仓库 URL 不是敏感值；版本字符串变化只影响展示。回滚代码与文档即可。
-- **完成记录**：2026-08-21，Cursor Agent。`project_url` 改为公开仓库地址常量；tag `v*` 在镜像推送成功后创建 GitHub Release。`APP_VERSION` 仍为 `0.7.0-dev`。未打新版本标签。验证并入本轮全量测试。
+- **完成记录**：2026-08-21，Cursor Agent。`project_url` 改为公开仓库地址常量；tag `v*` 在镜像推送成功后创建 GitHub Release。`APP_VERSION` 仍为 `0.7.0-dev`。未打新版本标签。验证：`.venv/bin/python -m pytest -q tests/test_about.py` 通过；全量 `.venv/bin/python -m pytest -q` 为 `396 passed`。提交 `584be4d`、`56bc852`，PR #27。遗留：真正打 `v0.8.0` 标签仍由仓库所有者触发。
 
 ## NDS-PRIV-002 部署方可编辑的用户告知模板
 
@@ -81,7 +81,7 @@
 - **验证命令**：`python3 scripts/check_md_links.py`；`git diff --check`。
 - **涉及文件**：预计 `docs/privacy-notice.template.md`、`docs/privacy.md`、README。
 - **风险/回滚**：仅文档。不得把模板写成已生效的合规声明。
-- **完成记录**：2026-08-21，Cursor Agent。新增 `docs/privacy-notice.template.md`，空白项均标「需用户人工确认/编辑」，未填写机构、法规或联系方式。双语 README 与 `docs/privacy.md` 已链接并声明非法律意见。遗留：部署方编辑后的文本不得提交含真实个人信息的版本；NDS-PRIV-001 仍待验收。
+- **完成记录**：2026-08-21，Cursor Agent。新增 `docs/privacy-notice.template.md`，空白项均标「需用户人工确认/编辑」，未填写机构、法规或联系方式。双语 README 与 `docs/privacy.md` 已链接并声明非法律意见。验证：`.venv/bin/python scripts/check_md_links.py` 通过。提交 `56bc852`，PR #27。遗留：部署方编辑后的文本不得提交含真实个人信息的版本；NDS-PRIV-001 仍待验收。
 
 ## NDS-SEC-003 匿名观测面收敛
 
@@ -97,7 +97,7 @@
 - **验证命令**：`pytest -q tests/test_auth.py tests/test_metrics.py tests/test_security.py`；`pytest -q`；`git diff --check`。
 - **涉及文件**：预计 `src/main.py`、`src/auth.py`、相关测试、`docs/security.md`、`docs/interfaces.md`。
 - **风险/回滚**：错误默认值会让现有 Prometheus 抓取失败。新选项默认关闭（保持匿名 `/metrics`）可回滚。
-- **完成记录**：2026-08-21，Cursor Agent。新增 `STATS_METRICS_AUTH`（默认 false）与 `OPENAPI_ENABLED`（默认 true）。启用令牌且打开指标认证时，未授权 `/metrics` 返回 401。关闭 OpenAPI 后 `/docs` 与 `/openapi.json` 为 404。仓库 Compose 补齐 `SESSION_COOKIE_SECURE` 等注入。验证：`.venv/bin/python -m pytest -q` 为 `396 passed`；Ruff 与 Markdown 链接通过。遗留：公网部署是否打开 `STATS_METRICS_AUTH` 仍由部署方决定。
+- **完成记录**：2026-08-21，Cursor Agent。新增 `STATS_METRICS_AUTH`（默认 false）与 `OPENAPI_ENABLED`（默认 true）。启用令牌且打开指标认证时，未授权 `/metrics` 返回 401。关闭 OpenAPI 后 `/docs` 与 `/openapi.json` 为 404。仓库 Compose 补齐 `SESSION_COOKIE_SECURE` 等注入。验证：`.venv/bin/python -m pytest -q` 为 `396 passed`；`.venv/bin/ruff check .` 通过；`.venv/bin/python scripts/check_md_links.py` 通过。提交 `584be4d`、`56bc852`，PR #27。遗留：公网部署是否打开 `STATS_METRICS_AUTH` 仍由部署方决定。
 
 ## NDS-DEP-002 基础镜像 digest 与发布来源
 
