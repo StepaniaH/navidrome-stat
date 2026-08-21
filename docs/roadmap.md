@@ -12,7 +12,7 @@ Navidrome Statistic 是 **Navidrome / Subsonic 的自托管伴侣**：轮询 `ge
 
 - 单应用实例。一个实例可管理多个 Navidrome 服务器；多个本服务副本采集同一数据源会重复计数（见 NDS-ARCH-001）。
 - 行为数据默认按隐私数据处理，而不是匿名遥测。仓库不发送使用情况、崩溃报告或播放元数据到第三方。
-- 不读取 Navidrome 私有数据库，不绑定未登记的私有 API。原生收听历史若要接入，必须先有公开、可验证的接口（NDS-DATA-004）。
+- 不读取 Navidrome 私有数据库，不绑定未登记的私有 API。NDS-DATA-004（2026-08-21）结论：公开 Subsonic / OpenSubsonic 无只读播放历史端点，因此**不实施**原生历史导入，直到上游发布可验证的公开读接口。
 - 可选共享口令 `STATS_API_TOKEN` 保护统计与设置 API；`/health` 始终匿名。`/metrics` 默认匿名，可用 `STATS_METRICS_AUTH` 在已配置令牌时改为需认证。TLS、反向代理和公网暴露由部署方负责（NDS-SEC-001）。
 - 运行时契约是 **Python 3.11**（Dockerfile 与 CI）。其他解释器版本可能能跑，但不构成已验证承诺。
 
@@ -67,7 +67,7 @@ Navidrome Statistic 是 **Navidrome / Subsonic 的自托管伴侣**：轮询 `ge
 
 | 方向 | 任务 | 约束 |
 | --- | --- | --- |
-| 原生历史导入 | NDS-DATA-004 | 先调研公开接口；禁止猜测 Navidrome 私有库路径 |
+| 原生历史导入 | NDS-DATA-004 | 2026-08-21 结论：**不实施**。公开 Subsonic / OpenSubsonic 无只读历史端点；Navidrome 0.59+ 内部存储未提供公开 HTTP。待公开 API 后新建任务，禁止猜测私有库路径 |
 | 多进程/多副本 | NDS-ARCH-001 | 依赖部署方确认拓扑；默认仍是单实例 |
 | 更多语言 | 新建 `NDS-UI-*` | 只扩 `localization.js` 消息表，不改数据模型 |
 | 外部 scrobble / ListenBrainz | 未立项 | 会把行为数据送出本机，必须先过隐私确认 |

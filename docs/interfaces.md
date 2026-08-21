@@ -164,6 +164,31 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 
 `httpx.AsyncClient` 使用 `trust_env=False`、10 秒超时与默认 TLS 行为。服务 URL 会移除末尾 `/`；代码没有限制协议，也没有自定义证书、代理或重试配置。应用将 `httpx` 日志级别设为 WARNING，避免 INFO 请求行泄露认证查询参数。
 
+### 公开上游方法调研（NDS-DATA-004，2026-08-21）
+
+本服务**实际调用**仍仅为上表两个 GET。下列公开方法已对照规范，**本仓库不调用**，也**不作为历史导入来源**。结论：**不实施**原生历史导入，直到上游发布公开、可验证的只读历史 HTTP API。不读取 Navidrome 私有数据库、未文档化路径或内部表。
+
+| 方法 | 公开角色 | 对本服务 | 稳定性 |
+| --- | --- | --- | --- |
+| `getNowPlaying` | 当前正在播放 | 已消费 | 受支持但可演进 |
+| `getOpenSubsonicExtensions` | 扩展探测 | 已消费（查找扩展名 `playbackReport`） | 受支持但可演进 |
+| `scrobble` | 向服务器登记播放（写） | 不调用 | 公开规范；不是读历史 |
+| `reportPlayback` | 客户端上报时间线（写，扩展 `playbackReport`） | 不调用；仅在扩展声明后读取 `getNowPlaying` 条目上的 `state` / `positionMs` / `playbackRate` | 公开规范 |
+| `getPlayQueue` / `savePlayQueue` | 当前队列快照 | 不调用 | 公开规范 |
+| `getAlbumList` / `getAlbumList2`（含 frequent / recent 等） | 专辑聚合列表 | 不调用 | 公开规范；不是带用户名与时间序列的播放事件 |
+| `getStarred` / `getStarred2` | 收藏 | 不调用 | 公开规范 |
+| 曲目 `playCount` / `played`（如 `getSong`） | 曲目合计次数或最近一次播放 | 不调用 | 公开规范；不足以替代 poller 事件日志 |
+| Navidrome 0.59+ 原生 scrobble/listen 存储 | 产品文档确认内部存储，供未来统计功能 | 不读取 | 待确认：无公开 HTTP 读接口。**结论：不实施** |
+
+核验来源（公开链接，2026-08-21）：
+
+- [Subsonic API](https://www.subsonic.org/pages/api.jsp)：方法索引含 `getNowPlaying`、`scrobble`、`getAlbumList`/`getAlbumList2`、`getStarred`/`getStarred2`、`getPlayQueue`/`savePlayQueue`；无只读播放历史方法。
+- [OpenSubsonic Endpoints](https://opensubsonic.netlify.app/docs/endpoints/)：当日完整列表同样无历史读取端点；相关项为 `getNowPlaying`、`scrobble`、`reportPlayback`、`getPlayQueue`、`getOpenSubsonicExtensions`。
+- [Navidrome Subsonic compatibility](https://www.navidrome.org/docs/developers/subsonic-api/)：`scrobble` 列在媒体标注（写）；注明服务器不因 `stream` 记播放，只在 `scrobble` 且 `submission=true` 时登记；列表中无历史读取方法。
+- [Navidrome Scrobbling](https://www.navidrome.org/docs/usage/features/scrobbling/)：0.59.0 起「tracks your scrobble/listen history natively」，用于未来统计类功能；这是产品内部存储声明，不是已发布的只读 HTTP。
+
+无 schema 变更、无新环境变量、无新的本服务 HTTP。隐私面不扩大。
+
 ## 4. 环境变量
 
 | 名称 | 必需性 | 默认值 | 读取位置 | 稳定性 | 说明 |
@@ -275,3 +300,4 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - 2026-08-21（NDS-CORE-006）：非 ASCII 的 Bearer/Cookie 由可能 500 改为 401；`Authorization` 方案名大小写不敏感；登出 Cookie 带上与登录相同的 Secure/HttpOnly。`getNowPlaying` 在 `status=ok` 且 `nowPlaying` 为 null 时记空闲成功。无 schema 变更。
 - 2026-08-21（NDS-CORE-007）：预设 `days` 的上一窗口改为本地日历日（DST 下不再按当前窗口 UTC 时长前移）。保留清理改为 `datetime(played_at)` 比较。上游 `status=ok` 后落库失败不再增加 poll failure 或退避。`navidrome_stat_polling_task_up` 与就绪探针一样要求全部 collector 任务存活。服务器替换在旧会话 finalize 失败后仍启动新采集器，不再仅因此返回 503。无 schema 变更。
 - 2026-08-21（NDS-CORE-008）：导入 5 MiB 上限改为按实际已读字节在进入 JSON 解析前拒绝（413）。`Content-Length` 过大或非法仍提前 413。合法小于 5 MiB 的 chunked 请求行为不变。无 schema 变更。
+- 2026-08-21（NDS-DATA-004）：登记上游公开方法调研。本服务消费集合不变（仅 `getNowPlaying` 与 `getOpenSubsonicExtensions`）。原生历史导入明确为**不实施**，直到出现公开只读历史 API。无 schema、环境变量或本服务 HTTP 变更。

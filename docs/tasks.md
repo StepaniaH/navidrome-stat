@@ -30,7 +30,7 @@
 | NDS-DEP-002 | 基础镜像 digest 与发布来源 | P2 | 待办 | NDS-DEP-001 |
 | NDS-UI-010 | 分区加载状态与读屏核验 | P2 | 待办 | NDS-UI-001 |
 | NDS-ARCH-001 | 多进程/多副本架构决策 | P2 | 待办 | 部署方确认拓扑；不在 1.0 范围 |
-| NDS-DATA-004 | 原生历史适配器调研 | P2 | 待办 | 公开接口确认；禁止私有库猜测 |
+| NDS-DATA-004 | 原生历史适配器调研 | P2 | 已完成 | 公开接口确认；禁止私有库猜测 |
 | NDS-CORE-006 | 认证与空闲轮询正确性 | P1 | 已完成 | 无 |
 | NDS-CORE-007 | 采集、窗口、保留与观测正确性 | P1 | 已完成 | 无 |
 | NDS-CORE-008 | 导入请求体流式上限 | P2 | 已完成 | 无 |
@@ -184,9 +184,9 @@
 
 ## NDS-DATA-004 原生历史适配器调研
 
-- **优先级/状态**：P2 / 待办
-- **依赖**：存在可引用的公开 Navidrome/Subsonic 接口文档。未确认前不得实现读取私有 SQLite 或内部 HTTP。
-- **目标**：判断能否在不扩大隐私面的前提下导入上游已有收听历史；结论写入当前事实，而不是先写适配器。
+- **优先级/状态**：P2 / 已完成
+- **依赖**：公开接口确认；禁止私有库猜测。不读取真实 `.env`、SQLite、日志、服务器地址或播放明细。
+- **目标**：只依据公开 Subsonic / OpenSubsonic / Navidrome 文档，判断能否在不扩大隐私面的前提下导入上游收听历史。结论写入当前事实与接口登记。不实现适配器。
 - **实施步骤**：
   1. 只依据公开规范与本仓库已登记的 `getNowPlaying` / OpenSubsonic 扩展列出候选接口。
   2. 对每个候选标记稳定性：稳定 / 待确认；待确认项列出验证步骤。
@@ -195,7 +195,7 @@
 - **验证命令**：`python3 scripts/check_md_links.py`；`git diff --check`。
 - **涉及文件**：`docs/current-state.md`、`docs/interfaces.md`、本文件。
 - **风险/回滚**：调研文档若被误当成承诺，会误导实现。必须使用「待确认」或「不实施」。
-- **完成记录**：未填写。
+- **完成记录**：2026-08-21，Cursor Agent。对照公开 [Subsonic API](https://www.subsonic.org/pages/api.jsp)、[OpenSubsonic Endpoints](https://opensubsonic.netlify.app/docs/endpoints/)（当日抓取完整列表）、[Navidrome Subsonic compatibility](https://www.navidrome.org/docs/developers/subsonic-api/)、[Navidrome Scrobbling](https://www.navidrome.org/docs/usage/features/scrobbling/)。公开规范无只读播放历史方法；`scrobble`/`reportPlayback` 为写入；专辑/收藏/队列/曲目 `playCount` 不是事件日志。Navidrome 0.59+ 内部 listen 历史未提供公开 HTTP。结论：**不实施**适配器，不读取私有库或内部表。无业务代码、无 schema/环境变量/本服务 API 变更。验证：`python3 scripts/check_md_links.py`；`git diff --check`。提交与 PR 见本轮记录。遗留：若上游日后发布公开只读历史 API，新建任务再评估，不复活本 ID。
 
 ## NDS-SEC-001 访问控制与部署边界
 

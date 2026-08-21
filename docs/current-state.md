@@ -55,7 +55,8 @@
 - `get_summary(days=0)` 返回 `/api/stats/summary` 的窗口对比字段（`active_days`、`average_daily_*`、`previous_total_*`、`*_change_pct`、`window_days`）；有限窗口按 `active_days` 平均，`days=0` 按最早至最晚播放日的包含天数平均。
 - `get_player_stats()` 返回每个客户端的播放次数、总/平均收听秒数、转码次数与转码率；`get_transcoding_stats()` 同时返回播放占比与收听时长占比。
 - `get_top_artists()` / `get_top_albums()` 支持 `metric=plays|listen_time`，返回 `value` 作为当前排序值，并保留 `count` 与 `total_listen_sec`；结果按值降序、名称升序确定性排序。
-- schema 版本 3–4 新增 `play_attempts` 表记录未达到播放阈值的短播放尝试，并为正式播放增加 `source` 溯源字段；版本 5 另含 `servers` 表及 `source_id`/`source_name`。`get_short_play_stats()` 与 `/api/stats/short-plays` 返回短播放率，`get_source_stats()` 与 `/api/stats/sources` 返回 `poller`/`import` 来源分布。短播放率不等同于跳过率，因为轮询无法证明用户是否主动跳过；Navidrome 原生历史尚未绑定未确认的私有读取接口。
+- schema 版本 3–4 新增 `play_attempts` 表记录未达到播放阈值的短播放尝试，并为正式播放增加 `source` 溯源字段；版本 5 另含 `servers` 表及 `source_id`/`source_name`。`get_short_play_stats()` 与 `/api/stats/short-plays` 返回短播放率，`get_source_stats()` 与 `/api/stats/sources` 返回 `poller`/`import` 来源分布。短播放率不等同于跳过率，因为轮询无法证明用户是否主动跳过。
+- **NDS-DATA-004（2026-08-21）结论：不实施原生历史导入。** 公开 [Subsonic API](https://www.subsonic.org/pages/api.jsp) 与 [OpenSubsonic 端点列表](https://opensubsonic.netlify.app/docs/endpoints/)（当日核验）均无只读播放历史方法（无 `getPlayHistory` / `getScrobbles` 一类接口）。`scrobble` 与 `reportPlayback` 是客户端**写入**；`getAlbumList`/`getStarred`/`getPlayQueue`/`getSong` 的 `playCount`/`played` 是聚合或当前快照，不是带用户名与时间序列的播放事件日志。Navidrome 从 0.59.0 起在 [Scrobbling](https://www.navidrome.org/docs/usage/features/scrobbling/) 中声明内部记录 scrobble/listen 历史，供未来产品功能使用，但该历史未出现在其公开 [Subsonic 兼容列表](https://www.navidrome.org/docs/developers/subsonic-api/)。本仓库继续只消费 `getNowPlaying` 与 `getOpenSubsonicExtensions`。不读取 Navidrome 私有库、未文档化 HTTP 或内部表。待上游发布公开只读历史 API 后再开独立任务。
 - Dashboard snapshot 的 hourly/daily/heatmap 通过 `get_time_bucket_stats()` 一次读取和解析时间戳；10 万条合成记录基准为独立三次查询约 296.8 ms、合并查询约 54.6 ms（本机单次测量，仅作回归参考）。
 - `get_weekday_hour_stats(days=30, timezone_name="UTC")` 返回 7×24=168 个 `{weekday,hour,count}` 行，始终零填充；weekday 遵循 Python `date.weekday()`（0=周一 … 6=周日），hour 与 weekday 按 `zoneinfo.ZoneInfo(timezone_name)` 转换后的本地时间取；无效时区抛 `ValueError`，从不字符串拼接进 SQL。
 - 所有聚合查询（summary/players/transcoding/hourly/heatmap/daily/top-artists/top-albums/history）都接受可选 `timezone_name` 参数（默认 `UTC`），仅用于 Python 端 bucket 边界与有限窗口的 UTC 截止计算；时间戳仍以 UTC ISO 字符串存储。
@@ -120,6 +121,7 @@
 - 前端公共 CDN 已移除并有合成浏览器回归；真实部署的 TLS、授权和网络暴露仍需部署方验收。
 - 默认匿名访问仍可用；公网暴露需设置 `STATS_API_TOKEN` 或反向代理（见 `docs/security.md`）。
 - 2026-08-21 已补登 `GET /api/stats/servers`。`/metrics` 默认仍匿名，可用 `STATS_METRICS_AUTH` 在已配置令牌时改为需认证。`project_url` 现返回公开 GitHub 仓库地址。
+- 2026-08-21（NDS-DATA-004）：对照公开 Subsonic / OpenSubsonic / Navidrome 文档后关闭原生历史导入方向。无业务代码、无 schema 或环境变量变更。详见 [`interfaces.md`](interfaces.md) 第 3 节调研表。
 - NDS-SRC-001 完成记录中的「热更新未实现」已被 NDS-REL-002 取代；NDS-DEP-001 中「非 root 未做」已被 Dockerfile `appuser` 取代。仍待验收的是部署方确认项，不是这些代码缺口。
 
 已完成任务全文见 [`tasks-completed.md`](tasks-completed.md)。后续开源阶段见 [`roadmap.md`](roadmap.md)。
