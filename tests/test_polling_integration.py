@@ -82,3 +82,30 @@ async def test_advertised_playback_report_polling_persists_reported_checkpoint(
     conn.close()
 
     assert row == (1, 10, "reported", 0, "synthetic-source")
+
+
+@pytest.mark.asyncio
+async def test_ok_null_now_playing_is_empty_success(monkeypatch):
+    import src.main as main
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState()
+    monkeypatch.setattr(main, "runtime_state", state)
+    tracker = PlaybackSessionTracker(AsyncMock())
+    client = AsyncMock()
+    client.supports_playback_report.return_value = False
+    client.get_now_playing.return_value = {
+        "subsonic-response": {"status": "ok", "nowPlaying": None}
+    }
+
+    async def stop_after_first_poll(_seconds):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(main.asyncio, "sleep", stop_after_first_poll)
+
+    with pytest.raises(asyncio.CancelledError):
+        await polling_loop_for_tracker(client, tracker)
+
+    assert state.poll_success_count == 1
+    assert state.poll_failure_count == 0
+    assert tracker.active_sessions == {}

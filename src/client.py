@@ -82,6 +82,23 @@ class NavidromeClient:
             and data["subsonic-response"].get("status") == "ok"
         )
 
+    @staticmethod
+    def now_playing_entries(data) -> list:
+        """Return now-playing entries from an already-ok Subsonic payload.
+
+        Missing or null ``nowPlaying`` means nobody is playing. A non-object
+        ``nowPlaying`` is treated the same way so an idle ok response is not
+        turned into a poll failure.
+        """
+        envelope = data.get("subsonic-response") if isinstance(data, dict) else None
+        now_playing = envelope.get("nowPlaying") if isinstance(envelope, dict) else None
+        if not isinstance(now_playing, dict):
+            return []
+        entries = now_playing.get("entry")
+        if entries is None:
+            return []
+        return entries
+
     async def _get_json(self, method: str):
         params = self.get_auth_params()
         endpoint = f"{self.url}/rest/{method}"

@@ -29,19 +29,45 @@ def _session_value(token: str) -> str:
     return hmac.new(token.encode("utf-8"), SESSION_SALT, hashlib.sha256).hexdigest()
 
 
+def _constant_time_equal(presented: str, expected: str) -> bool:
+    """Compare UTF-8 bytes so non-ASCII input cannot raise TypeError."""
+    if not isinstance(presented, str) or not isinstance(expected, str):
+        return False
+    return hmac.compare_digest(presented.encode("utf-8"), expected.encode("utf-8"))
+
+
+def _presented_bearer_token(request: Request) -> Optional[str]:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return None
+    scheme, separator, remainder = auth_header.partition(" ")
+    if separator != " " or scheme.lower() != "bearer":
+        return None
+    presented = remainder.strip()
+    return presented or None
+
+
+def session_cookie_params() -> dict:
+    """Attributes that must match between Set-Cookie and deletion."""
+    return {
+        "path": "/",
+        "httponly": True,
+        "samesite": "lax",
+        "secure": secure_session_cookie_enabled(),
+    }
+
+
 def is_authorized(request: Request) -> bool:
     token = get_stats_api_token()
     if token is None:
         return True
 
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        presented = auth_header[7:].strip()
-        if secrets.compare_digest(presented, token):
-            return True
+    presented = _presented_bearer_token(request)
+    if presented is not None and _constant_time_equal(presented, token):
+        return True
 
     cookie = request.cookies.get(SESSION_COOKIE_NAME)
-    if cookie and secrets.compare_digest(cookie, _session_value(token)):
+    if cookie and _constant_time_equal(cookie, _session_value(token)):
         return True
 
     return False
@@ -57,7 +83,7 @@ def verify_login_token(presented: str) -> bool:
     token = get_stats_api_token()
     if token is None:
         return False
-    return secrets.compare_digest(presented, token)
+    return _constant_time_equal(presented, token)
 
 
 def session_cookie_value() -> str:

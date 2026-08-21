@@ -14,7 +14,7 @@
 
 ## 2. 本服务 HTTP 接口
 
-公开统计路由为 `GET`；认证相关为 `POST`/`GET`。未设置 `STATS_API_TOKEN` 时保持历史匿名访问；设置后统计 API 与 OpenAPI 需 Bearer 令牌或登录会话 Cookie。详见 [`security.md`](security.md)。
+公开统计路由为 `GET`；认证相关为 `POST`/`GET`。未设置 `STATS_API_TOKEN` 时保持历史匿名访问；设置后统计 API 与 OpenAPI 需 Bearer 令牌（方案名大小写不敏感）或登录会话 Cookie。详见 [`security.md`](security.md)。
 
 | 路径 | 方法 | 响应 | 稳定性 | 当前约束 |
 | --- | --- | --- | --- | --- |
@@ -24,7 +24,7 @@
 | `/metrics` | GET | Prometheus 文本格式指标 | 受支持但可演进 | 默认匿名；`STATS_METRICS_AUTH=true` 且已设置 `STATS_API_TOKEN` 时需 Bearer 或会话 Cookie。不含用户名或曲目标签。探针请使用 `/health` |
 | `/api/auth/status` | GET | `{"auth_required": bool}` | 受支持但可演进 | 报告是否配置了 `STATS_API_TOKEN` |
 | `/api/auth/login` | POST | `{"status":"ok"}` + 会话 Cookie | 受支持但可演进 | 请求体 token 长度 1–4096；每进程每来源摘要 5 次/分钟，超限返回 429；未启用认证时 404；`SESSION_COOKIE_SECURE` 控制 Secure 标记 |
-| `/api/auth/logout` | POST | `{"status":"ok"}` | 受支持但可演进 | 清除会话 Cookie |
+| `/api/auth/logout` | POST | `{"status":"ok"}` | 受支持但可演进 | 清除会话 Cookie；删除时使用与登录相同的 path、HttpOnly、SameSite 与 Secure |
 | `/api/stats/dashboard` | GET | 一次返回 `summary`、`players`、`transcoding`、`hourly`、`daily`、`heatmap`、`history`、`servers`、`available_servers`、`top_artists`、`top_albums` | 受支持但可演进 | 默认 `days=30`；可选 `timezone`、`metric`、`source_id`；可成对提供 `start_date`/`end_date`（`YYYY-MM-DD`、包含首尾、最长 366 天）覆盖预设窗口；缓存键包含日期范围；`available_servers` 仅含 `id` 与 `display_name` |
 | `/api/stats/summary` | GET | JSON：`total_plays`、`total_listen_sec`、`unique_tracks`、`client_count`，以及窗口对比字段 `active_days`、`average_daily_plays`、`average_daily_listen_sec`、`previous_total_plays`、`previous_total_listen_sec`、`plays_change_pct`、`listen_change_pct`、`window_days`（见下） | 受支持但可演进 | 可选 `?days=0`（默认，全部历史）或 `7–90`；对比与日均价仅对有限窗口计算，`days=0` 时 `window_days=null` 且 `previous_*` 与百分比均为 `null`；启用认证时需授权 |
 | `/api/stats/players` | GET | JSON 数组，元素为 `client_name`、`count`、`total_listen_sec`、`average_listen_sec`、`transcoded_count`、`transcoding_rate_pct` | 受支持但可演进 | 可选 `?days=0`（默认）或 `7–90`；按 `count DESC, client_name ASC` 排序；启用认证时需授权 |
@@ -160,7 +160,7 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - extensions 中的 `name`（检查 `playbackReport`）
 - entry 中的 `isPlaying`、`state`、`positionMs`、`playbackRate`、`playerId`、`id`、`username`、`playerName`、`title`、`artist`、`album`、`transcodedContentType`
 
-单个 `entry` 对象会转换为一元素列表；缺失 `isPlaying`/`state` 时按正在播放兼容。缺失 `playerId` 的条目跳过。扩展探测失败或未声明 `playbackReport` 时使用轮询时间估算，并把置信度登记为 `estimated`；声明支持时使用位置、状态和速率并登记 `reported`。连接测试同时校验 HTTP 与 `subsonic-response.status == "ok"`。
+单个 `entry` 对象会转换为一元素列表；缺失或非对象的 `nowPlaying`（含 JSON `null`）在 `status=ok` 时当作无人播放，不记为轮询失败。缺失 `isPlaying`/`state` 时按正在播放兼容。缺失 `playerId` 的条目跳过。扩展探测失败或未声明 `playbackReport` 时使用轮询时间估算，并把置信度登记为 `estimated`；声明支持时使用位置、状态和速率并登记 `reported`。连接测试同时校验 HTTP 与 `subsonic-response.status == "ok"`。
 
 `httpx.AsyncClient` 使用 `trust_env=False`、10 秒超时与默认 TLS 行为。服务 URL 会移除末尾 `/`；代码没有限制协议，也没有自定义证书、代理或重试配置。应用将 `httpx` 日志级别设为 WARNING，避免 INFO 请求行泄露认证查询参数。
 
@@ -272,3 +272,4 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 
 - 2026-08-21（NDS-OSS-001）：`GET /api/about` 的 `project_url` 从 `null` 改为公开仓库 URL。把 `null` 当作缺失的旧客户端仍可工作；这是字段填充，不是删除。无 schema 变更。
 - 2026-08-21（NDS-SEC-003）：新增 `STATS_METRICS_AUTH`（默认 `false`）与 `OPENAPI_ENABLED`（默认 `true`）。未设置时行为与此前一致：匿名 `/metrics`、OpenAPI 路由存在（启用令牌时 OpenAPI 仍需认证）。无数据库迁移。
+- 2026-08-21（NDS-CORE-006）：非 ASCII 的 Bearer/Cookie 由可能 500 改为 401；`Authorization` 方案名大小写不敏感；登出 Cookie 带上与登录相同的 Secure/HttpOnly。`getNowPlaying` 在 `status=ok` 且 `nowPlaying` 为 null 时记空闲成功。无 schema 变更。

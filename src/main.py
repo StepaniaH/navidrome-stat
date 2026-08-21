@@ -14,7 +14,7 @@ from src.auth import (
     is_auth_enabled,
     is_authorized,
     login_rate_limiter,
-    secure_session_cookie_enabled,
+    session_cookie_params,
     session_cookie_value,
     verify_login_token,
 )
@@ -284,8 +284,7 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
                     MAX_POLL_BACKOFF_SEC,
                 )
             else:
-                now_playing = response.get("nowPlaying", {})
-                entries = now_playing.get("entry", [])
+                entries = NavidromeClient.now_playing_entries(data)
                 await tracker.process_poll(entries, current_time)
                 runtime_state.record_poll_success(current_time, tracker.source_id)
                 consecutive_failures = 0
@@ -696,11 +695,8 @@ async def auth_login(body: LoginRequest, request: Request):
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=session_cookie_value(),
-        httponly=True,
-        samesite="lax",
-        secure=secure_session_cookie_enabled(),
         max_age=60 * 60 * 24 * 30,
-        path="/",
+        **session_cookie_params(),
     )
     return response
 
@@ -709,7 +705,7 @@ async def auth_login(body: LoginRequest, request: Request):
 async def auth_logout():
     """Clears the browser session cookie."""
     response = JSONResponse({"status": "ok"})
-    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    response.delete_cookie(key=SESSION_COOKIE_NAME, **session_cookie_params())
     return response
 
 
@@ -723,7 +719,7 @@ async def health_ready():
 
 @app.get("/metrics")
 async def metrics():
-    """Prometheus exposition endpoint; always anonymous."""
+    """Prometheus exposition endpoint; anonymous unless STATS_METRICS_AUTH is on."""
     active = len(_active_sessions())
     return PlainTextResponse(
         content=format_prometheus_metrics(active_sessions=active),

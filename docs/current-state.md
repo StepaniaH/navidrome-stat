@@ -22,7 +22,7 @@
 
 1. FastAPI lifespan 调用 `init_db()`，再由 `CollectorManager` 为启用且配置完整的服务器创建 client、tracker 与轮询任务。
 2. 无多服务器记录时，lifespan 调用 `resolve_effective_source_config()`（环境变量 > 已保存 DB 值）解析兼容来源；多服务器记录由 `servers` 表提供。`NavidromeClient` 每次请求生成六位 salt 和 MD5 token。
-3. `CollectorManager` 对完整的期望服务器配置做协调，并按服务器 ID 独立管理 `NavidromeClient`、`PlaybackSessionTracker`、task 与轮询健康状态。首次创建多服务器配置会移除 legacy collector，删除最后一项时可恢复完整的 legacy 配置；未变化的 collector 不重启。轮询先探测 `/rest/getOpenSubsonicExtensions`，上游声明 `playbackReport` 时使用 `state`、`positionMs`、`playbackRate`，否则保持 `getNowPlaying` 轮询兼容。
+3. `CollectorManager` 对完整的期望服务器配置做协调，并按服务器 ID 独立管理 `NavidromeClient`、`PlaybackSessionTracker`、task 与轮询健康状态。首次创建多服务器配置会移除 legacy collector，删除最后一项时可恢复完整的 legacy 配置；未变化的 collector 不重启。轮询先探测 `/rest/getOpenSubsonicExtensions`，上游声明 `playbackReport` 时使用 `state`、`positionMs`、`playbackRate`，否则保持 `getNowPlaying` 轮询兼容。`status=ok` 且 `nowPlaying` 缺失或为 JSON `null` 时按无人播放处理，不记为轮询失败。
 4. 同一播放器继续播放同一 `track_id` 时累加 `active_duration_sec`（每次活跃观测累加距上一次活跃观测的时间），更新 `last_active_at` 与 `last_seen_at`；暂停或缺失的轮询不累加时长也不更新 `last_active_at`；换曲立即结算旧会话。
 5. 每个 poller 会话有随机 `session_id`。达到 `PLAY_THRESHOLD_SEC` 时以该 ID 创建幂等检查点，之后按 `CHECKPOINT_INTERVAL_SEC` 刷新，结束时更新同一行的最终活跃时长并标记 `finalized`，因此不会重复增加播放次数。启动时把遗留的未完成检查点按最后一次持久化时长标记为恢复完成，不推测中断后的时长。数据库临时失败不会把会话静默标成已保存；最多按 `SAVE_RETRY_ATTEMPTS` 重试，仍失败则保留内存状态供后续观测或关闭结算重试。时长同时登记 `reported` 或 `estimated` 置信度。
 6. Dashboard 历史数据通过 `/api/stats/dashboard` 一次获取，进程内缓存 60 秒、最多 64 个键，播放与隐私写入后失效。缓存按 key 合并并发构建，不同 key 不因全局锁互相阻塞，失效期间完成的旧构建不会回填。页面可见时历史每 60 秒刷新、正在播放每 10 秒刷新；隐藏时暂停实时刷新并把历史间隔延长至 300 秒。预设/自定义日期、时区、排行指标和服务器筛选共同构成 snapshot 键。桌面顶部为无外层卡片的单行应用栏，标题、时间、服务器、状态、更新时间与操作同一基线；760px 以下才把筛选分组到第二行。自定义 listbox 保留键盘与可访问性语义；服务器选择器只接收 `id` 与 `display_name`，不会下发连接地址或凭据。最近播放在桌面使用固定比例六列表格且不产生横向滚动，640px 以下将同一六字段记录改排为纵向信息块；页脚左右展示产品名与公开 GitHub/MIT 链接。Tailwind CSS 与 ECharts 固定版本并由 `/static/vendor/` 同源提供。
@@ -72,7 +72,7 @@
 - `/health` 与 `/health/ready` 始终公开。`/metrics` 默认公开；设置 `STATS_METRICS_AUTH=true` 且配置了 `STATS_API_TOKEN` 时需认证。启用令牌后 `/docs`、`/redoc`、`/openapi.json` 与 `/api/*`（登录/状态除外）需要认证。`OPENAPI_ENABLED=false` 时 OpenAPI 路由不存在。
 - `GET /api/stats/servers` 按配置的服务器身份聚合正式播放次数与收听秒数；Dashboard snapshot 的 `servers` 字段使用同一数据。`available_servers` 仅含 `id` 与 `display_name`。
 - `GET /api/about` 返回名称、`APP_VERSION`（缺省 `0.7.0-dev`）、schema 版本、功能列表、MIT 与公开 `project_url`（GitHub 仓库地址）。
-- `POST /api/auth/login` 在启用认证时设置 httpOnly、SameSite=Lax 会话 Cookie；`SESSION_COOKIE_SECURE=true` 时增加 Secure。登录有每进程每来源摘要 5 次/分钟限制，摘要使用进程随机盐且不保存原始客户端地址。
+- `POST /api/auth/login` 在启用认证时设置 httpOnly、SameSite=Lax 会话 Cookie；`SESSION_COOKIE_SECURE=true` 时增加 Secure。`POST /api/auth/logout` 删除 Cookie 时使用同一组属性。Bearer 方案名大小写不敏感。非 ASCII 凭据返回 401，不会因 `compare_digest` 抛错变成 500。登录有每进程每来源摘要 5 次/分钟限制，摘要使用进程随机盐且不保存原始客户端地址。
 - 响应附加 CSP、`nosniff`、`DENY` 框架与 `no-referrer` 策略。
 - FastAPI 在 `OPENAPI_ENABLED` 为真（默认）时提供 `/openapi.json`、`/docs` 和 `/redoc`；为假时不注册这些路由。
 - history 的 `limit` 使用 FastAPI `Query` 校验，范围 1–100，默认 10。统计窗口 `days` 使用 FastAPI `Query` 校验（`ge=0, le=90`）并由 `_validate_stats_days` 进一步拒绝 `1–6`；`0` 表示全部历史。`daily` 默认 `30`，其他历史端点默认 `0`（全部历史）以保留既有调用方行为；`now-playing` 不接受 `days`。所有历史端点还接受可选 `timezone` 查询参数（IANA 名称，默认 `UTC`），经 `_validate_stats_timezone` 与 `zoneinfo.ZoneInfo` 校验，非法值返回 422；`now-playing` 不接受 `timezone`。`/api/stats/heatmap` 默认 `days=30`，返回 168 行零填充网格。

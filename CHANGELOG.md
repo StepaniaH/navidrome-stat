@@ -12,6 +12,7 @@ This file is reconstructed from public git tags and merge commits. It does not c
 - Tagged image publishes also create a GitHub Release.
 - Optional `STATS_METRICS_AUTH` protects `/metrics` when `STATS_API_TOKEN` is set. Optional `OPENAPI_ENABLED=false` unregisters OpenAPI routes. Defaults keep previous anonymous metrics and enabled docs.
 - Repository Compose file passes `SESSION_COOKIE_SECURE`, retry/backoff, metrics, and OpenAPI flags into the container.
+- Auth compares tokens as UTF-8 bytes so non-ASCII input returns 401 instead of 500. Logout clears the session cookie with the same Secure/HttpOnly flags as login. An upstream `getNowPlaying` ok response with null `nowPlaying` is treated as idle, not a poll failure.
 
 ## [0.7.0] - 2026-07-28
 

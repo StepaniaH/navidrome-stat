@@ -151,3 +151,59 @@ async def test_secure_cookie_can_be_enabled(monkeypatch):
             )
     assert response.status_code == 200
     assert "Secure" in response.headers["set-cookie"]
+
+
+@pytest.mark.asyncio
+@patch("src.main.get_player_stats", new_callable=AsyncMock)
+async def test_stats_allow_lowercase_bearer_scheme(mock_get_stats):
+    mock_get_stats.return_value = []
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+            response = await ac.get(
+                "/api/stats/players",
+                headers={"Authorization": "bearer synthetic-secret-token"},
+            )
+    assert response.status_code == 200
+
+
+def test_non_ascii_credentials_are_rejected_without_raising():
+    from unittest.mock import MagicMock
+
+    from src.auth import is_authorized
+
+    request = MagicMock()
+    with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+        request.headers.get.return_value = None
+        request.cookies.get.return_value = "测试令牌"
+        assert is_authorized(request) is False
+        request.headers.get.return_value = "Bearer 测试令牌"
+        request.cookies.get.return_value = None
+        assert is_authorized(request) is False
+
+
+def test_verify_login_token_rejects_non_ascii_without_raising(monkeypatch):
+    monkeypatch.setenv("STATS_API_TOKEN", "synthetic-secret-token")
+    from src.auth import verify_login_token
+
+    assert verify_login_token("synthetic-secret-token") is True
+    assert verify_login_token("测试令牌") is False
+
+
+@pytest.mark.asyncio
+async def test_logout_clears_secure_cookie(monkeypatch):
+    login_rate_limiter.reset()
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+            login = await ac.post(
+                "/api/auth/login",
+                json={"token": "synthetic-secret-token"},
+            )
+            logout = await ac.post("/api/auth/logout")
+    assert login.status_code == 200
+    assert logout.status_code == 200
+    set_cookie = logout.headers["set-cookie"]
+    assert "stats_session=" in set_cookie
+    assert "Secure" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "Max-Age=0" in set_cookie or "max-age=0" in set_cookie.lower()
