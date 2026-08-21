@@ -79,7 +79,7 @@
 - FastAPI 在 `OPENAPI_ENABLED` 为真（默认）时提供 `/openapi.json`、`/docs` 和 `/redoc`；为假时不注册这些路由。
 - history 的 `limit` 使用 FastAPI `Query` 校验，范围 1–100，默认 10。统计窗口 `days` 使用 FastAPI `Query` 校验（`ge=0, le=90`）并由 `_validate_stats_days` 进一步拒绝 `1–6`；`0` 表示全部历史。`daily` 默认 `30`，其他历史端点默认 `0`（全部历史）以保留既有调用方行为；`now-playing` 不接受 `days`。所有历史端点还接受可选 `timezone` 查询参数（IANA 名称，默认 `UTC`），经 `_validate_stats_timezone` 与 `zoneinfo.ZoneInfo` 校验，非法值返回 422；`now-playing` 不接受 `timezone`。`/api/stats/heatmap` 默认 `days=30`，返回 168 行零填充网格。
 - Dashboard 的 Tailwind CSS 和 ECharts 固定版本并同源加载；CSP 的脚本与样式来源仅为 `'self'`（保留既有内联脚本/样式许可）。
-- 页面提供可见的错误横幅、手动刷新按钮和上次更新时间；历史表格与客户端图例的用户数据用 `textContent` 渲染。客户端饼图的 ECharts HTML tooltip 对 `client_name` 做实体转义。
+- 页面提供可见的错误横幅、手动刷新按钮和上次更新时间；历史表格与客户端图例的用户数据用 `textContent` 渲染。客户端饼图的 ECharts HTML tooltip 对 `client_name` 做实体转义。各图表、榜单、来源、历史与正在播放分区有独立的 loading / empty / error；Dashboard snapshot 整请求失败时分区进入 error，已成功的正在播放仍保留；`now-playing` 失败只影响该分区。snapshot 中缺失或非数组的字段只让对应分区进入 error。图表与分区带 `aria-busy` 和 visually-hidden 文本摘要，不把曲目标题写入摘要。历史空状态不再用 `innerHTML` 注入 SVG。
 - 设置页（`/settings`）按「连接、隐私、偏好、关于」提供四个顶级分区；桌面使用带分组标签的左侧导航，760px 以下改排为四列顶部导航。每个分区只有一个主表面，内部用分隔行组织状态、配置与危险操作，不再使用多层卡片。设置页不存在原生 `<select>`：语言、主题、时区和动态用户选择均使用同一个可键盘操作的 listbox 控制器，支持方向键、Home/End、Escape、外部点击与 ARIA 选中态。连接分区包含多服务器 CRUD、Navidrome URL/用户名/密码表单、保存和测试连接；变更保存后立即应用。隐私策略以 `loading/ready/error` 动态状态独立渲染，不带静态翻译键，因此成功加载或切换语言后不会被覆盖回“加载中…”，失败时显示可重试状态。偏好合并原常规与外观，提供语言、Catppuccin Frappe/Latte、浏览器/UTC 时区、减少动态效果与恢复默认值；这些偏好只在浏览器 `localStorage` 中。密码输入为 `type=password`，GET 仅返回 `password_configured: bool`，从不渲染密码。
 - Dashboard 与设置页共同加载 `src/static/localization.js`：语言值先按支持列表规范化，缺失键回退英语，动态值使用具名占位插值，`data-i18n` 只用于静态文案。两页的动态操作、状态、数值单位和错误文案均通过翻译键生成，不保留中英文文字二选一函数；新增语言时只需补齐该语言消息表。`navidrome-motion=reduced` 同时关闭两页的脉冲、骨架和过渡动画。
 
@@ -111,7 +111,7 @@
 当前测试边界：
 
 - 轮询到数据库集成使用合成 `getNowPlaying` 响应，不连接真实 Navidrome。
-- 浏览器回归只使用合成或空数据，覆盖 Dashboard 恶意元数据安全渲染、服务器过滤和移动布局，以及设置页隐私策略成功/失败收敛、自定义 listbox 键盘操作、语言切换、偏好持久化/重置和 390px 无横向溢出；CI 独立 browser job 构建本地资产并运行同一测试。
+- 浏览器回归只使用合成或空数据，覆盖 Dashboard 恶意元数据安全渲染、服务器过滤和移动布局，以及空数据、401、正在播放失败、snapshot 部分字段失败、390px 无横向溢出；设置页覆盖隐私策略成功/失败收敛、自定义 listbox 键盘操作、语言切换、偏好持久化/重置和 390px 无横向溢出；CI 独立 browser job 构建本地资产并运行同一测试。
 - 容器烟雾测试在本地需 Docker 守护进程；CI 通过 `scripts/docker_smoke_test.sh` 执行。
 - Python CI 执行 Ruff 与分支覆盖率，门槛 80%；依赖更新由 Dependabot 登记。覆盖率以 CI 或本地 `pytest --cov` 当次输出为准，不在本文固化过期百分数。
 

@@ -233,3 +233,108 @@ test("mobile viewport keeps primary content inside the page", async ({ page }) =
   expect(layout.historyOverflow).toBeLessThanOrEqual(1);
   expect(layout.visibleHistoryCells).toBe(6);
 });
+
+function emptySnapshot() {
+  return {
+    summary: {
+      total_plays: 0,
+      total_listen_sec: 0,
+      unique_tracks: 0,
+      client_count: 0,
+      active_days: 0,
+      average_daily_plays: 0,
+      average_daily_listen_sec: 0,
+      previous_total_plays: 0,
+      previous_total_listen_sec: 0,
+      plays_change_pct: null,
+      listen_change_pct: null,
+      window_days: 30,
+    },
+    players: [],
+    transcoding: [],
+    hourly: [],
+    daily: [],
+    heatmap: Array.from({ length: 168 }, (_, index) => ({
+      weekday: Math.floor(index / 24),
+      hour: index % 24,
+      count: 0,
+    })),
+    history: [],
+    servers: [],
+    available_servers: [],
+    top_artists: [],
+    top_albums: [],
+  };
+}
+
+test("empty dashboard shows per-section empty states", async ({ page }) => {
+  await page.route("**/api/stats/dashboard?*", (route) =>
+    route.fulfill({ json: emptySnapshot() }),
+  );
+  await page.route("**/api/stats/now-playing*", (route) =>
+    route.fulfill({ json: [] }),
+  );
+  await page.goto("/");
+  await expect(page.locator("#playerChartEmpty")).toBeVisible();
+  await expect(page.locator("#transcodingChartEmpty")).toBeVisible();
+  await expect(page.locator("#hourlyChartEmpty")).toBeVisible();
+  await expect(page.locator("#historyEmpty")).toBeVisible();
+  await expect(page.locator("#nowPlayingEmpty")).toBeVisible();
+  await expect(page.locator("#playerChartError")).toBeHidden();
+  await expect(page.locator("#errorBanner")).toBeHidden();
+  await expect(page.locator("#playerChartSummary")).toHaveText("No client data");
+});
+
+test("401 shows login instead of empty statistics", async ({ page }) => {
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({ json: { auth_required: true } }),
+  );
+  await page.route("**/api/stats/dashboard?*", (route) =>
+    route.fulfill({ status: 401, json: { detail: "Unauthorized" } }),
+  );
+  await page.route("**/api/stats/now-playing*", (route) =>
+    route.fulfill({ status: 401, json: { detail: "Unauthorized" } }),
+  );
+  await page.goto("/");
+  await expect(page.locator("#loginOverlay")).toBeVisible();
+  await expect(page.locator("#statTotalPlays")).toHaveText("—");
+  await expect(page.locator("#playerChartEmpty")).toBeHidden();
+});
+
+test("now-playing failure keeps historical stats", async ({ page }) => {
+  await page.route("**/api/stats/now-playing*", (route) =>
+    route.fulfill({ status: 500, body: "fail" }),
+  );
+  await page.goto("/");
+  await expect(page.locator("#statTotalPlays")).toHaveText("3");
+  await expect(page.locator("#nowPlayingError")).toBeVisible();
+  await expect(page.locator("#nowPlayingEmpty")).toBeHidden();
+  await expect(page.locator("#errorBanner")).toBeHidden();
+  await expect(page.locator("#historyTable")).toContainText("synthetic-user");
+});
+
+test("dashboard failure shows section errors without blanking now playing", async ({ page }) => {
+  await page.route("**/api/stats/dashboard?*", (route) =>
+    route.fulfill({ status: 500, body: "fail" }),
+  );
+  await page.goto("/");
+  await expect(page.locator("#playerChartError")).toBeVisible();
+  await expect(page.locator("#historyError")).toBeVisible();
+  await expect(page.locator("#errorBanner")).toBeVisible();
+  await expect(page.locator("#nowPlayingList")).toContainText("Synthetic Live Track");
+  await expect(page.locator("#statTotalPlays")).toHaveText("—");
+});
+
+test("malformed players field fails only the clients panel", async ({ page }) => {
+  await page.route("**/api/stats/dashboard?*", (route) =>
+    route.fulfill({ json: { ...snapshot, players: null } }),
+  );
+  await page.goto("/");
+  await expect(page.locator("#playerChartError")).toBeVisible();
+  await expect(page.locator("#playerChartEmpty")).toBeHidden();
+  await expect(page.locator("#historyTable")).toContainText("synthetic-user");
+  await expect(page.locator("#statTotalPlays")).toHaveText("3");
+  await expect(page.locator("#playerChartSummary")).toHaveText(
+    "This section could not be loaded.",
+  );
+});

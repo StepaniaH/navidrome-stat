@@ -342,7 +342,8 @@ def test_heatmap_render_function_exists(source):
     assert "Number(item.weekday)" in block
     assert "Number(item.count)" in block
     assert "weekdayHourChart.setOption" in block
-    assert "toggleChartEmpty" in block
+    assert "beginArrayPanel" in block
+    assert "weekdayHourChart.setOption" in block
     # No raw HTML injection in the heatmap renderer.
     assert "innerHTML" not in block
     assert "insertAdjacentHTML" not in block
@@ -355,10 +356,11 @@ def test_heatmap_included_in_fetchstats_promise_all(source):
 
 
 def test_heatmap_skeleton_in_set_loading(source):
-    block = _function_block(source, "setLoading")
-    assert "'weekdayHourChartSkeleton'" in block
-    assert "'weekdayHourChart'" in block
-    assert "weekdayHourChart" in block
+    loading = _function_block(source, "setLoading")
+    assert "STATS_PANEL_NAMES" in loading
+    assert "setPanelState" in loading
+    assert 'skeleton: \'weekdayHourChartSkeleton\'' in source or 'skeleton: "weekdayHourChartSkeleton"' in source
+    assert "weekdayHourChartSkeleton" in source
 
 
 def test_heatmap_resize_in_window_resize_handler(source):
@@ -489,3 +491,79 @@ def test_filter_popovers_have_accessible_keyboard_behavior(source):
     assert 'role="option"' in source
     assert "event.key === 'Escape'" in source
     assert "closeFilterMenus()" in source
+
+
+def test_panel_state_helper_covers_loading_empty_error(source):
+    block = _function_block(source, "setPanelState")
+    assert "aria-busy" in block
+    assert "loading" in block
+    assert "empty" in block
+    assert "error" in block
+    assert "innerHTML" not in block
+    assert "insertAdjacentHTML" not in block
+
+
+def test_dashboard_section_error_and_empty_overlays_exist(source):
+    for element_id in (
+        "nowPlayingError",
+        "playerChartError",
+        "transcodingChartError",
+        "hourlyChartError",
+        "dailyChartError",
+        "weekdayHourChartError",
+        "topArtistsChartError",
+        "topAlbumsChartError",
+        "serverSourceError",
+        "historyError",
+        "summaryError",
+        "playerChartEmpty",
+        "historyEmpty",
+        "nowPlayingEmpty",
+    ):
+        assert f'id="{element_id}"' in source
+
+
+def test_chart_aria_summaries_are_visually_hidden(source):
+    for element_id in (
+        "playerChartSummary",
+        "transcodingChartSummary",
+        "hourlyChartSummary",
+        "dailyChartSummary",
+        "weekdayHourChartSummary",
+        "topArtistsChartSummary",
+        "topAlbumsChartSummary",
+        "nowPlayingSummary",
+        "historySummary",
+        "summaryAria",
+    ):
+        assert f'id="{element_id}"' in source
+    assert "visually-hidden" in source
+    assert "aria-describedby=\"playerChartSummary\"" in source
+
+
+def test_fetch_now_playing_surfaces_section_error(source):
+    block = _function_block(source, "fetchNowPlaying")
+    assert "setPanelState('nowPlaying', 'error'" in block
+    assert "error.nowPlaying" in block
+    assert "innerHTML" not in block
+
+
+def test_fetch_stats_isolates_panel_render_failures(source):
+    block = _function_block(source, "fetchStats")
+    assert "renderPanelSafely" in block
+    assert "hasLoadedOnce" in block
+    assert "STATS_PANEL_NAMES.forEach" in block
+    assert "innerHTML" not in block
+
+
+def test_history_empty_state_does_not_use_innerhtml(source):
+    block = _function_block(source, "renderHistoryTable")
+    assert "beginArrayPanel" in block
+    assert "innerHTML" not in block
+    assert "insertAdjacentHTML" not in block
+
+
+def test_render_panel_safely_sets_section_error(source):
+    block = _function_block(source, "renderPanelSafely")
+    assert "setPanelState(name, 'error'" in block
+    assert "innerHTML" not in block

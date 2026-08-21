@@ -16,6 +16,7 @@ This file is reconstructed from public git tags and merge commits. It does not c
 - Collector replace/reconcile still starts the new poller if old-session finalization fails. Preset previous-period stats use local calendar days across DST. Retention purge compares `played_at` by instant. Successful upstream polls are not marked failed when persistence fails. `navidrome_stat_polling_task_up` is 1 only when every collector task is alive. Dashboard client pie tooltips escape `client_name`.
 - Privacy import rejects bodies over 5 MiB while reading the stream, including requests that omit `Content-Length`.
 - Native Navidrome listen-history import is documented as **not implemented** until a public read API exists (Subsonic/OpenSubsonic have no history-read method).
+- Dashboard chart, ranking, history, and now-playing sections show independent loading, empty, and error states, with visually hidden aria summaries.
 
 ## [0.7.0] - 2026-07-28
 
