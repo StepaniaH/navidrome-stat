@@ -33,6 +33,7 @@
 | NDS-DATA-004 | 原生历史适配器调研 | P2 | 待办 | 公开接口确认；禁止私有库猜测 |
 | NDS-CORE-006 | 认证与空闲轮询正确性 | P1 | 已完成 | 无 |
 | NDS-CORE-007 | 采集、窗口、保留与观测正确性 | P1 | 已完成 | 无 |
+| NDS-CORE-008 | 导入请求体流式上限 | P2 | 待办 | 无 |
 
 已完成（全文见档案；ID 保留）：NDS-SEC-002、NDS-CORE-001、NDS-CORE-002、NDS-CORE-003、NDS-CORE-004、NDS-CORE-005、NDS-DATA-001、NDS-DATA-002、NDS-DATA-003、NDS-API-001、NDS-REL-001、NDS-REL-002、NDS-OPS-001、NDS-TEST-001、NDS-DOC-001、NDS-DOC-002、NDS-CI-001、NDS-SRC-001、NDS-UI-002、NDS-UI-003、NDS-UI-004、NDS-UI-005、NDS-UI-006、NDS-UI-007、NDS-UI-008、NDS-UI-009。
 
@@ -133,7 +134,23 @@
 - **验证命令**：`.venv/bin/python -m pytest -q tests/test_collector_manager.py tests/test_stats_window.py tests/test_privacy_ops.py tests/test_polling_integration.py tests/test_metrics.py tests/test_static_dashboard.py`；`.venv/bin/python -m pytest -q`；`.venv/bin/ruff check .`；`git diff --check`。
 - **涉及文件**：`src/collector_manager.py`、`src/database.py`、`src/privacy_ops.py`、`src/main.py`、`src/runtime_state.py`、`src/metrics.py`、`src/static/index.html`、相关测试、`docs/interfaces.md`、`docs/current-state.md`、`docs/security.md`、`CHANGELOG.md`、本文件。
 - **风险/回滚**：替换失败时 HTTP 不再因旧会话 finalize 失败而 503（配置已应用）。回滚本提交即可。
-- **完成记录**：2026-08-21，Cursor Agent。`replace`/`reconcile` 在旧会话 finalize 失败后仍启动新 collector；预设上一窗口改为本地日历日；保留预览/删除使用 `datetime(played_at)`；上游 `status=ok` 后落库失败只记 save/脱敏错误，不增加 poll failure 或退避；`polling_task_alive` 与就绪探针一样要求全部 collector 任务存活；客户端饼图 HTML tooltip 转义 `client_name`。无 schema 或认证默认值变更。验证：`.venv/bin/python -m pytest -q tests/test_collector_manager.py tests/test_stats_window.py tests/test_privacy_ops.py tests/test_polling_integration.py tests/test_metrics.py tests/test_static_dashboard.py` 通过；全量 `.venv/bin/python -m pytest -q` 为 `406 passed`；`.venv/bin/ruff check .` 通过；`.venv/bin/python scripts/check_md_links.py` 通过；`git diff --check` 通过。提交 `380c4ce` 及后续测试修复，PR #27。遗留：请求体 5 MiB 上限仍只作用在已缓冲 JSON，ASGI 流式上限未做；DST 验证使用合成 `America/New_York` 2024-03-12，不是生产时区配置。
+- **完成记录**：2026-08-21，Cursor Agent。`replace`/`reconcile` 在旧会话 finalize 失败后仍启动新 collector；预设上一窗口改为本地日历日；保留预览/删除使用 `datetime(played_at)`；上游 `status=ok` 后落库失败只记 save/脱敏错误，不增加 poll failure 或退避；`polling_task_alive` 与就绪探针一样要求全部 collector 任务存活；客户端饼图 HTML tooltip 转义 `client_name`。无 schema 或认证默认值变更。验证：`.venv/bin/python -m pytest -q tests/test_collector_manager.py tests/test_stats_window.py tests/test_privacy_ops.py tests/test_polling_integration.py tests/test_metrics.py tests/test_static_dashboard.py` 通过；全量 `.venv/bin/python -m pytest -q` 为 `406 passed`；`.venv/bin/ruff check .` 通过；`.venv/bin/python scripts/check_md_links.py` 通过；`git diff --check` 通过。提交 `380c4ce`、`ae7c80c`，PR #27。遗留：请求体 5 MiB 上限仍只作用在 `Content-Length` 与已缓冲 JSON，见 NDS-CORE-008。DST 验证使用合成 `America/New_York` 2024-03-12，不是生产时区配置。
+
+## NDS-CORE-008 导入请求体流式上限
+
+- **优先级/状态**：P2 / 待办
+- **依赖**：无。不改变认证默认值；不放宽 5 MiB / 10000 条校验。
+- **目标**：让隐私导入的 5 MiB 上限在缺少 `Content-Length`（例如 chunked）时仍然在读取请求体过程中生效，而不是只在 JSON 已全部进入内存后由 `json.dumps` 再量一次。
+- **实施步骤**：
+  1. 核验 `security_headers_middleware` 仅在存在 `Content-Length` 时提前 413，以及 `import_user_data` 对已解析 payload 的二次长度检查。
+  2. 在 ASGI `receive` 路径对 `/api/privacy/users/{username}/import` 累计已读字节，超过 `IMPORT_MAX_PAYLOAD_BYTES` 返回 413 并停止继续读取。
+  3. 测试：带过大 `Content-Length` 仍 413；省略 `Content-Length` 的超限 body 也 413；合法小 payload 仍 200。错误响应不含请求体或用户名以外的路径细节。
+  4. 更新 `docs/interfaces.md` 兼容说明：仍是 5 MiB，只是执行点前移。
+- **验收标准**：缺少 `Content-Length` 的超限导入不会把完整 body 交给 JSON 解析；默认匿名模式不变；无 schema 变更。
+- **验证命令**：`.venv/bin/python -m pytest -q tests/test_privacy_api.py tests/test_privacy_ops.py`；`.venv/bin/python -m pytest -q`；`.venv/bin/ruff check .`；`git diff --check`。
+- **涉及文件**：预计 `src/main.py`、`src/privacy_ops.py`、相关测试、`docs/interfaces.md`、`docs/security.md`、本文件。
+- **风险/回滚**：错误截断合法流式客户端。保留 JSON 层二次校验作为回滚安全网。
+- **完成记录**：未填写。
 
 ## NDS-DEP-002 基础镜像 digest 与发布来源
 

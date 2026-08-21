@@ -46,7 +46,7 @@
 | `/api/privacy/retention/apply` | POST | 总计和 history/attempt 分表删除条数、保留期 | 受支持但可演进 | 请求体 `{"confirm": true}` 必填 |
 | `/api/privacy/users` | GET | 用户名与记录数列表 | 受支持但可演进 | 不含曲目明细 |
 | `/api/privacy/users/{username}/export` | GET | JSON 导出包 | 受支持但可演进 | 固定附件名 `navidrome-stat-export.json`；格式版本 2 含正式播放、短播放尝试、来源与时长置信度，不含内部幂等 ID |
-| `/api/privacy/users/{username}/import` | POST | `imported`、`attempts_imported`、`merge` | 受支持但可演进 | 兼容格式版本 1/2；请求最大 5 MiB、合计最多 10000 条；校验用户名、字段长度、带时区时间戳、0–7 天时长与转码值 |
+| `/api/privacy/users/{username}/import` | POST | `imported`、`attempts_imported`、`merge` | 受支持但可演进 | 兼容格式版本 1/2；请求最大 5 MiB、合计最多 10000 条；校验用户名、字段长度、带时区时间戳、0–7 天时长与转码值。中间件仅在存在 `Content-Length` 时提前 413；缺少该头时完整 body 仍会进入 JSON 解析后再量大小（NDS-CORE-008） |
 | `/api/privacy/users/{username}/delete/preview` | GET | `records_to_delete` | 受支持但可演进 | 仅计数 |
 | `/api/privacy/users/{username}/delete` | POST | `deleted` | 受支持但可演进 | 请求体 `{"confirm": true}` 必填 |
 | `/api/source/config` | GET | `url`、`username`、`password_configured`（bool） | 受支持但可演进 | **永不返回 password**；返回 env > saved 的有效配置脱敏视图；启用认证时需授权 |
@@ -273,4 +273,4 @@ GET {NAVIDROME_URL}/rest/getNowPlaying
 - 2026-08-21（NDS-OSS-001）：`GET /api/about` 的 `project_url` 从 `null` 改为公开仓库 URL。把 `null` 当作缺失的旧客户端仍可工作；这是字段填充，不是删除。无 schema 变更。
 - 2026-08-21（NDS-SEC-003）：新增 `STATS_METRICS_AUTH`（默认 `false`）与 `OPENAPI_ENABLED`（默认 `true`）。未设置时行为与此前一致：匿名 `/metrics`、OpenAPI 路由存在（启用令牌时 OpenAPI 仍需认证）。无数据库迁移。
 - 2026-08-21（NDS-CORE-006）：非 ASCII 的 Bearer/Cookie 由可能 500 改为 401；`Authorization` 方案名大小写不敏感；登出 Cookie 带上与登录相同的 Secure/HttpOnly。`getNowPlaying` 在 `status=ok` 且 `nowPlaying` 为 null 时记空闲成功。无 schema 变更。
-- 2026-08-21（NDS-CORE-007）：预设 `days` 的上一窗口改为本地日历日（DST 下不再按当前窗口 UTC 时长前移）。保留清理改为 `datetime(played_at)` 比较。上游 `status=ok` 后落库失败不再增加 poll failure 或退避。`navidrome_stat_polling_task_up` 与就绪探针一样要求全部 collector 任务存活。服务器替换在旧会话 finalize 失败后仍启动新采集器，不再仅因此返回 503。无 schema 变更。
+- 2026-08-21（NDS-CORE-007）：预设 `days` 的上一窗口改为本地日历日（DST 下不再按当前窗口 UTC 时长前移）。保留清理改为 `datetime(played_at)` 比较。上游 `status=ok` 后落库失败不再增加 poll failure 或退避。`navidrome_stat_polling_task_up` 与就绪探针一样要求全部 collector 任务存活。服务器替换在旧会话 finalize 失败后仍启动新采集器，不再仅因此返回 503。无 schema 变更。导入 5 MiB 提前拒绝仍依赖 `Content-Length`，流式上限见 NDS-CORE-008。
