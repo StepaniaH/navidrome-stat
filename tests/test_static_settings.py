@@ -168,3 +168,59 @@ def test_server_settings_apply_immediately_without_restart_copy():
     assert "Connection saved and applied immediately" in script
     assert "重启服务后生效" not in script
     assert "Restart the service to apply it" not in script
+
+
+def test_retention_copy_matches_automatic_cleanup_and_apply_uses_saved_policy():
+    html = _read(SETTINGS_HTML)
+    script = _read(SETTINGS_JS)
+    assert "deleted automatically at startup and during background maintenance" in html
+    assert "有限策略会在启动和后台维护时自动执行" in script
+    assert "Records are deleted only after" not in html
+    assert "只有点击“确认清理”才会删除" not in script
+    assert "function retentionDraftIsDirty()" in script
+    assert "expected_retention_days: persistedDays" in script
+    assert "response.status === 409" in script
+    assert "applyRetentionBtn').disabled = !persistedFinite || dirty" in script
+
+
+def test_source_form_has_explicit_create_and_edit_modes():
+    html = _read(SETTINGS_HTML)
+    script = _read(SETTINGS_JS)
+    assert 'id="cancelSourceEditBtn"' in html
+    assert 'id="sourcePass"' in html and "required" in html
+    assert 'id="sourceEnabled"' in html
+    assert "function resetSourceForm()" in script
+    assert "password.required = !editing" in script
+    assert "const enabled = document.getElementById('sourceEnabled').checked" in script
+    assert "statusBadge.dataset.enabled = String(Boolean(server.enabled))" in script
+    assert "sourceEditingEnabled" not in script
+    assert "`/api/servers/${encodeURIComponent(editingId)}/test`" in script
+    assert "state.fallbackSourceConfig = await response.json()" in script
+    assert "always take precedence" not in script
+
+
+def test_destructive_previews_ignore_stale_responses_and_import_is_keyboard_reachable():
+    html = _read(SETTINGS_HTML)
+    script = _read(SETTINGS_JS)
+    assert "new AbortController()" in script
+    assert "retentionPreviewController !== controller" in script
+    assert "userPreviewController !== controller" in script
+    assert "preview.username !== username" in script
+    assert 'id="importBtn"' in html
+    assert 'id="importFile" class="visually-hidden"' in html
+    assert "file.size > IMPORT_MAX_BYTES" in script
+    assert "attempts_imported" in script
+
+
+def test_settings_login_is_an_accessible_dialog():
+    html = _read(SETTINGS_HTML)
+    script = _read(SETTINGS_JS)
+    assert 'role="dialog"' in html
+    assert 'aria-modal="true"' in html
+    assert 'aria-labelledby="settingsLoginTitle"' in html
+    assert 'id="loginError" class="login-error" role="alert"' in html
+    assert "document.querySelector('.settings-shell').inert = true" in script
+    assert "document.querySelector('.settings-shell').inert = false" in script
+    assert "window.requestAnimationFrame(() => document.getElementById('loginToken').focus())" in script
+    assert "event.key !== 'Tab'" in script
+    assert "tokenInput.value = ''" in script

@@ -1,5 +1,5 @@
-# Auto-generated runtime lock for reproducible installs (Python 3.11+).
-# Refresh: pip install -r requirements.txt && scripts/refresh_requirements_lock.sh
+# Auto-generated runtime lock for reproducible installs (Python 3.11).
+# Refresh: scripts/refresh_requirements_lock.sh (requires Python 3.11).
 aiosqlite==0.22.1
 annotated-doc==0.0.4
 annotated-types==0.7.0

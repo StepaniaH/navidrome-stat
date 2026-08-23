@@ -100,11 +100,15 @@ async def test_health_remains_public_when_auth_enabled():
 
 
 @pytest.mark.asyncio
-async def test_openapi_blocked_when_auth_enabled():
+async def test_openapi_routes_blocked_when_auth_enabled():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
-            response = await ac.get("/openapi.json")
-    assert response.status_code == 401
+            responses = [
+                await ac.get("/openapi.json"),
+                await ac.get("/docs"),
+                await ac.get("/redoc"),
+            ]
+    assert [response.status_code for response in responses] == [401, 401, 401]
 
 
 @pytest.mark.asyncio
@@ -122,8 +126,10 @@ async def test_openapi_routes_absent_when_disabled(monkeypatch):
         ) as ac:
             openapi = await ac.get("/openapi.json")
             docs = await ac.get("/docs")
+            redoc = await ac.get("/redoc")
         assert openapi.status_code == 404
         assert docs.status_code == 404
+        assert redoc.status_code == 404
     finally:
         monkeypatch.delenv("OPENAPI_ENABLED", raising=False)
         importlib.reload(main_module)
@@ -146,7 +152,12 @@ async def test_security_headers_present():
         response = await ac.get("/health")
     assert response.headers.get("x-content-type-options") == "nosniff"
     assert response.headers.get("x-frame-options") == "DENY"
-    assert "Content-Security-Policy" in response.headers
+    policy = response.headers["Content-Security-Policy"]
+    assert "script-src 'self';" in policy
+    assert "script-src 'self' 'unsafe-inline'" not in policy
+    assert "object-src 'none';" in policy
+    assert "base-uri 'self';" in policy
+    assert "form-action 'self';" in policy
 
 
 @pytest.mark.asyncio

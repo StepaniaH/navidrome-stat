@@ -18,6 +18,17 @@ async function routeSyntheticSettings(page) {
       },
     }),
   );
+  await page.route("**/api/privacy/storage", (route) =>
+    route.fulfill({
+      json: {
+        database_bytes: 65536,
+        total_records: 0,
+        history_records: 0,
+        attempt_records: 0,
+        estimated_data_bytes: 0,
+      },
+    }),
+  );
   await page.route("**/api/privacy/users", (route) =>
     route.fulfill({ json: [] }),
   );
@@ -171,4 +182,117 @@ test("mobile settings keep all four sections inside the viewport", async ({
   );
   expect(menuBounds.left).toBeGreaterThanOrEqual(0);
   expect(menuBounds.right).toBeLessThanOrEqual(menuBounds.viewport);
+});
+
+test("retention draft must be saved before apply and binds cleanup to that policy", async ({
+  page,
+}) => {
+  let persistedDays = 1;
+  let appliedBody = null;
+  await page.unroute("**/api/privacy/settings");
+  await page.unroute("**/api/privacy/retention/preview*");
+  await page.route("**/api/privacy/settings", async (route) => {
+    if (route.request().method() === "PUT") {
+      persistedDays = route.request().postDataJSON().retention_days;
+    }
+    await route.fulfill({
+      json: {
+        retention_days: persistedDays,
+        permanent: persistedDays === null,
+      },
+    });
+  });
+  await page.route("**/api/privacy/retention/preview*", async (route) => {
+    const days = Number(new URL(route.request().url()).searchParams.get("days"));
+    await route.fulfill({
+      json: {
+        retention_days: days,
+        total_records: 12,
+        records_to_delete: days === 30 ? 2 : 8,
+        database_bytes: 65536,
+        estimated_database_bytes_after: 60000,
+      },
+    });
+  });
+  await page.route("**/api/privacy/retention/apply", async (route) => {
+    appliedBody = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        deleted: 2,
+        history_deleted: 2,
+        attempts_deleted: 0,
+        retention_days: persistedDays,
+      },
+    });
+  });
+
+  await page.goto("/settings#privacy");
+  await expect(page.locator("#saveRetentionBtn")).toBeDisabled();
+  await expect(page.locator("#applyRetentionBtn")).toBeEnabled();
+
+  await page.locator("#retentionSlider").fill("30");
+  await expect(page.locator("#saveRetentionBtn")).toBeEnabled();
+  await expect(page.locator("#applyRetentionBtn")).toBeDisabled();
+
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.locator("#saveRetentionBtn").click();
+  await expect(page.locator("#policySummary")).toContainText("30 days");
+  await expect(page.locator("#applyRetentionBtn")).toBeEnabled();
+  await page.locator("#applyRetentionBtn").click();
+  await expect.poll(() => appliedBody).toEqual({
+    confirm: true,
+    expected_retention_days: 30,
+  });
+});
+
+test("editing exposes disabled state, uses the saved password, and can re-enable", async ({
+  page,
+}) => {
+  let server = {
+    id: "server-1",
+    display_name: "Synthetic Server",
+    url: "https://navidrome.example.invalid",
+    username: "synthetic-user",
+    password_configured: true,
+    enabled: false,
+    runtime_status: "not_running",
+    last_poll_ok: null,
+    seconds_since_last_poll: null,
+  };
+  let testBody = null;
+  let updateBody = null;
+  await page.unroute("**/api/servers");
+  await page.route("**/api/servers", (route) =>
+    route.fulfill({ json: [server] }),
+  );
+  await page.route("**/api/servers/server-1/test", async (route) => {
+    testBody = route.request().postDataJSON();
+    await route.fulfill({ json: { ok: true, message: "ok" } });
+  });
+  await page.route("**/api/servers/server-1", async (route) => {
+    updateBody = route.request().postDataJSON();
+    server = { ...server, ...updateBody };
+    await route.fulfill({ json: server });
+  });
+
+  await page.goto("/settings#source");
+  await expect(page.locator(".server-status")).toHaveText("Disabled");
+  await page.getByRole("button", { name: "Edit" }).click();
+  await expect(page.locator("#cancelSourceEditBtn")).toBeVisible();
+  await expect(page.locator("#sourcePass")).not.toHaveAttribute("required", "");
+  await expect(page.locator("#sourceEnabled")).not.toBeChecked();
+
+  await page.locator("#testSourceBtn").click();
+  await expect.poll(() => testBody).not.toBeNull();
+  expect(testBody.password).toBe("");
+  expect(testBody.enabled).toBe(false);
+
+  await page.locator("#sourceEnabled").check();
+  await page.locator("#saveSourceBtn").click();
+  await expect.poll(() => updateBody).not.toBeNull();
+  expect(updateBody.enabled).toBe(true);
+  await expect(page.locator(".server-status")).toHaveText("Enabled");
+  await expect(page.locator("#cancelSourceEditBtn")).toBeHidden();
+  await expect(page.locator("#sourceName")).toHaveValue("");
+  await expect(page.locator("#sourcePass")).toHaveAttribute("required", "");
 });

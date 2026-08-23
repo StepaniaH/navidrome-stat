@@ -198,6 +198,11 @@ class RetentionApplyResponse(BaseModel):
     retention_days: Optional[int] = None
 
 
+class RetentionApplyRequest(BaseModel):
+    confirm: bool = False
+    expected_retention_days: Optional[int]
+
+
 class UserSummary(BaseModel):
     username: str
     record_count: int

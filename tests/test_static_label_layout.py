@@ -5,11 +5,16 @@ from pathlib import Path
 import pytest
 
 INDEX_HTML = Path(__file__).resolve().parent.parent / "src" / "static" / "index.html"
+DASHBOARD_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.js"
+DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
 
 
 @pytest.fixture(scope="module")
 def source() -> str:
-    return INDEX_HTML.read_text(encoding="utf-8")
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (INDEX_HTML, DASHBOARD_JS, DASHBOARD_CSS)
+    )
 
 
 def _function_block(source: str, fn_name: str) -> str:
@@ -85,9 +90,8 @@ def test_render_ranking_list_uses_create_element_only(source):
 
 def test_render_ranking_list_sets_accessible_roles(source):
     block = _function_block(source, "renderRankingList")
-    assert "'role', 'table'" in block
-    assert "'role', 'row'" in block
-    assert "'role', 'cell'" in block
+    assert "'role', 'list'" in block
+    assert "'role', 'listitem'" in block
     assert "'aria-label', ariaLabel" in block
 
 
@@ -126,12 +130,12 @@ def test_ranking_bar_gradients_preserved(source):
     ("topArtistsChart", "热门艺人播放次数排行榜"),
     ("topAlbumsChart", "热门专辑播放次数排行榜"),
 ])
-def test_top_containers_have_table_role_and_aria_label(source, container_id, aria_label):
+def test_top_containers_have_list_role_and_aria_label(source, container_id, aria_label):
     line = next(
         line for line in source.splitlines()
         if f'id="{container_id}"' in line and "ranking-table" in line
     )
-    assert 'role="table"' in line
+    assert 'role="list"' in line
     assert f'aria-label="{aria_label}"' in line
 
 

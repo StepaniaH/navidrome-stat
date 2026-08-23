@@ -5,7 +5,7 @@ Navidrome Statistic is a single-process FastAPI application with background coll
 ## Data flow
 
 1. On startup, the application initializes and migrates SQLite.
-2. A collector is created for each enabled Navidrome server. When no server has been saved in the settings page, the `NAVIDROME_*` environment variables provide a compatible default connection.
+2. A collector is created for each enabled Navidrome server. When the server list is empty, a compatible fallback connection is resolved field by field from non-empty `NAVIDROME_*` environment variables and previously saved fallback values, in that order. Once any server entry exists, only enabled entries from that list are collected; disabled entries do not reactivate the fallback.
 3. Each collector calls the Subsonic `getNowPlaying` endpoint on a fixed interval. It also checks `getOpenSubsonicExtensions` for the `playbackReport` capability.
 4. A `PlaybackSessionTracker` keeps active sessions in memory, keyed by player ID.
 5. Counted sessions and below-threshold attempts are written to SQLite.
@@ -15,9 +15,9 @@ The main implementation is split across:
 
 | Component | Files |
 | --- | --- |
-| Application lifecycle and HTTP routes | `src/main.py` |
+| Application lifecycle, collector integration, and HTTP routes | `src/main.py` |
 | Subsonic client | `src/client.py` |
-| Collector lifecycle | `src/collector_manager.py` |
+| Collector reconciliation and resource cleanup | `src/collector_manager.py` |
 | Session tracking | `src/sessions.py` |
 | SQLite schema and statistics queries | `src/database.py`, `src/sqlite.py` |
 | Retention, export, import, and deletion | `src/privacy_ops.py` |
@@ -35,16 +35,19 @@ Active sessions exist only in application memory. Counted sessions have durable 
 
 ## Storage
 
-SQLite stores listening records, source information, retention settings, and any Navidrome credentials saved through the settings page. Schema migrations run during startup. Connections use write-ahead logging, foreign-key checks, and a bounded busy timeout.
+SQLite stores listening records, source information, retention settings, and any Navidrome credentials saved through the server list or compatible fallback API. Schema migrations run during startup. Connections use write-ahead logging, foreign-key checks, and a bounded busy timeout.
 
 Dashboard history is read through aggregate queries. A short-lived in-process cache reduces repeated work for identical dashboard filters and is invalidated after relevant writes.
+
+Finite retention policies run during startup and in a periodic background task. Policy updates, background cleanup, and manual **Apply now** requests are serialized on the application's event loop; manual cleanup also verifies that the saved policy still matches the previewed policy.
 
 ## Runtime boundaries
 
 - One application instance can collect from multiple Navidrome servers.
+- Run the application with one worker and one event loop. Multi-worker deployments are not supported.
 - Multiple processes or replicas collecting the same sources are not supported and can double-count plays.
 - The SQLite file must be on storage suitable for a single-host database; shared network filesystems are not supported.
 - Authentication is optional. `STATS_API_TOKEN` protects dashboard data and application APIs when configured, but the application does not terminate TLS.
 - Health endpoints report process, database, collector, and upstream state. They are not a replacement for deployment-level monitoring or backups.
 
-FastAPI exposes the current HTTP schema at `/openapi.json` and interactive documentation at `/docs` unless OpenAPI routes are disabled with `OPENAPI_ENABLED=false`.
+FastAPI exposes the current HTTP schema at `/openapi.json` and a same-origin searchable reference at `/docs` (also served at `/redoc`) unless OpenAPI routes are disabled with `OPENAPI_ENABLED=false`.

@@ -5,11 +5,35 @@ from pathlib import Path
 import pytest
 
 INDEX_HTML = Path(__file__).resolve().parent.parent / "src" / "static" / "index.html"
+DASHBOARD_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.js"
+DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
+THEME_BOOTSTRAP_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "theme-bootstrap.js"
+TAILWIND_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "vendor" / "tailwind.css"
 
 
 @pytest.fixture(scope="module")
 def source() -> str:
-    return INDEX_HTML.read_text(encoding="utf-8")
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (INDEX_HTML, DASHBOARD_JS, DASHBOARD_CSS, THEME_BOOTSTRAP_JS)
+    )
+
+
+def test_dashboard_loads_split_static_resources():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert '<link rel="stylesheet" href="/static/dashboard.css">' in html
+    assert '<script src="/static/dashboard.js"></script>' in html
+    assert '<script src="/static/theme-bootstrap.js"></script>' in html
+    assert '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">' in html
+    assert "<style>" not in html
+    assert html.count("<script>") == 0
+
+
+def test_generated_tailwind_contains_dynamic_dashboard_state_classes():
+    stylesheet = TAILWIND_CSS.read_text(encoding="utf-8")
+    assert ".bg-red-400" in stylesheet
+    assert ".animate-pulse" in stylesheet
+    assert ".invisible" in stylesheet
 
 
 def _function_block(source: str, fn_name: str) -> str:
@@ -147,7 +171,8 @@ def test_daily_days_state_variable_replaced(source):
 def test_historical_fetch_urls_use_stats_days(source):
     block = _function_block(source, "fetchStats")
     assert "/api/stats/dashboard?${query}" in block
-    assert "days=${statsDays}" in block
+    assert "days=${requestState.days}" in block
+    assert "captureStatsRequestState()" in block
     for endpoint in (
         "summary?",
         "players?",
@@ -294,7 +319,7 @@ def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(sourc
 
 def test_historical_fetch_urls_propagate_timezone(source):
     block = _function_block(source, "fetchStats")
-    assert "encodeURIComponent(resolveStatsTimezone())" in block
+    assert "encodeURIComponent(requestState.timezone)" in block
     assert "timezone=${tzParam}" in block
     assert "/api/stats/dashboard?${query}" in block
     now_block = _function_block(source, "fetchNowPlaying")
@@ -315,11 +340,11 @@ def test_heatmap_echarts_init_exists(source):
 
 
 def test_heatmap_static_axis_labels_exist(source):
-    assert "WEEKDAY_LABELS" in source
+    assert "WEEKDAY_MESSAGE_KEYS" in source
     assert "HOUR_LABELS" in source
-    # Static Mon..Sun labels must be present (no API-derived labels).
-    for label in ("'Mon'", "'Tue'", "'Wed'", "'Thu'", "'Fri'", "'Sat'", "'Sun'"):
-        assert label in source
+    for key in ("weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat", "weekday.sun"):
+        assert key in source
+    assert "WEEKDAY_MESSAGE_KEYS.map(key => dashboardMessage(key))" in source
     # 24 hour categories 0..23 generated as strings.
     assert "Array.from({ length: 24 }, (_, h) => String(h))" in source
 
@@ -354,9 +379,8 @@ def test_heatmap_skeleton_in_set_loading(source):
 
 
 def test_heatmap_resize_in_window_resize_handler(source):
-    block = source[source.index("window.addEventListener('resize'") :]
-    end = block.index("});") + 3
-    block = block[:end]
+    assert "window.addEventListener('resize', resizeDashboardCharts)" in source
+    block = _function_block(source, "resizeDashboardCharts")
     assert "weekdayHourChart.resize()" in block
 
 
@@ -397,19 +421,18 @@ def test_ranking_metric_control_and_state_exist(source):
     assert 'data-ranking-metric="plays"' in source
     assert 'data-ranking-metric="listen_time"' in source
     assert "let rankingMetric = 'plays';" in source
-    assert "let rankingInFlight = false;" in source
+    assert "rankingInFlight" not in source
 
 
 def test_ranking_fetch_propagates_metric_and_uses_selected_value(source):
     block = _function_block(source, "fetchStats")
-    assert "&metric=${rankingMetric}" in block
-    assert "renderTopArtistsChart(snapshot.top_artists, rankingMetric)" in block
-    assert "renderTopAlbumsChart(snapshot.top_albums, rankingMetric)" in block
+    assert "&metric=${requestState.metric}" in block
+    assert "renderTopArtistsChart(snapshot.top_artists, requestState.metric)" in block
+    assert "renderTopAlbumsChart(snapshot.top_albums, requestState.metric)" in block
 
 
 def test_ranking_metric_switch_fetches_only_rankings(source):
     block = _function_block(source, "fetchRankings")
-    assert "rankingInFlight" in block
     assert "await fetchStats()" in block
     assert "/api/stats/top-artists" not in block
     assert "/api/stats/top-albums" not in block
@@ -458,9 +481,9 @@ def test_server_filter_is_safe_and_propagated(source):
     assert "let selectedSourceId = '';" in source
     stats = _function_block(source, "fetchStats")
     now_playing = _function_block(source, "fetchNowPlaying")
-    assert "&source_id=${encodeURIComponent(selectedSourceId)}" in stats
-    assert "?source_id=${encodeURIComponent(selectedSourceId)}" in now_playing
-    options = _function_block(source, "updateSourceOptions")
+    assert "&source_id=${encodeURIComponent(requestState.sourceId)}" in stats
+    assert "?source_id=${encodeURIComponent(requestState.sourceId)}" in now_playing
+    options = _function_block(source, "renderSourceOptions")
     assert "textContent" in options
     assert "innerHTML" not in options
 
@@ -471,8 +494,8 @@ def test_custom_date_range_is_validated_and_propagated(source):
     assert 'data-range="custom"' in source
     assert "rangeDays > 366" in source
     stats = _function_block(source, "fetchStats")
-    assert "&start_date=${encodeURIComponent(customStartDate)}" in stats
-    assert "&end_date=${encodeURIComponent(customEndDate)}" in stats
+    assert "&start_date=${encodeURIComponent(requestState.startDate)}" in stats
+    assert "&end_date=${encodeURIComponent(requestState.endDate)}" in stats
 
 
 def test_filter_popovers_have_accessible_keyboard_behavior(source):
@@ -557,3 +580,114 @@ def test_render_panel_safely_sets_section_error(source):
     block = _function_block(source, "renderPanelSafely")
     assert "setPanelState(name, 'error'" in block
     assert "innerHTML" not in block
+
+
+def test_dashboard_requests_abort_and_ignore_stale_responses(source):
+    stats = _function_block(source, "fetchStats")
+    now_playing = _function_block(source, "fetchNowPlaying")
+    for block, generation, controller in (
+        (stats, "statsRequestGeneration", "statsRequestController"),
+        (now_playing, "nowPlayingRequestGeneration", "nowPlayingRequestController"),
+    ):
+        assert "new AbortController()" in block
+        assert f"++{generation}" in block
+        assert f"if ({controller}) {controller}.abort()" in block
+        assert "signal: controller.signal" in block
+        assert f"generation !== {generation}" in block
+        assert "controller.signal.aborted" in block
+
+
+def test_dashboard_request_state_is_immutable_and_complete(source):
+    stats = _function_block(source, "captureStatsRequestState")
+    realtime = _function_block(source, "captureNowPlayingRequestState")
+    assert "Object.freeze" in stats
+    for field in ("days", "startDate", "endDate", "sourceId", "metric", "timezone"):
+        assert f"{field}:" in stats
+    assert "Object.freeze" in realtime
+    assert "sourceId: selectedSourceId" in realtime
+
+
+def test_login_pauses_activity_and_success_restarts_refresh(source):
+    show_login = _function_block(source, "showLogin")
+    submit_login = _function_block(source, "submitLogin")
+    stop_activity = _function_block(source, "stopDashboardActivity")
+    assert "stopDashboardActivity()" in show_login
+    assert "loginToken').focus()" in show_login
+    assert "scheduleRefresh()" in submit_login
+    assert "stopRefreshTimers()" in stop_activity
+    assert "stopNowPlayingTicker()" in stop_activity
+    assert "cancelDashboardRequests()" in stop_activity
+    assert 'document.getElementById(\'dashboardApp\').inert = true' in show_login
+
+
+def test_source_options_replace_with_available_and_historical_union(source):
+    block = _function_block(source, "updateSourceOptions")
+    assert "...sourceGroups" in block
+    assert "item.source_id || item.id" in block
+    assert "item.source_name || item.display_name" in block
+    assert "knownSources.clear()" in block
+    assert "!knownSources.has(selectedSourceId)" in block
+    stats = _function_block(source, "fetchStats")
+    assert "snapshot.available_servers" in stats
+    assert "snapshot.servers" in stats
+
+
+def test_all_server_rows_render_source_badges_safely(source):
+    now_playing = _function_block(source, "renderNowPlaying")
+    history = _function_block(source, "renderHistoryTable")
+    badge = _function_block(source, "createSourceBadge")
+    assert "showSources" in now_playing
+    assert "createSourceBadge(item)" in now_playing
+    assert "showSources" in history
+    assert "createSourceBadge(item)" in history
+    assert "textContent" in badge
+    assert "innerHTML" not in badge
+
+
+def test_dashboard_accessible_labels_are_bilingual(source):
+    for key in (
+        "aria.windowListbox",
+        "aria.sourceListbox",
+        "aria.rankingMetric",
+        "aria.serverSources",
+        "aria.footerLinks",
+        "auth.title",
+        "auth.description",
+        "auth.token",
+        "auth.login",
+        "label.directPlay",
+        "label.transcoded",
+    ):
+        assert source.count(f"'{key}'") >= 2
+    assert 'id="loginOverlay"' in source
+    assert 'role="dialog"' in source
+    assert 'aria-modal="true"' in source
+    assert 'data-i18n-attr="aria-label:aria.footerLinks"' in source
+
+
+def test_filter_listboxes_support_roving_keyboard_focus(source):
+    block = _function_block(source, "handleListboxKeydown")
+    for key in ("ArrowDown", "ArrowUp", "Home", "End", "Escape"):
+        assert key in block
+    focus = _function_block(source, "focusListboxOption")
+    assert "tabIndex" in focus
+    assert "option.focus()" in focus
+    assert 'id="statsWindowOptions" role="listbox"' in source
+    assert 'id="customRangePanel"' in source
+
+
+def test_empty_panels_are_compact_and_show_onboarding(source):
+    assert '[data-panel-state="empty"] > .chart-container' in source
+    assert 'id="newUserGuide"' in source
+    block = _function_block(source, "updateNewUserGuide")
+    assert "total_plays" in block
+    assert "snapshot.history" in block
+    assert "selectedSourceId" in block
+
+
+def test_ranking_uses_list_semantics(source):
+    assert 'class="chart-container ranking-table" role="list"' in source
+    block = _function_block(source, "renderRankingList")
+    assert "container.setAttribute('role', 'list')" in block
+    assert "row.setAttribute('role', 'listitem')" in block
+    assert "role', 'cell'" not in block

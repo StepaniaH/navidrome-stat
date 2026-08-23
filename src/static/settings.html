@@ -562,6 +562,16 @@
             filter: brightness(1.07);
         }
 
+        .primary-button:disabled,
+        .secondary-button:disabled,
+        .danger-button:disabled,
+        .text-button:disabled,
+        .upload-button:disabled {
+            cursor: not-allowed;
+            filter: none;
+            opacity: 0.48;
+        }
+
         .secondary-button,
         .upload-button {
             padding: 8px 14px;
@@ -653,6 +663,53 @@
             margin-top: 3px;
         }
 
+        .source-enabled-control {
+            display: flex;
+            grid-column: 1 / -1;
+            align-items: flex-start;
+            gap: 10px;
+            border: 1px solid var(--border-soft);
+            border-radius: 8px;
+            background: var(--surface-raised);
+            padding: 11px 12px;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .source-enabled-control input {
+            margin-top: 3px;
+            accent-color: var(--accent);
+        }
+
+        .source-enabled-control strong,
+        .source-enabled-control small {
+            display: block;
+        }
+
+        .source-enabled-control strong {
+            color: var(--text);
+            font-size: 12px;
+        }
+
+        .source-enabled-control small {
+            margin-top: 2px;
+            color: var(--text-dim);
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .visually-hidden {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important;
+            white-space: nowrap !important;
+            border: 0 !important;
+        }
+
         .source-message {
             position: static;
             clear: both;
@@ -711,6 +768,28 @@
             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
             font-size: 11px;
         }
+
+        .server-detail-line {
+            display: flex;
+            min-width: 0;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .server-url { min-width: 0; }
+
+        .server-status {
+            flex: 0 0 auto;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 1px 6px;
+            font-family: inherit !important;
+            font-size: 10px !important;
+            font-weight: 650;
+        }
+
+        .server-status[data-enabled="true"] { border-color: var(--success); color: var(--success); }
+        .server-status[data-enabled="false"] { border-color: var(--warning); color: var(--warning); }
 
         .row-actions {
             display: flex;
@@ -1314,11 +1393,19 @@
                             </div>
                             <div class="form-field">
                                 <label for="sourcePass" data-i18n="source.password">Password</label>
-                                <input id="sourcePass" name="sourcePass" type="password" autocomplete="new-password" placeholder="Leave blank to keep current" data-i18n-attr="placeholder:source.passwordPlaceholder">
+                                <input id="sourcePass" name="sourcePass" type="password" autocomplete="new-password" required placeholder="Required for a new connection" data-i18n-attr="placeholder:source.passwordPlaceholder">
                             </div>
+                            <label class="source-enabled-control" for="sourceEnabled">
+                                <input id="sourceEnabled" name="sourceEnabled" type="checkbox" checked>
+                                <span>
+                                    <strong data-i18n="source.enabled">Collect from this server</strong>
+                                    <small data-i18n="source.enabledHelp">Disabled connections remain saved but do not run a collector.</small>
+                                </span>
+                            </label>
                             <div class="form-actions">
                                 <button id="saveSourceBtn" class="primary-button" type="submit">Save connection</button>
                                 <button id="testSourceBtn" class="secondary-button" type="button" data-i18n="source.testConnection">Test current form</button>
+                                <button id="cancelSourceEditBtn" class="text-button" type="button" data-i18n="source.cancelEdit" hidden>Cancel edit</button>
                             </div>
                         </form>
                         <p id="sourceMessage" class="source-message" role="status" aria-live="polite" hidden></p>
@@ -1326,8 +1413,9 @@
 
                     <section class="settings-section">
                         <details class="privacy-details">
-                            <summary data-i18n="source.envTitle">Environment variable precedence</summary>
-                            <p data-i18n="source.envDescription">NAVIDROME_URL, NAVIDROME_USER, and NAVIDROME_PASS always take precedence over the compatible connection saved here.</p>
+                            <summary data-i18n="source.fallbackTitle">Environment fallback connection</summary>
+                            <p data-i18n="source.fallbackDescription">NAVIDROME_URL, NAVIDROME_USER, and NAVIDROME_PASS provide one fallback connection only when no saved server entries exist. Saved servers are independent connections.</p>
+                            <p id="sourceFallbackSummary"></p>
                         </details>
                     </section>
                 </section>
@@ -1355,7 +1443,7 @@
                         <div class="section-heading">
                             <div>
                                 <h3 id="retentionTitle" data-i18n="privacy.retention">Data retention</h3>
-                                <p data-i18n="privacy.retentionDescription">Save the policy first. Records are deleted only after you select “Confirm cleanup.”</p>
+                                <p data-i18n="privacy.retentionDescription">After a finite policy is saved, expired records are deleted automatically at startup and during background maintenance. “Apply now” runs it immediately.</p>
                             </div>
                         </div>
                         <div class="retention-choices" role="radiogroup" aria-label="Retention mode" data-i18n-attr="aria-label:privacy.retentionMode">
@@ -1386,7 +1474,7 @@
                         <p id="retentionPreview" class="retention-preview">Estimate appears after the policy loads</p>
                         <div class="inline-actions">
                             <button id="saveRetentionBtn" class="primary-button" type="button" data-i18n="privacy.saveRetention">Save policy</button>
-                            <button id="applyRetentionBtn" class="secondary-button" type="button" data-i18n="privacy.cleanup">Confirm cleanup</button>
+                            <button id="applyRetentionBtn" class="secondary-button" type="button" data-i18n="privacy.cleanup">Apply now</button>
                         </div>
                     </section>
 
@@ -1431,10 +1519,8 @@
                             </div>
                             <div class="operation-groups">
                                 <button id="exportBtn" class="secondary-button" type="button" data-i18n="privacy.export">Export JSON</button>
-                                <label class="upload-button">
-                                    <span data-i18n="privacy.import">Import JSON</span>
-                                    <input id="importFile" type="file" accept="application/json,.json" hidden>
-                                </label>
+                                <button id="importBtn" class="upload-button" type="button" data-i18n="privacy.import">Import JSON</button>
+                                <input id="importFile" class="visually-hidden" type="file" accept="application/json,.json" tabindex="-1">
                                 <button id="deleteUserBtn" class="danger-button" type="button" data-i18n="privacy.deleteUser">Delete this user’s data</button>
                                 <label class="merge-control">
                                     <input id="mergeImport" type="checkbox" checked>
@@ -1449,7 +1535,7 @@
                             <summary data-i18n="privacy.principles">Data boundaries</summary>
                             <ul>
                                 <li data-i18n="privacy.principleRetention">Playback history, usernames, tracks, artists, albums, and client names are all behavioral data.</li>
-                                <li data-i18n="privacy.principleCleanup">Cleanup and deletion show an impact preview and require another confirmation.</li>
+                                <li data-i18n="privacy.principleCleanup">Finite retention automatically removes expired records. Apply-now and per-user deletion show an impact preview and require confirmation.</li>
                                 <li data-i18n="privacy.principleExport">Exports contain data for the selected user only; export contents are not logged.</li>
                                 <li data-i18n="privacy.principleNotice">The operator must still confirm access boundaries, notice, backup locations, and the actual retention period.</li>
                             </ul>
@@ -1555,15 +1641,15 @@
         </div>
     </div>
 
-    <div id="loginOverlay" class="login-overlay" hidden>
+    <div id="loginOverlay" class="login-overlay" role="dialog" aria-modal="true" aria-labelledby="settingsLoginTitle" hidden>
         <form id="loginForm" class="login-form">
-            <h2 data-i18n="auth.heading">Access token required</h2>
+            <h2 id="settingsLoginTitle" data-i18n="auth.heading">Access token required</h2>
             <p data-i18n="auth.description">Enter the statistics service token provided by the operator.</p>
             <div class="form-field">
                 <label for="loginToken" data-i18n="auth.token">Access token</label>
                 <input id="loginToken" type="password" required autocomplete="current-password" placeholder="STATS_API_TOKEN">
             </div>
-            <p id="loginError" class="login-error" hidden></p>
+            <p id="loginError" class="login-error" role="alert" hidden></p>
             <button class="primary-button" type="submit" data-i18n="auth.login">Log in</button>
         </form>
     </div>

@@ -26,37 +26,31 @@ def _path(db_path: str | None = None) -> str:
     return database.DB_PATH if db_path is None else db_path
 
 
-async def _get_meta(key: str, db_path: str | None = None) -> Optional[str]:
-    path = _path(db_path)
-    async with connect_db(path) as db:
-        async with db.execute(
-            "SELECT value FROM schema_meta WHERE key = ?", (key,)
-        ) as cursor:
-            row = await cursor.fetchone()
-    return row[0] if row else None
-
-
-async def _set_meta(key: str, value: str, db_path: str | None = None) -> None:
-    path = _path(db_path)
-    async with connect_db(path) as db:
-        await db.execute(
-            """
-            INSERT INTO schema_meta (key, value) VALUES (?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-            """,
-            (key, value),
-        )
-        await db.commit()
+async def _set_meta(db, key: str, value: str) -> None:
+    await db.execute(
+        """
+        INSERT INTO schema_meta (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (key, value),
+    )
 
 
 async def get_saved_source_config(
     db_path: str | None = None,
 ) -> dict[str, Optional[str]]:
     """Return saved source config from the DB; keys are None when unsaved."""
+    path = _path(db_path)
+    async with connect_db(path) as db:
+        async with db.execute(
+            "SELECT key, value FROM schema_meta WHERE key IN (?, ?, ?)",
+            (SOURCE_URL_KEY, SOURCE_USER_KEY, SOURCE_PASSWORD_KEY),
+        ) as cursor:
+            saved = dict(await cursor.fetchall())
     return {
-        "url": await _get_meta(SOURCE_URL_KEY, db_path),
-        "user": await _get_meta(SOURCE_USER_KEY, db_path),
-        "password": await _get_meta(SOURCE_PASSWORD_KEY, db_path),
+        "url": saved.get(SOURCE_URL_KEY),
+        "user": saved.get(SOURCE_USER_KEY),
+        "password": saved.get(SOURCE_PASSWORD_KEY),
     }
 
 
@@ -67,10 +61,46 @@ async def set_saved_source_config(
     db_path: str | None = None,
 ) -> None:
     """Persist url and user; password only updates when a non-empty value is supplied."""
-    await _set_meta(SOURCE_URL_KEY, url, db_path)
-    await _set_meta(SOURCE_USER_KEY, user, db_path)
-    if password:
-        await _set_meta(SOURCE_PASSWORD_KEY, password, db_path)
+    path = _path(db_path)
+    async with connect_db(path) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            await _set_meta(db, SOURCE_URL_KEY, url)
+            await _set_meta(db, SOURCE_USER_KEY, user)
+            if password:
+                await _set_meta(db, SOURCE_PASSWORD_KEY, password)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+
+
+async def replace_saved_source_config(
+    *,
+    url: Optional[str],
+    user: Optional[str],
+    password: Optional[str],
+    db_path: str | None = None,
+) -> None:
+    """Atomically replace the saved tuple, deleting fields set to None."""
+    path = _path(db_path)
+    values = {
+        SOURCE_URL_KEY: url,
+        SOURCE_USER_KEY: user,
+        SOURCE_PASSWORD_KEY: password,
+    }
+    async with connect_db(path) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            for key, value in values.items():
+                if value is None:
+                    await db.execute("DELETE FROM schema_meta WHERE key = ?", (key,))
+                else:
+                    await _set_meta(db, key, value)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
 
 
 def validate_source_url(url: Optional[str]) -> str:

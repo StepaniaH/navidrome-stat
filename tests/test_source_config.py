@@ -2,19 +2,24 @@
 
 All credentials here are synthetic. No real deployment values are used.
 """
+import asyncio
+import sqlite3
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.database import init_db
+import src.source_config as source_config
+from src.database import init_db, list_servers
 from src.main import app
 from src.source_config import (
     get_saved_source_config,
+    replace_saved_source_config,
     resolve_source_config,
     set_saved_source_config,
     validate_source_url,
 )
+from src.sqlite import connect_db
 
 
 @pytest.mark.asyncio
@@ -61,6 +66,123 @@ async def test_put_config_persists_and_redacts(isolated_db):
 
 
 @pytest.mark.asyncio
+async def test_source_config_write_rolls_back_all_fields_on_failure(isolated_db):
+    await init_db(isolated_db)
+    await set_saved_source_config(
+        url="http://old.example.invalid",
+        user="old-user",
+        password="old-password",
+        db_path=isolated_db,
+    )
+    async with connect_db(isolated_db) as db:
+        await db.execute(
+            """
+            CREATE TRIGGER fail_source_user_update
+            BEFORE INSERT ON schema_meta
+            WHEN NEW.key = 'source_user'
+            BEGIN
+                SELECT RAISE(ABORT, 'synthetic source config failure');
+            END
+            """
+        )
+        await db.commit()
+
+    with pytest.raises(sqlite3.IntegrityError, match="synthetic source config failure"):
+        await set_saved_source_config(
+            url="http://new.example.invalid",
+            user="new-user",
+            password="new-password",
+            db_path=isolated_db,
+        )
+
+    assert await get_saved_source_config(isolated_db) == {
+        "url": "http://old.example.invalid",
+        "user": "old-user",
+        "password": "old-password",
+    }
+
+
+@pytest.mark.asyncio
+async def test_source_config_reads_and_concurrent_writes_are_atomic(
+    isolated_db, monkeypatch
+):
+    await init_db(isolated_db)
+    await set_saved_source_config(
+        url="http://old.example.invalid",
+        user="old-user",
+        password="old-password",
+        db_path=isolated_db,
+    )
+    first_field_written = asyncio.Event()
+    release_first_writer = asyncio.Event()
+    original_set_meta = source_config._set_meta
+
+    async def pause_first_writer(db, key, value):
+        await original_set_meta(db, key, value)
+        if key == source_config.SOURCE_URL_KEY and value == "http://first.example.invalid":
+            first_field_written.set()
+            await release_first_writer.wait()
+
+    monkeypatch.setattr(source_config, "_set_meta", pause_first_writer)
+    first = asyncio.create_task(
+        set_saved_source_config(
+            url="http://first.example.invalid",
+            user="first-user",
+            password="first-password",
+            db_path=isolated_db,
+        )
+    )
+    await first_field_written.wait()
+    second = asyncio.create_task(
+        set_saved_source_config(
+            url="http://second.example.invalid",
+            user="second-user",
+            password="second-password",
+            db_path=isolated_db,
+        )
+    )
+    try:
+        assert await get_saved_source_config(isolated_db) == {
+            "url": "http://old.example.invalid",
+            "user": "old-user",
+            "password": "old-password",
+        }
+    finally:
+        release_first_writer.set()
+        await asyncio.gather(first, second)
+
+    assert await get_saved_source_config(isolated_db) == {
+        "url": "http://second.example.invalid",
+        "user": "second-user",
+        "password": "second-password",
+    }
+
+
+@pytest.mark.asyncio
+async def test_replace_source_config_can_restore_an_unsaved_tuple(isolated_db):
+    await init_db(isolated_db)
+    await set_saved_source_config(
+        url="http://temporary.example.invalid",
+        user="temporary-user",
+        password="temporary-password",
+        db_path=isolated_db,
+    )
+
+    await replace_saved_source_config(
+        url=None,
+        user=None,
+        password=None,
+        db_path=isolated_db,
+    )
+
+    assert await get_saved_source_config(isolated_db) == {
+        "url": None,
+        "user": None,
+        "password": None,
+    }
+
+
+@pytest.mark.asyncio
 async def test_put_config_hot_reloads_legacy_when_no_servers(isolated_db):
     await init_db(isolated_db)
     manager = AsyncMock()
@@ -80,6 +202,97 @@ async def test_put_config_hot_reloads_legacy_when_no_servers(isolated_db):
     applied = desired[0]
     assert applied["id"] == "legacy"
     assert applied["password"] == "synthetic_password_123"
+
+
+@pytest.mark.asyncio
+async def test_put_config_reconcile_failure_restores_saved_tuple(isolated_db):
+    await init_db(isolated_db)
+    await set_saved_source_config(
+        url="http://old.example.invalid",
+        user="old-user",
+        password="old-password",
+        db_path=isolated_db,
+    )
+    reconcile = AsyncMock(side_effect=[RuntimeError("synthetic failure"), None])
+
+    with patch("src.main._reconcile_collectors", reconcile):
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as ac:
+            response = await ac.put(
+                "/api/source/config",
+                json={
+                    "url": "http://new.example.invalid",
+                    "username": "new-user",
+                    "password": "new-password",
+                },
+            )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Saved configuration could not be applied"}
+    assert await get_saved_source_config(isolated_db) == {
+        "url": "http://old.example.invalid",
+        "user": "old-user",
+        "password": "old-password",
+    }
+    assert reconcile.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fallback_and_server_mutations_share_one_lock(isolated_db):
+    await init_db(isolated_db)
+    first_reconcile_started = asyncio.Event()
+    release_first_reconcile = asyncio.Event()
+    reconcile_calls = 0
+
+    async def reconcile():
+        nonlocal reconcile_calls
+        reconcile_calls += 1
+        if reconcile_calls == 1:
+            first_reconcile_started.set()
+            await release_first_reconcile.wait()
+
+    with patch("src.main._reconcile_collectors", side_effect=reconcile):
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as ac:
+            fallback = asyncio.create_task(
+                ac.put(
+                    "/api/source/config",
+                    json={
+                        "url": "http://fallback.example.invalid",
+                        "username": "fallback-user",
+                        "password": "fallback-password",
+                    },
+                )
+            )
+            await first_reconcile_started.wait()
+            server = asyncio.create_task(
+                ac.post(
+                    "/api/servers",
+                    json={
+                        "display_name": "Saved Server",
+                        "url": "http://saved.example.invalid",
+                        "username": "saved-user",
+                        "password": "saved-password",
+                        "enabled": True,
+                    },
+                )
+            )
+            await asyncio.sleep(0)
+            try:
+                assert reconcile_calls == 1
+                assert await list_servers(isolated_db) == []
+            finally:
+                release_first_reconcile.set()
+            fallback_response, server_response = await asyncio.gather(fallback, server)
+
+    assert fallback_response.status_code == 200
+    assert server_response.status_code == 200
+    assert reconcile_calls == 2
+    assert len(await list_servers(isolated_db)) == 1
 
 
 @pytest.mark.asyncio

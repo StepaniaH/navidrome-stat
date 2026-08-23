@@ -1,9 +1,11 @@
 import asyncio
 import logging
 import os
+import threading
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
+from weakref import WeakKeyDictionary
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
@@ -100,6 +102,7 @@ from src.schemas import (
     PrivacySettingsResponse,
     PrivacySettingsUpdate,
     ReadinessResponse,
+    RetentionApplyRequest,
     RetentionApplyResponse,
     RetentionPreviewResponse,
     ServerRequest,
@@ -129,9 +132,9 @@ from src.source_config import (
     get_saved_source_config,
     has_full_config,
     redacted_view,
+    replace_saved_source_config,
     resolve_effective_source_config,
     resolve_source_config,
-    set_saved_source_config,
     validate_source_url,
 )
 from src.version import APP_VERSION, LICENSE, PROJECT_NAME, PROJECT_URL
@@ -157,6 +160,29 @@ CHECKPOINT_INTERVAL_SEC = env_int(
     "CHECKPOINT_INTERVAL_SEC", default=60, min_value=10, max_value=3600
 )
 OPENAPI_ENABLED = env_flag("OPENAPI_ENABLED", default=True)
+
+
+class _LoopLocalLock:
+    """Provide one asyncio lock per event loop."""
+
+    def __init__(self) -> None:
+        self._locks: WeakKeyDictionary[
+            asyncio.AbstractEventLoop, asyncio.Lock
+        ] = WeakKeyDictionary()
+        self._guard = threading.Lock()
+
+    def __call__(self) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        with self._guard:
+            lock = self._locks.get(loop)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._locks[loop] = lock
+            return lock
+
+
+_retention_policy_lock = _LoopLocalLock()
+_server_mutation_lock = _LoopLocalLock()
 
 
 def _exception_kind(exc: Exception) -> str:
@@ -350,7 +376,8 @@ async def retention_maintenance_loop():
     while True:
         await asyncio.sleep(RETENTION_MAINTENANCE_SEC)
         try:
-            result = await apply_retention_purge()
+            async with _retention_policy_lock():
+                result = await apply_retention_purge()
             if result["deleted"]:
                 await dashboard_snapshot_cache.invalidate()
                 logger.info("Retention purge removed %s records", result["deleted"])
@@ -454,17 +481,6 @@ async def _query_stats(fetch):
         raise HTTPException(status_code=503, detail="Stats temporarily unavailable")
 
 
-async def _apply_runtime_config(operation) -> None:
-    try:
-        await operation()
-    except Exception:
-        logger.error("Saved collector configuration could not be applied")
-        raise HTTPException(
-            status_code=503,
-            detail="Saved configuration could not be applied",
-        )
-
-
 async def _desired_collector_configs() -> list[dict]:
     configured = await list_servers()
     if configured:
@@ -482,6 +498,40 @@ async def _desired_collector_configs() -> list[dict]:
 
 async def _reconcile_collectors() -> None:
     await collector_manager.reconcile(await _desired_collector_configs())
+
+
+async def _compensate_collector_config_mutation(restore) -> None:
+    try:
+        await restore()
+    except Exception as exc:
+        logger.error(
+            "Collector configuration rollback failed (type=%s)",
+            _exception_kind(exc),
+        )
+
+    await dashboard_snapshot_cache.invalidate()
+    try:
+        await _reconcile_collectors()
+    except Exception as exc:
+        logger.error(
+            "Collector reconciliation after rollback failed (type=%s)",
+            _exception_kind(exc),
+        )
+
+
+async def _apply_collector_runtime_or_rollback(restore) -> None:
+    try:
+        await _reconcile_collectors()
+    except asyncio.CancelledError:
+        await _compensate_collector_config_mutation(restore)
+        raise
+    except Exception as exc:
+        logger.error("Saved collector configuration could not be applied")
+        await _compensate_collector_config_mutation(restore)
+        raise HTTPException(
+            status_code=503,
+            detail="Saved configuration could not be applied",
+        ) from exc
 
 
 def _validate_stats_days(days: int) -> int:
@@ -523,10 +573,9 @@ async def lifespan(app: FastAPI):
     await init_db()
     await run_startup_retention_purge()
 
-    retention_task = None
+    retention_task = asyncio.create_task(retention_maintenance_loop())
     try:
         await _reconcile_collectors()
-        retention_task = asyncio.create_task(retention_maintenance_loop())
     except Exception as exc:
         runtime_state.client_initialized = False
         logger.error(
@@ -537,21 +586,25 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down background task...")
-    if retention_task is not None:
-        retention_task.cancel()
+    retention_task.cancel()
+    try:
+        await retention_task
+    except asyncio.CancelledError:
+        logger.info("Retention maintenance task cancelled.")
     await collector_manager.stop_all()
-    if retention_task is not None:
-        try:
-            await retention_task
-        except asyncio.CancelledError:
-            logger.info("Retention maintenance task cancelled.")
     runtime_state.polling_task = None
 
 
 app = FastAPI(
+    title=PROJECT_NAME,
+    description=(
+        "Aggregate Navidrome playback activity across clients, devices, users, "
+        "and servers."
+    ),
+    version=APP_VERSION,
     lifespan=lifespan,
-    docs_url="/docs" if OPENAPI_ENABLED else None,
-    redoc_url="/redoc" if OPENAPI_ENABLED else None,
+    docs_url=None,
+    redoc_url=None,
     openapi_url="/openapi.json" if OPENAPI_ENABLED else None,
 )
 
@@ -579,11 +632,14 @@ def _with_security_headers(response: Response) -> Response:
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; "
         "connect-src 'self'; "
         "font-src 'self' data:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
         "frame-ancestors 'none'"
     )
     return response
@@ -641,6 +697,17 @@ async def settings_page():
     if os.path.exists(settings_file):
         return FileResponse(settings_file)
     raise HTTPException(status_code=404, detail="Settings page not found")
+
+
+if OPENAPI_ENABLED:
+
+    @app.get("/docs", include_in_schema=False)
+    @app.get("/redoc", include_in_schema=False)
+    async def api_reference_page():
+        docs_file = os.path.join(STATIC_DIR, "api-docs.html")
+        if os.path.exists(docs_file):
+            return FileResponse(docs_file)
+        raise HTTPException(status_code=404, detail="API reference not found")
 
 
 @app.get("/health", response_model=HealthLiveResponse)
@@ -1130,7 +1197,8 @@ async def api_update_privacy_settings(body: PrivacySettingsUpdate):
         validate_retention_days(body.retention_days)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    await set_retention_days(body.retention_days)
+    async with _retention_policy_lock():
+        await set_retention_days(body.retention_days)
     return _privacy_settings_response(body.retention_days)
 
 
@@ -1151,17 +1219,34 @@ async def api_retention_preview(
 
 
 @app.post("/api/privacy/retention/apply", response_model=RetentionApplyResponse)
-async def api_retention_apply(body: ConfirmRequest):
+async def api_retention_apply(body: RetentionApplyRequest):
     if not body.confirm:
         raise HTTPException(status_code=400, detail="confirm=true is required to delete data")
-    try:
-        result = await apply_retention_purge()
-        if result["deleted"]:
-            await dashboard_snapshot_cache.invalidate()
-        return result
-    except Exception as exc:
-        logger.error("Retention apply failed")
-        raise HTTPException(status_code=503, detail="Retention operation failed") from exc
+    async with _retention_policy_lock():
+        try:
+            current_retention_days = await get_retention_days()
+        except Exception as exc:
+            logger.error("Retention policy query failed")
+            raise HTTPException(
+                status_code=503,
+                detail="Retention operation failed",
+            ) from exc
+        if current_retention_days != body.expected_retention_days:
+            raise HTTPException(
+                status_code=409,
+                detail="Retention policy changed; preview again",
+            )
+        try:
+            result = await apply_retention_purge()
+            if result["deleted"]:
+                await dashboard_snapshot_cache.invalidate()
+            return result
+        except Exception as exc:
+            logger.error("Retention apply failed")
+            raise HTTPException(
+                status_code=503,
+                detail="Retention operation failed",
+            ) from exc
 
 
 @app.get("/api/privacy/users", response_model=list[UserSummary])
@@ -1252,27 +1337,38 @@ async def api_source_config_put(body: SourceConfigUpdate):
     if body.username is not None and not body.username.strip():
         raise HTTPException(status_code=422, detail="username must not be empty")
 
-    saved = await get_saved_source_config()
-    new_url = body.url if body.url is not None else saved.get("url")
-    new_user = body.username if body.username is not None else saved.get("user")
-    if not new_url or not new_user:
-        raise HTTPException(status_code=422, detail="url and username are required")
+    async with _server_mutation_lock():
+        saved = await get_saved_source_config()
+        new_url = body.url if body.url is not None else saved.get("url")
+        new_user = body.username if body.username is not None else saved.get("user")
+        if not new_url or not new_user:
+            raise HTTPException(status_code=422, detail="url and username are required")
+        new_password = body.password or saved.get("password")
 
-    try:
-        await set_saved_source_config(
-            url=new_url,
-            user=new_user,
-            password=body.password,
+        try:
+            await replace_saved_source_config(
+                url=new_url,
+                user=new_user,
+                password=new_password,
+            )
+        except Exception as exc:
+            logger.error("Source config persist failed")
+            raise HTTPException(
+                status_code=503,
+                detail="Failed to save source config",
+            ) from exc
+
+        updated = await get_saved_source_config()
+        config = resolve_source_config(overrides=None, saved=updated)
+        await _apply_collector_runtime_or_rollback(
+            lambda: replace_saved_source_config(
+                url=saved.get("url"),
+                user=saved.get("user"),
+                password=saved.get("password"),
+            )
         )
-    except Exception as exc:
-        logger.error("Source config persist failed")
-        raise HTTPException(status_code=503, detail="Failed to save source config") from exc
-
-    updated = await get_saved_source_config()
-    config = resolve_source_config(overrides=None, saved=updated)
-    await _apply_runtime_config(_reconcile_collectors)
-    view = redacted_view(config)
-    return SourceConfigResponse(**view)
+        view = redacted_view(config)
+        return SourceConfigResponse(**view)
 
 
 @app.post("/api/source/test", response_model=SourceTestResponse)
@@ -1346,17 +1442,17 @@ async def api_servers_create(body: ServerRequest):
         raise HTTPException(status_code=422, detail="password is required")
     server = {"id": uuid.uuid4().hex, "display_name": body.display_name.strip(), "url": url,
               "username": body.username.strip(), "password": body.password, "enabled": body.enabled}
-    await save_server(server)
-    await dashboard_snapshot_cache.invalidate()
-    await _apply_runtime_config(_reconcile_collectors)
-    return _server_view(server)
+    async with _server_mutation_lock():
+        await save_server(server)
+        await dashboard_snapshot_cache.invalidate()
+        await _apply_collector_runtime_or_rollback(
+            lambda: delete_server(server["id"])
+        )
+        return _server_view(server)
 
 
 @app.put("/api/servers/{server_id}", response_model=ServerResponse)
 async def api_servers_update(server_id: str, body: ServerRequest):
-    existing = await get_server(server_id)
-    if existing is None:
-        raise HTTPException(status_code=404, detail="Server not found")
     if not body.display_name.strip() or not body.username.strip():
         raise HTTPException(
             status_code=422,
@@ -1366,22 +1462,32 @@ async def api_servers_update(server_id: str, body: ServerRequest):
         url = validate_source_url(body.url)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    server = {"id": server_id, "display_name": body.display_name.strip(), "url": url,
-              "username": body.username.strip(), "password": body.password or existing["password"],
-              "enabled": body.enabled}
-    await save_server(server)
-    await dashboard_snapshot_cache.invalidate()
-    await _apply_runtime_config(_reconcile_collectors)
-    return _server_view(server)
+    async with _server_mutation_lock():
+        existing = await get_server(server_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Server not found")
+        server = {"id": server_id, "display_name": body.display_name.strip(), "url": url,
+                  "username": body.username.strip(), "password": body.password or existing["password"],
+                  "enabled": body.enabled}
+        await save_server(server)
+        await dashboard_snapshot_cache.invalidate()
+        await _apply_collector_runtime_or_rollback(
+            lambda: save_server(existing)
+        )
+        return _server_view(server)
 
 
 @app.delete("/api/servers/{server_id}")
 async def api_servers_delete(server_id: str):
-    if not await delete_server(server_id):
-        raise HTTPException(status_code=404, detail="Server not found")
-    await dashboard_snapshot_cache.invalidate()
-    await _apply_runtime_config(_reconcile_collectors)
-    return {"status": "ok"}
+    async with _server_mutation_lock():
+        existing = await get_server(server_id)
+        if existing is None or not await delete_server(server_id):
+            raise HTTPException(status_code=404, detail="Server not found")
+        await dashboard_snapshot_cache.invalidate()
+        await _apply_collector_runtime_or_rollback(
+            lambda: save_server(existing)
+        )
+        return {"status": "ok"}
 
 
 @app.post("/api/servers/{server_id}/test", response_model=ServerTestResponse)

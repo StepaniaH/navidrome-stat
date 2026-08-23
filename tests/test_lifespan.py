@@ -92,6 +92,36 @@ async def test_lifespan_degraded_when_client_init_fails(reset_runtime, db_path):
 
 
 @pytest.mark.asyncio
+async def test_retention_task_starts_when_collector_reconcile_fails(reset_runtime):
+    import src.main as main
+
+    retention_started = asyncio.Event()
+    retention_cancelled = asyncio.Event()
+
+    async def retention_loop():
+        retention_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            retention_cancelled.set()
+
+    with patch.object(main, "init_db", AsyncMock()):
+        with patch.object(main, "run_startup_retention_purge", AsyncMock()):
+            with patch.object(
+                main,
+                "_reconcile_collectors",
+                AsyncMock(side_effect=RuntimeError("synthetic reconcile failure")),
+            ):
+                with patch.object(main, "retention_maintenance_loop", retention_loop):
+                    with patch.object(main.collector_manager, "stop_all", AsyncMock()):
+                        async with lifespan(app):
+                            await retention_started.wait()
+                            assert runtime_state.client_initialized is False
+
+    assert retention_cancelled.is_set()
+
+
+@pytest.mark.asyncio
 async def test_polling_loop_applies_backoff_on_exception(reset_runtime):
     client = AsyncMock()
     client.get_now_playing.side_effect = ConnectionError("upstream unavailable")

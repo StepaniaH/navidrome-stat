@@ -52,7 +52,9 @@ PLAY_THRESHOLD_SEC=30
 PAUSE_GRACE_SEC=30
 ```
 
-The three `NAVIDROME_*` variables provide one fallback connection when no server entries have been saved. To aggregate multiple servers, add each connection from **Settings > Connections** after startup. Credentials saved there are stored in plaintext in SQLite. If that storage model is unsuitable, use only the single environment-configured connection and do not save connections through the settings page.
+The three `NAVIDROME_*` variables provide one fallback connection when no server entries have been saved. For this fallback, each non-empty environment value takes precedence over the corresponding value already stored in SQLite. Once any entry exists under **Settings > Connections**, only enabled entries from that list are collected; the fallback is not used, even when every saved entry is disabled.
+
+To aggregate multiple servers, add each connection from **Settings > Connections** after startup. Credentials saved there are stored in plaintext in SQLite. If that storage model is unsuitable, use only the single environment-configured connection and do not save connections through the settings page.
 
 ### 3. Create `compose.yaml`
 
@@ -115,9 +117,9 @@ Open `http://localhost:39421`. When `STATS_API_TOKEN` is configured, enter it in
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `NAVIDROME_URL` | None | Initial Navidrome base URL. Not required when a complete saved connection exists. |
-| `NAVIDROME_USER` | None | Initial Subsonic username. |
-| `NAVIDROME_PASS` | None | Initial Subsonic password. |
+| `NAVIDROME_URL` | None | Fallback Navidrome base URL; used only while the saved server list is empty. |
+| `NAVIDROME_USER` | None | Username for the fallback Subsonic connection. |
+| `NAVIDROME_PASS` | None | Password for the fallback Subsonic connection. |
 | `DATABASE_URL` | `navidrome_stats.db` | SQLite file path; despite the name, this is not a general database URL. |
 | `STATS_API_TOKEN` | Empty | Protects dashboard data, application APIs, and OpenAPI routes when set. |
 | `STATS_METRICS_AUTH` | `false` | Requires authentication for `/metrics` when both this option and `STATS_API_TOKEN` are set. |
@@ -150,6 +152,15 @@ docker compose logs -f --tail=100 navidrome-stat
 ```
 
 Application logs avoid playback metadata and upstream request URLs. Reverse proxies and Navidrome may still log Subsonic authentication query parameters, so review their logging configuration before sharing logs.
+
+### Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| `/health` is healthy but `/health/ready` is degraded or not ready | Confirm that at least one complete connection is enabled, inspect the checks and collector counts in `/health/ready`, and check container-to-Navidrome network access. |
+| A saved connection does not collect playback | Run its connection test in Settings, confirm it is enabled, and inspect `docker compose logs` for upstream failures. |
+| Login repeats or API requests return `401` | Enter the current `STATS_API_TOKEN`. Behind HTTPS, set `SESSION_COOKIE_SECURE=true`; leave it `false` when accessing the service over plain HTTP. |
+| SQLite cannot be opened or written | Confirm that `DATABASE_URL` points inside the mounted data volume and that UID and GID `1000:1000` can write the directory and database files. |
 
 ### Update
 
@@ -184,7 +195,8 @@ To restore, stop the service, preserve the current database, copy a verified bac
 - Without `STATS_API_TOKEN`, dashboard data and APIs are anonymous. Use this only on a trusted network.
 - `/health` and `/health/ready` remain public. `/metrics` is public by default unless `STATS_METRICS_AUTH=true` is used with a token.
 - Static dashboard files remain loadable when authentication is enabled; their data requests require authorization.
-- The browser policy blocks public script and style origins, while permitting the inline code used by the bundled pages.
+- The browser policy restricts scripts and styles to this service, blocks executable inline scripts, embedded objects, and cross-origin form targets, while permitting inline styles used by the bundled pages.
+- Listening records are kept indefinitely by default. Saving a finite 1–360 day policy authorizes automatic cleanup at startup and during background maintenance.
 - Inform affected users before collecting their listening activity and choose an appropriate retention period.
 
 See [Privacy](docs/privacy.md) and the [security policy](SECURITY.md) for details.
@@ -223,6 +235,7 @@ Tests use temporary databases and synthetic API data; they do not require a live
 ## Project information
 
 - [Architecture](docs/architecture.md)
+- [Roadmap](docs/roadmap.md)
 - [Privacy](docs/privacy.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)

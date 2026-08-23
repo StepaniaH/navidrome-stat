@@ -1,5 +1,9 @@
 const { test, expect } = require("@playwright/test");
 
+const delay = (milliseconds) => new Promise((resolve) => {
+  setTimeout(resolve, milliseconds);
+});
+
 const snapshot = {
   summary: {
     total_plays: 3,
@@ -102,6 +106,14 @@ test("renders synthetic statistics without executing metadata", async ({ page })
   await expect(page.locator("#nowPlayingList")).toContainText(
     "Synthetic Live Track",
   );
+  await expect(page.locator("#nowPlayingList .source-badge")).toHaveText(
+    "Synthetic Server",
+  );
+  await expect(page.locator("#historyTable .source-badge")).toHaveText(
+    "Synthetic Server",
+  );
+  await expect(page.locator("#topArtistsChart")).toHaveAttribute("role", "list");
+  await expect(page.locator("#topArtistsChart [role=listitem]")).toHaveCount(1);
   expect(await page.evaluate(() => window.__injected)).toBeUndefined();
   await page.locator("#statsSourceButton").click();
   await expect(page.locator(".stats-source-option")).toHaveCount(2);
@@ -283,6 +295,11 @@ test("empty dashboard shows per-section empty states", async ({ page }) => {
   await expect(page.locator("#playerChartError")).toBeHidden();
   await expect(page.locator("#errorBanner")).toBeHidden();
   await expect(page.locator("#playerChartSummary")).toHaveText("No client data");
+  await expect(page.locator("#newUserGuide")).toBeVisible();
+  const emptyChartHeight = await page.locator("#playerChartWrap").evaluate(
+    (element) => Math.round(element.getBoundingClientRect().height),
+  );
+  expect(emptyChartHeight).toBeLessThan(200);
 });
 
 test("401 shows login instead of empty statistics", async ({ page }) => {
@@ -297,6 +314,8 @@ test("401 shows login instead of empty statistics", async ({ page }) => {
   );
   await page.goto("/");
   await expect(page.locator("#loginOverlay")).toBeVisible();
+  await expect(page.locator("#loginToken")).toBeFocused();
+  await expect(page.locator("#dashboardApp")).toHaveJSProperty("inert", true);
   await expect(page.locator("#statTotalPlays")).toHaveText("—");
   await expect(page.locator("#playerChartEmpty")).toBeHidden();
 });
@@ -337,4 +356,248 @@ test("malformed players field fails only the clients panel", async ({ page }) =>
   await expect(page.locator("#playerChartSummary")).toHaveText(
     "This section could not be loaded.",
   );
+});
+
+test("newer filter state aborts stale dashboard responses", async ({ page }) => {
+  const requests = [];
+  await page.route("**/api/stats/dashboard?*", async (route) => {
+    const url = new URL(route.request().url());
+    const days = url.searchParams.get("days");
+    const metric = url.searchParams.get("metric");
+    requests.push(`${days}:${metric}`);
+    if (days === "7" && metric === "plays") {
+      await delay(350);
+      await route.fulfill({
+        json: {
+          ...snapshot,
+          top_artists: [{
+            artist: "Stale Artist",
+            count: 99,
+            total_listen_sec: 99,
+            value: 99,
+          }],
+        },
+      }).catch(() => {});
+      return;
+    }
+    if (days === "7" && metric === "listen_time") {
+      await route.fulfill({
+        json: {
+          ...snapshot,
+          top_artists: [{
+            artist: "Latest Artist",
+            count: 3,
+            total_listen_sec: 185,
+            value: 185,
+          }],
+        },
+      });
+      return;
+    }
+    await route.fulfill({ json: snapshot });
+  });
+
+  await page.goto("/");
+  await page.locator("#statsWindowButton").click();
+  await page.locator('[data-days="7"]').click();
+  await expect.poll(() => requests.includes("7:plays")).toBe(true);
+  await page.locator('[data-ranking-metric="listen_time"]').click();
+  await expect(page.locator("#topArtistsChart")).toContainText("Latest Artist");
+  await delay(450);
+  await expect(page.locator("#topArtistsChart")).not.toContainText("Stale Artist");
+  await expect(page.locator("#topArtistsSubtitle")).toHaveText(
+    "Ranked by listening time",
+  );
+});
+
+test("newer source state aborts stale now-playing responses", async ({ page }) => {
+  const multiSourceSnapshot = {
+    ...snapshot,
+    available_servers: [
+      ...snapshot.available_servers,
+      { id: "server-2", display_name: "Second Server" },
+    ],
+    servers: [
+      ...snapshot.servers,
+      {
+        source_id: "server-2",
+        source_name: "Second Server",
+        count: 1,
+        total_listen_sec: 60,
+      },
+    ],
+  };
+  await page.route("**/api/stats/dashboard?*", (route) =>
+    route.fulfill({ json: multiSourceSnapshot }),
+  );
+  await page.route("**/api/stats/now-playing*", async (route) => {
+    const url = new URL(route.request().url());
+    const source = url.searchParams.get("source_id");
+    if (source === "server-1") await delay(350);
+    const title = source === "server-1" ? "Stale Live Track" : "Latest Live Track";
+    await route.fulfill({
+      json: [{
+        username: "synthetic-user",
+        title,
+        artist: "Synthetic Artist",
+        client_name: "Synthetic Player",
+        seconds_elapsed: 42,
+        source_name: source === "server-2" ? "Second Server" : "Synthetic Server",
+      }],
+    }).catch(() => {});
+  });
+
+  await page.goto("/");
+  await page.locator("#statsSourceButton").click();
+  await page.locator('[data-source-id="server-1"]').click();
+  await page.locator("#statsSourceButton").click();
+  await page.locator('[data-source-id="server-2"]').click();
+  await expect(page.locator("#nowPlayingList")).toContainText("Latest Live Track");
+  await delay(450);
+  await expect(page.locator("#nowPlayingList")).not.toContainText("Stale Live Track");
+  await expect(page.locator("#nowPlayingList .source-badge")).toHaveCount(0);
+});
+
+test("source menu merges current and historical sources then removes stale ones", async ({ page }) => {
+  let requestCount = 0;
+  await page.route("**/api/stats/dashboard?*", (route) => {
+    requestCount += 1;
+    const historicalServer = {
+      source_id: "historical-server",
+      source_name: "Historical Server",
+      count: 1,
+      total_listen_sec: 30,
+    };
+    const response = requestCount === 1
+      ? {
+          ...snapshot,
+          servers: [historicalServer],
+          available_servers: snapshot.available_servers,
+        }
+      : snapshot;
+    return route.fulfill({ json: response });
+  });
+
+  await page.goto("/");
+  await page.locator("#statsSourceButton").click();
+  await expect(page.locator(".stats-source-option")).toHaveCount(3);
+  await expect(page.locator("#statsSourceMenu")).toContainText("Historical Server");
+  await page.keyboard.press("Escape");
+  await page.locator("#refreshBtn").click();
+  await expect.poll(() => requestCount).toBeGreaterThanOrEqual(2);
+  await page.locator("#statsSourceButton").click();
+  await expect(page.locator(".stats-source-option")).toHaveCount(2);
+  await expect(page.locator("#statsSourceMenu")).not.toContainText("Historical Server");
+});
+
+test("successful first login starts realtime refresh and traps dialog focus", async ({ page }) => {
+  await page.clock.install();
+  let authenticated = false;
+  let realtimeRequests = 0;
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({ json: { auth_required: true } }),
+  );
+  await page.route("**/api/auth/login", (route) => {
+    authenticated = true;
+    return route.fulfill({ json: { authenticated: true } });
+  });
+  await page.route("**/api/stats/dashboard?*", (route) => (
+    authenticated
+      ? route.fulfill({ json: snapshot })
+      : route.fulfill({ status: 401, json: { detail: "Unauthorized" } })
+  ));
+  await page.route("**/api/stats/now-playing*", (route) => {
+    realtimeRequests += 1;
+    return route.fulfill({ json: [] });
+  });
+
+  await page.goto("/");
+  await expect(page.locator("#loginToken")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.locator("#loginForm button[type=submit]")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.locator("#loginToken")).toBeFocused();
+  await page.locator("#loginToken").fill("valid-token");
+  await page.locator("#loginForm button[type=submit]").click();
+  await expect(page.locator("#loginOverlay")).toBeHidden();
+  const afterLogin = realtimeRequests;
+  await page.clock.fastForward(10_100);
+  await expect.poll(() => realtimeRequests).toBeGreaterThan(afterLogin);
+});
+
+test("an expired session stops refresh timers and the local playback ticker", async ({ page }) => {
+  await page.clock.install();
+  let realtimeRequests = 0;
+  await page.route("**/api/stats/now-playing*", (route) => {
+    realtimeRequests += 1;
+    return route.fulfill({
+      json: [{
+        username: "synthetic-user",
+        title: "Synthetic Live Track",
+        artist: "Synthetic Artist",
+        client_name: "Synthetic Player",
+        seconds_elapsed: 42,
+        source_name: "Synthetic Server",
+      }],
+    });
+  });
+  await page.goto("/");
+  await expect(page.locator(".now-playing-elapsed")).toHaveText("0:42");
+  await page.route("**/api/stats/dashboard?*", (route) =>
+    route.fulfill({ status: 401, json: { detail: "Unauthorized" } }),
+  );
+  await page.locator("#refreshBtn").click();
+  await expect(page.locator("#loginOverlay")).toBeVisible();
+  const requestsAtExpiry = realtimeRequests;
+  const elapsedAtExpiry = await page.locator(".now-playing-elapsed").textContent();
+  await page.clock.fastForward(20_000);
+  expect(realtimeRequests).toBe(requestsAtExpiry);
+  await expect(page.locator(".now-playing-elapsed")).toHaveText(elapsedAtExpiry);
+});
+
+test("filter listboxes support arrow navigation and restore trigger focus", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#statsSourceButton").focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.locator('.stats-source-option[aria-selected="true"]')).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(page.locator('[data-source-id="server-1"]')).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#statsSourceButton")).toBeFocused();
+
+  await page.locator("#statsWindowButton").focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("End");
+  await expect(page.locator("#customRangeOption")).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(page.locator('[data-days="7"]')).toBeFocused();
+});
+
+test("Chinese locale covers regions, chart labels, listboxes, and footer", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("navidrome-language", "zh-CN");
+  });
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(page.getByRole("region", { name: "周时热力图" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "榜单指标" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "项目链接" })).toBeVisible();
+  await page.locator("#statsWindowButton").click();
+  await expect(page.getByRole("listbox", { name: "统计时间范围" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator('[data-i18n="subtitle.transcoding"]')).toHaveText(
+    "直出与转码",
+  );
+  const chartLabels = await page.evaluate(() => ({
+    weekdays: echarts.getInstanceByDom(
+      document.getElementById("weekdayHourChart"),
+    ).getOption().yAxis[0].data,
+    transcoding: echarts.getInstanceByDom(
+      document.getElementById("transcodingChart"),
+    ).getOption().series[0].data.map((item) => item.name),
+  }));
+  expect(chartLabels.weekdays).toEqual([
+    "周一", "周二", "周三", "周四", "周五", "周六", "周日",
+  ]);
+  expect(chartLabels.transcoding).toEqual(["直出"]);
 });

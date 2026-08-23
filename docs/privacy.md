@@ -18,7 +18,7 @@ These fields can reveal personal listening habits when combined, even when the m
 
 ## Navidrome credentials
 
-Credentials supplied through `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` remain in the process environment and memory. Credentials saved from **Settings > Connections** are stored in plaintext in SQLite so the service can reconnect after a restart.
+Credentials supplied through `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` remain in the process environment and memory. Credentials saved from **Settings > Connections** or through the compatible fallback `/api/source/config` endpoint are stored in plaintext in SQLite so the service can reconnect after a restart.
 
 The settings APIs return configured URLs and usernames to authorized viewers, but never return saved passwords. Protect the database, Docker volume, `.env` file, and backups as credentials.
 
@@ -26,7 +26,7 @@ Subsonic authentication uses token and salt query parameters. The application av
 
 ## Retention and data controls
 
-Listening records are retained permanently by default. The settings page can change retention to 1–360 days and provides preview and confirmation steps before deletion.
+Listening records are retained permanently by default. Saving a finite retention policy of 1–360 days authorizes the service to delete older records during startup and periodic background maintenance. The settings page previews the affected records and asks for confirmation before saving a finite policy. Its separate **Apply now** action has its own preview and confirmation before running the purge immediately. That action is bound to the policy used for its preview; if another session changes the saved policy, no records are deleted until the preview is refreshed.
 
 Per-user controls support JSON export, import, and deletion. Exports contain listening activity and should be handled as sensitive files. Deleting data from the application database does not remove copies already present in backups or external storage.
 

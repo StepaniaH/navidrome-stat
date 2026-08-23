@@ -52,7 +52,9 @@ PLAY_THRESHOLD_SEC=30
 PAUSE_GRACE_SEC=30
 ```
 
-没有已保存的服务器条目时，三个 `NAVIDROME_*` 变量提供一个回退连接。如需汇总多个服务器，请在启动后通过“设置 > 连接”逐个添加；其中保存的凭据会以明文写入 SQLite。如果不能接受这种存储方式，请只使用环境变量配置的单一连接，不要通过设置页保存连接。
+没有已保存的服务器条目时，三个 `NAVIDROME_*` 变量提供一个回退连接。对于该连接，每个非空环境变量都会优先于 SQLite 中已保存的对应值。一旦“设置 > 连接”中存在任何条目，应用只采集列表中已启用的连接；即使全部条目都被禁用，也不会重新启用回退连接。
+
+如需汇总多个服务器，请在启动后通过“设置 > 连接”逐个添加；其中保存的凭据会以明文写入 SQLite。如果不能接受这种存储方式，请只使用环境变量配置的单一连接，不要通过设置页保存连接。
 
 ### 3. 创建 `compose.yaml`
 
@@ -115,9 +117,9 @@ docker compose ps
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `NAVIDROME_URL` | 无 | 初始 Navidrome 基础 URL；数据库已有完整连接时可以不设置。 |
-| `NAVIDROME_USER` | 无 | 初始 Subsonic 用户名。 |
-| `NAVIDROME_PASS` | 无 | 初始 Subsonic 密码。 |
+| `NAVIDROME_URL` | 无 | 回退连接使用的 Navidrome 基础 URL；仅在已保存的服务器列表为空时使用。 |
+| `NAVIDROME_USER` | 无 | 回退 Subsonic 连接使用的用户名。 |
+| `NAVIDROME_PASS` | 无 | 回退 Subsonic 连接使用的密码。 |
 | `DATABASE_URL` | `navidrome_stats.db` | SQLite 文件路径；虽然名称中包含 URL，但不支持其他数据库。 |
 | `STATS_API_TOKEN` | 空 | 设置后保护仪表盘数据、应用接口和 OpenAPI 路由。 |
 | `STATS_METRICS_AUTH` | `false` | 本项与 `STATS_API_TOKEN` 同时设置时，`/metrics` 需要认证。 |
@@ -150,6 +152,15 @@ docker compose logs -f --tail=100 navidrome-stat
 ```
 
 应用日志会避免输出播放元数据和上游请求 URL。反向代理与 Navidrome 仍可能记录 Subsonic 认证查询参数，分享日志前请检查相关日志配置。
+
+### 故障排查
+
+| 现象 | 检查项 |
+| --- | --- |
+| `/health` 正常，但 `/health/ready` 显示降级或未就绪 | 确认至少有一个配置完整且已启用的连接，查看 `/health/ready` 中的检查结果与采集器数量，并检查容器到 Navidrome 的网络连接。 |
+| 已保存的连接没有采集播放活动 | 在设置页运行连接测试，确认连接已启用，并通过 `docker compose logs` 检查上游错误。 |
+| 反复出现登录页或 API 返回 `401` | 输入当前的 `STATS_API_TOKEN`。通过 HTTPS 访问时设置 `SESSION_COOKIE_SECURE=true`；使用普通 HTTP 时保持为 `false`。 |
+| SQLite 无法打开或写入 | 确认 `DATABASE_URL` 指向已挂载的数据卷，并确认 UID 和 GID `1000:1000` 对目录和数据库文件具有写权限。 |
 
 ### 更新
 
@@ -184,7 +195,8 @@ docker compose start navidrome-stat
 - 未设置 `STATS_API_TOKEN` 时，仪表盘数据和接口允许匿名访问，只应在可信网络中使用。
 - `/health` 与 `/health/ready` 始终公开。`/metrics` 默认公开；设置 token 并启用 `STATS_METRICS_AUTH=true` 后可要求认证。
 - 启用认证后，仪表盘静态文件仍可加载，但数据请求需要授权。
-- 浏览器策略会阻止公共脚本和样式来源，同时允许页面使用的内联代码。
+- 浏览器策略只允许加载本服务的脚本与样式，禁止可执行的内联脚本、嵌入对象和跨域表单目标，同时允许页面所需的内联样式。
+- 播放记录默认永久保留；保存 1–360 天的有限策略，即授权服务在启动和后台维护时自动清理超期记录。
 - 收集播放活动前应告知受影响的用户，并选择适当的保留期。
 
 详细说明见[隐私文档](docs/privacy.md)与[安全政策](SECURITY.md)。
@@ -223,6 +235,7 @@ npm run test:e2e
 ## 项目信息
 
 - [架构说明](docs/architecture.md)
+- [路线图](docs/roadmap.md)
 - [隐私说明](docs/privacy.md)
 - [贡献指南](CONTRIBUTING.md)
 - [变更记录](CHANGELOG.md)

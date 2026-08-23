@@ -225,3 +225,54 @@ def test_session_checkpoint_upserts_final_duration_without_duplicate(db_path):
     ).fetchone()
     conn.close()
     assert row == (1, 120, 1, "reported")
+
+
+def test_stale_checkpoint_cannot_regress_final_session(db_path):
+    asyncio.run(init_db(db_path))
+    final = {
+        "session_id": "synthetic-monotonic-session",
+        "last_seen_at": "2024-03-24T12:02:00.900000+00:00",
+        "username": "synthetic-user",
+        "client_name": "Synthetic Player",
+        "track_id": "track-1",
+        "title": "Synthetic Song",
+        "artist": "Synthetic Artist",
+        "album": "Synthetic Album",
+        "is_transcoding": 0,
+        "duration_sec": 120,
+        "duration_confidence": "reported",
+        "finalized": True,
+        "finalized_at": "2024-03-24T12:02:00.900000+00:00",
+        "checkpointed_at": "2024-03-24T12:02:00.900000+00:00",
+    }
+    stale_checkpoint = {
+        **final,
+        "last_seen_at": "2024-03-24T12:02:00.100000+00:00",
+        "duration_sec": 30,
+        "duration_confidence": "estimated",
+        "finalized": False,
+        "finalized_at": "2024-03-24T12:02:00.100000+00:00",
+        "checkpointed_at": "2024-03-24T12:02:00.100000+00:00",
+    }
+
+    asyncio.run(save_play_session(final, db_path=db_path))
+    asyncio.run(save_play_session(stale_checkpoint, db_path=db_path))
+
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        """
+        SELECT played_at, listen_duration_sec, finalized, finalized_at,
+               checkpointed_at, duration_confidence
+        FROM play_history WHERE session_id = ?
+        """,
+        ("synthetic-monotonic-session",),
+    ).fetchone()
+    conn.close()
+    assert row == (
+        "2024-03-24T12:02:00.900000+00:00",
+        120,
+        1,
+        "2024-03-24T12:02:00.900000+00:00",
+        "2024-03-24T12:02:00.900000+00:00",
+        "reported",
+    )

@@ -420,7 +420,14 @@ async def save_play_session(session: dict, db_path: str | None = None):
                 INSERT INTO play_history ({columns})
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) WHERE session_id IS NOT NULL DO UPDATE SET
-                    played_at=excluded.played_at,
+                    played_at=CASE
+                        WHEN play_history.played_at IS NULL THEN excluded.played_at
+                        WHEN excluded.played_at IS NULL THEN play_history.played_at
+                        WHEN julianday(excluded.played_at)
+                            >= julianday(play_history.played_at)
+                            THEN excluded.played_at
+                        ELSE play_history.played_at
+                    END,
                     username=excluded.username,
                     client_name=excluded.client_name,
                     track_id=excluded.track_id,
@@ -428,14 +435,47 @@ async def save_play_session(session: dict, db_path: str | None = None):
                     artist=excluded.artist,
                     album=excluded.album,
                     is_transcoding=excluded.is_transcoding,
-                    listen_duration_sec=excluded.listen_duration_sec,
+                    listen_duration_sec=MAX(
+                        COALESCE(play_history.listen_duration_sec, 0),
+                        COALESCE(excluded.listen_duration_sec, 0)
+                    ),
                     source=excluded.source,
                     source_id=excluded.source_id,
                     source_name=excluded.source_name,
-                    duration_confidence=excluded.duration_confidence,
-                    finalized=excluded.finalized,
-                    finalized_at=excluded.finalized_at,
-                    checkpointed_at=excluded.checkpointed_at
+                    duration_confidence=CASE
+                        WHEN play_history.duration_confidence = 'reported'
+                            OR excluded.duration_confidence = 'reported'
+                            THEN 'reported'
+                        ELSE COALESCE(
+                            excluded.duration_confidence,
+                            play_history.duration_confidence,
+                            'estimated'
+                        )
+                    END,
+                    finalized=MAX(
+                        COALESCE(play_history.finalized, 0),
+                        COALESCE(excluded.finalized, 0)
+                    ),
+                    finalized_at=CASE
+                        WHEN play_history.finalized_at IS NULL
+                            THEN excluded.finalized_at
+                        WHEN excluded.finalized_at IS NULL
+                            THEN play_history.finalized_at
+                        WHEN julianday(excluded.finalized_at)
+                            >= julianday(play_history.finalized_at)
+                            THEN excluded.finalized_at
+                        ELSE play_history.finalized_at
+                    END,
+                    checkpointed_at=CASE
+                        WHEN play_history.checkpointed_at IS NULL
+                            THEN excluded.checkpointed_at
+                        WHEN excluded.checkpointed_at IS NULL
+                            THEN play_history.checkpointed_at
+                        WHEN julianday(excluded.checkpointed_at)
+                            >= julianday(play_history.checkpointed_at)
+                            THEN excluded.checkpointed_at
+                        ELSE play_history.checkpointed_at
+                    END
                 """,
                 values,
             )

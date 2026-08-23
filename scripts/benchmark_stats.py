@@ -5,12 +5,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sqlite3
+import sys
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from src.database import (
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.database import (  # noqa: E402
     get_daily_stats,
     get_hourly_stats,
     get_time_bucket_stats,
@@ -72,8 +77,13 @@ async def benchmark(rows: int) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--rows", type=int, default=100_000)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--rows",
+        type=int,
+        default=100_000,
+        help="number of synthetic play-history rows to generate (default: 100000)",
+    )
     args = parser.parse_args()
     if args.rows < 1 or args.rows > 1_000_000:
         parser.error("--rows must be between 1 and 1000000")

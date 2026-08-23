@@ -3,6 +3,7 @@
 
     const { createI18n, readPreference, removePreference, writePreference } = window.NavidromeI18n;
     const fetchOptions = { credentials: 'same-origin' };
+    const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
     const preferenceKeys = Object.freeze({
         language: 'navidrome-language',
         theme: 'navidrome-theme',
@@ -58,10 +59,16 @@
             'source.username': '用户名',
             'source.usernamePlaceholder': '账户名',
             'source.password': '密码',
-            'source.passwordPlaceholder': '留空则保持不变',
+            'source.passwordPlaceholder': '新增连接时必填',
             'source.passwordConfigured': '已配置 · 留空则保持不变',
+            'source.passwordRequired': '新增连接需要填写密码。',
+            'source.enabled': '采集此服务器',
+            'source.enabledHelp': '禁用的连接仍会保留，但不会启动采集器。',
+            'source.enabledStatus': '已启用',
+            'source.disabledStatus': '已禁用',
             'source.save': '保存连接',
             'source.update': '更新连接',
+            'source.cancelEdit': '取消编辑',
             'source.testConnection': '测试当前表单',
             'source.testing': '正在测试连接…',
             'source.testSuccess': '连接成功。',
@@ -75,29 +82,34 @@
             'source.urlRequired': '请填写 Navidrome URL。',
             'source.userRequired': '请填写用户名。',
             'source.deleteConfirm': '删除服务器“{name}”？这不会删除已有播放统计。',
-            'source.envTitle': '环境变量优先级',
-            'source.envDescription': 'NAVIDROME_URL、NAVIDROME_USER 与 NAVIDROME_PASS 始终优先于页面保存的兼容连接配置。',
+            'source.fallbackTitle': '环境变量回退连接',
+            'source.fallbackDescription': '仅当没有任何已保存服务器时，NAVIDROME_URL、NAVIDROME_USER 与 NAVIDROME_PASS 才作为单服务器回退配置。已保存服务器作为独立连接使用。',
+            'source.fallbackConfigured': '当前已配置回退连接：{username} · {url}',
+            'source.fallbackMissing': '当前没有完整的环境变量或兼容回退连接。',
             'privacy.heading': '隐私与数据',
             'privacy.description': '控制行为数据的保留期限，并按用户导出或删除记录。',
             'privacy.currentPolicy': '当前保留策略',
             'privacy.policyLoading': '正在读取当前策略…',
             'privacy.policyLoadError': '未能读取策略。现有数据未被修改。',
             'privacy.retention': '数据保留',
-            'privacy.retentionDescription': '先保存策略；只有点击“确认清理”才会删除超期记录。',
+            'privacy.retentionDescription': '保存有限策略后，服务会在启动时和后台维护期间自动删除超期记录；“立即应用”会现在执行一次。',
             'privacy.retentionMode': '保留方式',
             'privacy.finiteRetention': '指定天数',
             'privacy.finiteHelp': '1–360 天',
             'privacy.summaryPermanent': '永久保留，除非你主动删除。',
-            'privacy.summaryFinite': '保留最近 {days} 天，超期记录仅在确认后清理。',
-            'privacy.previewPermanent': '当前策略不会自动删除播放记录。',
+            'privacy.summaryFinite': '保留最近 {days} 天，超期记录会自动清理。',
+            'privacy.previewPermanent': '播放记录会永久保留，除非按用户主动删除。',
             'privacy.previewFinite': '按 {label} 计算：将影响 {count} 条记录，预计释放 {bytes}。',
             'privacy.saveRetention': '保存策略',
-            'privacy.cleanup': '确认清理',
-            'privacy.retentionSaved': '保留策略已保存。',
+            'privacy.cleanup': '立即应用',
+            'privacy.retentionSaved': '保留策略已保存。有限策略会在启动和后台维护时自动执行。',
+            'privacy.retentionSaveConfirm': '保存后，服务会自动删除超出该期限的记录。\n\n{preview}\n\n保存此有限保留策略吗？',
+            'privacy.saveFirst': '请先保存当前保留策略，再立即应用。',
             'privacy.noCleanup': '当前为永久保留，无需清理。',
-            'privacy.cleanupConfirm': '此操作不可撤销。\n\n{preview}\n\n确定删除这些超期记录吗？',
+            'privacy.cleanupConfirm': '此操作不可撤销。\n\n{preview}\n\n立即删除这些超期记录吗？',
             'privacy.cleanupSuccess': '已清理 {count} 条超期记录。',
             'privacy.cleanupFailed': '清理失败，请重试。',
+            'privacy.policyChanged': '保留策略已在其它会话中变更，页面已重新加载，未执行清理。',
             'privacy.storage': '数据占用',
             'privacy.storageDescription': '以下估算只基于统计数据库，不读取媒体文件。',
             'privacy.currentDatabaseSize': '当前数据库',
@@ -119,8 +131,9 @@
             'privacy.deleteUser': '删除该用户数据',
             'privacy.exportSuccess': '已导出用户“{username}”的数据。',
             'privacy.exportFailed': '导出失败。',
-            'privacy.importConfirm': '为“{username}”导入 {count} 条记录？',
-            'privacy.importSuccess': '已导入 {count} 条记录。',
+            'privacy.importConfirm': '为“{username}”导入 {records} 条播放记录与 {attempts} 条短播放记录？',
+            'privacy.importSuccess': '已导入 {records} 条播放记录与 {attempts} 条短播放记录。',
+            'privacy.importTooLarge': '导入文件不能超过 5 MiB。',
             'privacy.importFailed': '导入失败，请检查 JSON 格式与用户名。',
             'privacy.deleteConfirm': '此操作不可撤销。\n\n{preview}\n\n确定删除用户“{username}”的全部播放数据吗？',
             'privacy.deleteSuccess': '已删除 {count} 条记录。',
@@ -128,7 +141,7 @@
             'privacy.selectUserFirst': '请先选择用户。',
             'privacy.principles': '数据边界',
             'privacy.principleRetention': '播放历史、用户名、曲目、艺人、专辑与客户端名称均属于个人行为数据。',
-            'privacy.principleCleanup': '清理和删除前会提供影响预览，并要求再次确认。',
+            'privacy.principleCleanup': '有限保留策略会自动清理超期记录；立即清理和按用户删除会先提供影响预览并再次确认。',
             'privacy.principleExport': '导出仅包含所选用户的数据，服务不会记录导出内容。',
             'privacy.principleNotice': '部署方仍需确认访问边界、告知方式、备份位置与实际保留周期。',
             'preferences.heading': '偏好',
@@ -210,10 +223,16 @@
             'source.username': 'Username',
             'source.usernamePlaceholder': 'Account name',
             'source.password': 'Password',
-            'source.passwordPlaceholder': 'Leave blank to keep current',
+            'source.passwordPlaceholder': 'Required for a new connection',
             'source.passwordConfigured': 'Configured · leave blank to keep current',
+            'source.passwordRequired': 'Enter a password for a new connection.',
+            'source.enabled': 'Collect from this server',
+            'source.enabledHelp': 'Disabled connections remain saved but do not run a collector.',
+            'source.enabledStatus': 'Enabled',
+            'source.disabledStatus': 'Disabled',
             'source.save': 'Save connection',
             'source.update': 'Update connection',
+            'source.cancelEdit': 'Cancel edit',
             'source.testConnection': 'Test current form',
             'source.testing': 'Testing connection…',
             'source.testSuccess': 'Connection succeeded.',
@@ -227,29 +246,34 @@
             'source.urlRequired': 'Enter the Navidrome URL.',
             'source.userRequired': 'Enter a username.',
             'source.deleteConfirm': 'Delete “{name}”? Existing playback statistics will be kept.',
-            'source.envTitle': 'Environment variable precedence',
-            'source.envDescription': 'NAVIDROME_URL, NAVIDROME_USER, and NAVIDROME_PASS always take precedence over the compatible connection saved here.',
+            'source.fallbackTitle': 'Environment fallback connection',
+            'source.fallbackDescription': 'NAVIDROME_URL, NAVIDROME_USER, and NAVIDROME_PASS provide one fallback connection only when no saved server entries exist. Saved servers are independent connections.',
+            'source.fallbackConfigured': 'Fallback connection configured: {username} · {url}',
+            'source.fallbackMissing': 'No complete environment or compatible fallback connection is configured.',
             'privacy.heading': 'Privacy & data',
             'privacy.description': 'Control how long behavioral data is kept, then export or delete records by user.',
             'privacy.currentPolicy': 'Current retention policy',
             'privacy.policyLoading': 'Reading the current policy…',
             'privacy.policyLoadError': 'The policy could not be loaded. Existing data was not changed.',
             'privacy.retention': 'Data retention',
-            'privacy.retentionDescription': 'Save the policy first. Records are deleted only after you select “Confirm cleanup.”',
+            'privacy.retentionDescription': 'After a finite policy is saved, expired records are deleted automatically at startup and during background maintenance. “Apply now” runs it immediately.',
             'privacy.retentionMode': 'Retention mode',
             'privacy.finiteRetention': 'Keep for a period',
             'privacy.finiteHelp': '1–360 days',
             'privacy.summaryPermanent': 'Kept forever unless you explicitly delete it.',
-            'privacy.summaryFinite': 'Keep the most recent {days} days. Older records are removed only after confirmation.',
-            'privacy.previewPermanent': 'The current policy does not automatically delete playback records.',
+            'privacy.summaryFinite': 'Keep the most recent {days} days. Older records are removed automatically.',
+            'privacy.previewPermanent': 'Playback records are kept forever unless they are explicitly deleted by user.',
             'privacy.previewFinite': 'For {label}: {count} records affected, approximately {bytes} released.',
             'privacy.saveRetention': 'Save policy',
-            'privacy.cleanup': 'Confirm cleanup',
-            'privacy.retentionSaved': 'Retention policy saved.',
+            'privacy.cleanup': 'Apply now',
+            'privacy.retentionSaved': 'Retention policy saved. Finite policies run automatically at startup and during background maintenance.',
+            'privacy.retentionSaveConfirm': 'After this is saved, the service automatically deletes records older than the selected period.\n\n{preview}\n\nSave this finite retention policy?',
+            'privacy.saveFirst': 'Save the current retention policy before applying it now.',
             'privacy.noCleanup': 'Retention is permanent; no cleanup is needed.',
-            'privacy.cleanupConfirm': 'This action cannot be undone.\n\n{preview}\n\nDelete these expired records?',
+            'privacy.cleanupConfirm': 'This action cannot be undone.\n\n{preview}\n\nDelete these expired records now?',
             'privacy.cleanupSuccess': 'Deleted {count} expired records.',
             'privacy.cleanupFailed': 'Cleanup failed. Please try again.',
+            'privacy.policyChanged': 'The retention policy changed in another session. Settings were reloaded and no cleanup was run.',
             'privacy.storage': 'Data footprint',
             'privacy.storageDescription': 'These estimates cover the statistics database only, never media files.',
             'privacy.currentDatabaseSize': 'Current database',
@@ -271,8 +295,9 @@
             'privacy.deleteUser': 'Delete this user’s data',
             'privacy.exportSuccess': 'Exported data for “{username}”.',
             'privacy.exportFailed': 'Export failed.',
-            'privacy.importConfirm': 'Import {count} records for “{username}”?',
-            'privacy.importSuccess': 'Imported {count} records.',
+            'privacy.importConfirm': 'Import {records} plays and {attempts} short-play records for “{username}”?',
+            'privacy.importSuccess': 'Imported {records} plays and {attempts} short-play records.',
+            'privacy.importTooLarge': 'Import files cannot exceed 5 MiB.',
             'privacy.importFailed': 'Import failed. Check the JSON format and username.',
             'privacy.deleteConfirm': 'This action cannot be undone.\n\n{preview}\n\nDelete all playback data for “{username}”?',
             'privacy.deleteSuccess': 'Deleted {count} records.',
@@ -280,7 +305,7 @@
             'privacy.selectUserFirst': 'Select a user first.',
             'privacy.principles': 'Data boundaries',
             'privacy.principleRetention': 'Playback history, usernames, tracks, artists, albums, and client names are all behavioral data.',
-            'privacy.principleCleanup': 'Cleanup and deletion show an impact preview and require another confirmation.',
+            'privacy.principleCleanup': 'Finite retention automatically removes expired records. Apply-now and per-user deletion show an impact preview and require confirmation.',
             'privacy.principleExport': 'Exports contain data for the selected user only; export contents are not logged.',
             'privacy.principleNotice': 'The operator must still confirm access boundaries, notice, backup locations, and the actual retention period.',
             'preferences.heading': 'Preferences',
@@ -328,10 +353,14 @@
         servers: [],
         sourceReadiness: 'unknown',
         sourcePasswordConfigured: false,
+        fallbackSourceConfig: null,
         sourceMessage: null,
     };
     const listboxes = new Map();
     let previewTimer = null;
+    let retentionPreviewController = null;
+    let userPreviewController = null;
+    let lastFocusBeforeLogin = null;
 
     function isResponseOk(response) {
         return response && response.ok;
@@ -346,13 +375,24 @@
         return response;
     }
 
+    function isAbortError(error) {
+        return error && error.name === 'AbortError';
+    }
+
     function showLogin() {
-        document.getElementById('loginOverlay').hidden = false;
+        const overlay = document.getElementById('loginOverlay');
+        if (overlay.hidden) lastFocusBeforeLogin = document.activeElement;
+        overlay.hidden = false;
+        document.querySelector('.settings-shell').inert = true;
+        window.requestAnimationFrame(() => document.getElementById('loginToken').focus());
     }
 
     function hideLogin() {
         document.getElementById('loginOverlay').hidden = true;
         document.getElementById('loginError').hidden = true;
+        document.querySelector('.settings-shell').inert = false;
+        if (lastFocusBeforeLogin instanceof HTMLElement) lastFocusBeforeLogin.focus();
+        lastFocusBeforeLogin = null;
     }
 
     function showBanner(kind, message) {
@@ -563,10 +603,10 @@
             summary.textContent = t('privacy.policyLoadError');
             return;
         }
-        const permanent = document.getElementById('modePermanent').checked;
-        summary.textContent = permanent
+        const persistedDays = state.privacySettings?.retention_days ?? null;
+        summary.textContent = persistedDays === null
             ? t('privacy.summaryPermanent')
-            : t('privacy.summaryFinite', { days: document.getElementById('retentionSlider').value });
+            : t('privacy.summaryFinite', { days: persistedDays });
     }
 
     function renderSourceReadiness() {
@@ -590,10 +630,47 @@
     }
 
     function renderSourceFormState() {
-        document.getElementById('saveSourceBtn').textContent =
-            document.getElementById('sourceForm').dataset.editingId
-                ? t('source.update')
-                : t('source.save');
+        const editing = Boolean(document.getElementById('sourceForm').dataset.editingId);
+        const password = document.getElementById('sourcePass');
+        document.getElementById('saveSourceBtn').textContent = editing
+            ? t('source.update')
+            : t('source.save');
+        document.getElementById('cancelSourceEditBtn').hidden = !editing;
+        password.required = !editing;
+        renderSourcePasswordPlaceholder();
+    }
+
+    function resetSourceForm() {
+        const form = document.getElementById('sourceForm');
+        form.reset();
+        form.removeAttribute('data-editing-id');
+        state.sourcePasswordConfigured = false;
+        renderSourceFormState();
+    }
+
+    function renderFallbackSource() {
+        const target = document.getElementById('sourceFallbackSummary');
+        const fallback = state.fallbackSourceConfig;
+        target.textContent = fallback?.url && fallback?.username && fallback?.password_configured
+            ? t('source.fallbackConfigured', {
+                username: fallback.username,
+                url: fallback.url,
+            })
+            : t('source.fallbackMissing');
+    }
+
+    function retentionDraftIsDirty() {
+        if (state.privacyStatus !== 'ready' || !state.privacySettings) return false;
+        const persisted = state.privacySettings.retention_days ?? null;
+        return getRetentionDaysFromUi() !== persisted;
+    }
+
+    function renderRetentionActions() {
+        const ready = state.privacyStatus === 'ready' && Boolean(state.privacySettings);
+        const dirty = ready && retentionDraftIsDirty();
+        const persistedFinite = ready && state.privacySettings.retention_days !== null;
+        document.getElementById('saveRetentionBtn').disabled = !ready || !dirty;
+        document.getElementById('applyRetentionBtn').disabled = !persistedFinite || dirty;
     }
 
     function updateStorageDisplay(preview) {
@@ -621,16 +698,18 @@
 
     function updateRetentionPreviewText(preview) {
         const target = document.getElementById('retentionPreview');
+        target.textContent = retentionPreviewText(preview);
+    }
+
+    function retentionPreviewText(preview) {
         if (!preview) {
-            target.textContent = t('privacy.storagePending');
-            return;
+            return t('privacy.storagePending');
         }
         if (preview.retention_days === null) {
-            target.textContent = t('privacy.previewPermanent');
-            return;
+            return t('privacy.previewPermanent');
         }
         const released = Math.max(preview.database_bytes - preview.estimated_database_bytes_after, 0);
-        target.textContent = t('privacy.previewFinite', {
+        return t('privacy.previewFinite', {
             label: t('common.days', { count: preview.retention_days }),
             count: localizedCount(preview.records_to_delete),
             bytes: formatBytes(released),
@@ -664,8 +743,9 @@
         listboxes.forEach((controller) => controller.refreshLabels());
         renderPolicySummary();
         renderSourceReadiness();
-        renderSourcePasswordPlaceholder();
         renderSourceFormState();
+        renderFallbackSource();
+        renderRetentionActions();
         updateStorageDisplay(state.storageSnapshot);
         updateRetentionPreviewText(state.storageSnapshot);
         renderUserOptions();
@@ -701,24 +781,45 @@
         document.getElementById('retentionSliderWrap').hidden = Boolean(permanent);
         updateRetentionModeVisuals();
         renderPolicySummary();
+        renderRetentionActions();
     }
 
-    async function refreshRetentionPreview() {
-        const days = getRetentionDaysFromUi();
-        const query = days === null ? '' : `?days=${encodeURIComponent(days)}`;
-        const response = await apiFetch(`/api/privacy/retention/preview${query}`);
+    async function refreshRetentionPreview(days = getRetentionDaysFromUi()) {
+        if (retentionPreviewController) retentionPreviewController.abort();
+        const controller = new AbortController();
+        retentionPreviewController = controller;
+        const endpoint = days === null
+            ? '/api/privacy/storage'
+            : `/api/privacy/retention/preview?days=${encodeURIComponent(days)}`;
+        const response = await apiFetch(endpoint, {
+            signal: controller.signal,
+        });
         if (!isResponseOk(response)) throw new Error('preview failed');
-        const data = await response.json();
+        const payload = await response.json();
+        const data = days === null
+            ? {
+                ...payload,
+                retention_days: null,
+                records_to_delete: 0,
+                history_records_to_delete: 0,
+                attempt_records_to_delete: 0,
+                bytes_to_delete: 0,
+                estimated_database_bytes_after: payload.database_bytes,
+            }
+            : payload;
+        if (retentionPreviewController !== controller) return null;
         state.storageSnapshot = data;
         updateStorageDisplay(data);
         updateRetentionPreviewText(data);
+        retentionPreviewController = null;
+        return data;
     }
 
     function scheduleRetentionPreview() {
         if (previewTimer) window.clearTimeout(previewTimer);
         previewTimer = window.setTimeout(() => {
-            refreshRetentionPreview().catch(() => {
-                showBanner('error', t('error.generic'));
+            refreshRetentionPreview().catch((error) => {
+                if (!isAbortError(error)) showBanner('error', t('error.generic'));
             });
         }, 160);
     }
@@ -737,6 +838,7 @@
                 await refreshRetentionPreview();
             } catch (previewError) {
                 if (previewError.message === 'unauthorized') throw previewError;
+                if (isAbortError(previewError)) return;
                 state.storageSnapshot = null;
                 updateStorageDisplay(null);
                 updateRetentionPreviewText(null);
@@ -745,6 +847,7 @@
             if (error.message === 'unauthorized') throw error;
             state.privacyStatus = 'error';
             renderPolicySummary();
+            renderRetentionActions();
             throw error;
         }
     }
@@ -760,6 +863,7 @@
             renderUserOptions();
             await refreshUserPreview();
         } catch (error) {
+            if (isAbortError(error)) return;
             if (error.message === 'unauthorized') throw error;
             state.users = [];
             state.usersStatus = 'error';
@@ -771,16 +875,30 @@
     async function refreshUserPreview() {
         const username = listboxes.get('userSelect')?.getValue();
         const preview = document.getElementById('userPreview');
+        if (userPreviewController) userPreviewController.abort();
         if (!username) {
             preview.textContent = t('privacy.userPreview', { count: 0 });
-            return;
+            userPreviewController = null;
+            return null;
         }
-        const response = await apiFetch(`/api/privacy/users/${encodeURIComponent(username)}/delete/preview`);
+        const controller = new AbortController();
+        userPreviewController = controller;
+        const response = await apiFetch(
+            `/api/privacy/users/${encodeURIComponent(username)}/delete/preview`,
+            { signal: controller.signal },
+        );
         if (!isResponseOk(response)) throw new Error('user preview failed');
         const data = await response.json();
-        preview.textContent = t('privacy.userPreview', {
+        if (
+            userPreviewController !== controller
+            || listboxes.get('userSelect')?.getValue() !== username
+        ) return null;
+        const text = t('privacy.userPreview', {
             count: localizedCount(data.records_to_delete),
         });
+        preview.textContent = text;
+        userPreviewController = null;
+        return { username, count: data.records_to_delete, text };
     }
 
     function setSourceMessage(key, kind = 'info', values = {}) {
@@ -809,8 +927,16 @@
             const name = document.createElement('strong');
             name.textContent = server.display_name;
             const url = document.createElement('span');
+            url.className = 'server-url';
             url.textContent = server.url;
-            identity.append(name, url);
+            const statusBadge = document.createElement('span');
+            statusBadge.className = 'server-status';
+            statusBadge.dataset.enabled = String(Boolean(server.enabled));
+            statusBadge.textContent = t(server.enabled ? 'source.enabledStatus' : 'source.disabledStatus');
+            const detailLine = document.createElement('div');
+            detailLine.className = 'server-detail-line';
+            detailLine.append(url, statusBadge);
+            identity.append(name, detailLine);
 
             const actions = document.createElement('div');
             actions.className = 'row-actions';
@@ -840,7 +966,9 @@
                 document.getElementById('sourceUrl').value = server.url;
                 document.getElementById('sourceUser').value = server.username;
                 document.getElementById('sourcePass').value = '';
+                document.getElementById('sourceEnabled').checked = Boolean(server.enabled);
                 document.getElementById('sourceForm').dataset.editingId = server.id;
+                state.sourcePasswordConfigured = Boolean(server.password_configured);
                 renderSourceFormState();
                 document.getElementById('sourceName').focus();
             });
@@ -857,6 +985,9 @@
                     setSourceMessage('source.saveFailed', 'error');
                     return;
                 }
+                if (document.getElementById('sourceForm').dataset.editingId === server.id) {
+                    resetSourceForm();
+                }
                 await loadServers();
             });
             actions.append(testButton, editButton, deleteButton);
@@ -870,6 +1001,10 @@
             const response = await apiFetch('/api/servers');
             if (!isResponseOk(response)) throw new Error('servers failed');
             state.servers = await response.json();
+            const editingId = document.getElementById('sourceForm').dataset.editingId;
+            if (editingId && !state.servers.some((server) => server.id === editingId)) {
+                resetSourceForm();
+            }
             renderServers();
         } catch (error) {
             if (error.message !== 'unauthorized') setSourceMessage('source.loadFailed', 'error');
@@ -881,12 +1016,8 @@
         try {
             const response = await apiFetch('/api/source/config');
             if (!isResponseOk(response)) throw new Error('source config failed');
-            const data = await response.json();
-            document.getElementById('sourceUrl').value = data.url || '';
-            document.getElementById('sourceUser').value = data.username || '';
-            document.getElementById('sourcePass').value = '';
-            state.sourcePasswordConfigured = Boolean(data.password_configured);
-            renderSourcePasswordPlaceholder();
+            state.fallbackSourceConfig = await response.json();
+            renderFallbackSource();
         } catch (error) {
             if (error.message !== 'unauthorized') setSourceMessage('source.configFailed', 'error');
             throw error;
@@ -992,8 +1123,8 @@
         });
         createListbox('userSelect', {
             placeholderKey: 'privacy.userLoading',
-            onChange: () => refreshUserPreview().catch(() => {
-                showBanner('error', t('error.generic'));
+            onChange: () => refreshUserPreview().catch((error) => {
+                if (!isAbortError(error)) showBanner('error', t('error.generic'));
             }),
         });
 
@@ -1032,7 +1163,10 @@
                 const permanent = document.getElementById('modePermanent').checked;
                 document.getElementById('retentionSliderWrap').hidden = permanent;
                 renderPolicySummary();
-                refreshRetentionPreview().catch(() => showBanner('error', t('error.generic')));
+                renderRetentionActions();
+                refreshRetentionPreview().catch((error) => {
+                    if (!isAbortError(error)) showBanner('error', t('error.generic'));
+                });
             });
         });
         document.getElementById('retentionSlider').addEventListener('input', (event) => {
@@ -1040,45 +1174,87 @@
                 count: event.target.value,
             });
             renderPolicySummary();
+            renderRetentionActions();
             scheduleRetentionPreview();
         });
         document.getElementById('saveRetentionBtn').addEventListener('click', async () => {
+            const button = document.getElementById('saveRetentionBtn');
+            const draftDays = getRetentionDaysFromUi();
+            if (previewTimer) window.clearTimeout(previewTimer);
+            previewTimer = null;
+            button.disabled = true;
             try {
+                const preview = await refreshRetentionPreview(draftDays);
+                if (!preview) return;
+                if (
+                    draftDays !== null
+                    && !window.confirm(t('privacy.retentionSaveConfirm', {
+                        preview: retentionPreviewText(preview),
+                    }))
+                ) return;
                 const response = await apiFetch('/api/privacy/settings', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ retention_days: getRetentionDaysFromUi() }),
+                    body: JSON.stringify({ retention_days: draftDays }),
                 });
                 if (!isResponseOk(response)) throw new Error('save failed');
+                state.privacySettings = await response.json();
                 state.privacyStatus = 'ready';
                 renderPolicySummary();
+                renderRetentionActions();
                 showBanner('success', t('privacy.retentionSaved'));
-                await refreshRetentionPreview();
+                await refreshRetentionPreview(state.privacySettings.retention_days ?? null);
             } catch (error) {
-                if (error.message !== 'unauthorized') showBanner('error', t('error.generic'));
+                if (error.message !== 'unauthorized' && !isAbortError(error)) {
+                    showBanner('error', t('error.generic'));
+                }
+            } finally {
+                renderRetentionActions();
             }
         });
         document.getElementById('applyRetentionBtn').addEventListener('click', async () => {
-            const days = getRetentionDaysFromUi();
-            if (days === null) {
+            const button = document.getElementById('applyRetentionBtn');
+            const persistedDays = state.privacySettings?.retention_days ?? null;
+            if (previewTimer) window.clearTimeout(previewTimer);
+            previewTimer = null;
+            if (retentionDraftIsDirty()) {
+                showBanner('error', t('privacy.saveFirst'));
+                return;
+            }
+            if (persistedDays === null) {
                 showBanner('error', t('privacy.noCleanup'));
                 return;
             }
+            button.disabled = true;
             try {
-                await refreshRetentionPreview();
-                const preview = document.getElementById('retentionPreview').textContent;
-                if (!window.confirm(t('privacy.cleanupConfirm', { preview }))) return;
+                const preview = await refreshRetentionPreview(persistedDays);
+                if (!preview) return;
+                if (!window.confirm(t('privacy.cleanupConfirm', {
+                    preview: retentionPreviewText(preview),
+                }))) return;
                 const response = await apiFetch('/api/privacy/retention/apply', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ confirm: true }),
+                    body: JSON.stringify({
+                        confirm: true,
+                        expected_retention_days: persistedDays,
+                    }),
                 });
+                if (response.status === 409) {
+                    await loadPrivacySettings();
+                    showBanner('error', t('privacy.policyChanged'));
+                    return;
+                }
                 if (!isResponseOk(response)) throw new Error('cleanup failed');
                 const data = await response.json();
                 showBanner('success', t('privacy.cleanupSuccess', { count: localizedCount(data.deleted) }));
-                await Promise.all([loadUsers(), refreshRetentionPreview()]);
+                await Promise.all([loadUsers(), refreshRetentionPreview(persistedDays)]);
             } catch (error) {
-                if (error.message !== 'unauthorized') showBanner('error', t('privacy.cleanupFailed'));
+                if (error.message !== 'unauthorized' && !isAbortError(error)) {
+                    showBanner('error', t('privacy.cleanupFailed'));
+                }
+            } finally {
+                renderRetentionActions();
             }
         });
         document.getElementById('exportBtn').addEventListener('click', async () => {
@@ -1096,23 +1272,32 @@
                 link.href = objectUrl;
                 link.download = 'navidrome-stat-export.json';
                 link.click();
-                URL.revokeObjectURL(objectUrl);
+                window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
                 showBanner('success', t('privacy.exportSuccess', { username }));
             } catch (error) {
                 if (error.message !== 'unauthorized') showBanner('error', t('privacy.exportFailed'));
             }
+        });
+        document.getElementById('importBtn').addEventListener('click', () => {
+            document.getElementById('importFile').click();
         });
         document.getElementById('importFile').addEventListener('change', async (event) => {
             const username = listboxes.get('userSelect').getValue();
             const file = event.target.files[0];
             event.target.value = '';
             if (!username || !file) return;
+            if (file.size > IMPORT_MAX_BYTES) {
+                showBanner('error', t('privacy.importTooLarge'));
+                return;
+            }
             try {
                 const payload = JSON.parse(await file.text());
-                const count = Array.isArray(payload.records) ? payload.records.length : 0;
+                const records = Array.isArray(payload.records) ? payload.records.length : 0;
+                const attempts = Array.isArray(payload.attempts) ? payload.attempts.length : 0;
                 if (!window.confirm(t('privacy.importConfirm', {
                     username,
-                    count: localizedCount(count),
+                    records: localizedCount(records),
+                    attempts: localizedCount(attempts),
                 }))) return;
                 const response = await apiFetch(`/api/privacy/users/${encodeURIComponent(username)}/import`, {
                     method: 'POST',
@@ -1124,7 +1309,10 @@
                 });
                 if (!isResponseOk(response)) throw new Error('import failed');
                 const data = await response.json();
-                showBanner('success', t('privacy.importSuccess', { count: localizedCount(data.imported) }));
+                showBanner('success', t('privacy.importSuccess', {
+                    records: localizedCount(data.imported),
+                    attempts: localizedCount(data.attempts_imported),
+                }));
                 await Promise.all([loadUsers(), refreshRetentionPreview()]);
             } catch (error) {
                 if (error.message !== 'unauthorized') showBanner('error', t('privacy.importFailed'));
@@ -1137,9 +1325,12 @@
                 return;
             }
             try {
-                await refreshUserPreview();
-                const preview = document.getElementById('userPreview').textContent;
-                if (!window.confirm(t('privacy.deleteConfirm', { preview, username }))) return;
+                const preview = await refreshUserPreview();
+                if (!preview || preview.username !== username) return;
+                if (!window.confirm(t('privacy.deleteConfirm', {
+                    preview: preview.text,
+                    username,
+                }))) return;
                 const response = await apiFetch(`/api/privacy/users/${encodeURIComponent(username)}/delete`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1159,18 +1350,29 @@
         document.getElementById('refreshSourceStatus').addEventListener('click', () => {
             loadSourceReadiness().catch(() => {});
         });
+        document.getElementById('cancelSourceEditBtn').addEventListener('click', () => {
+            resetSourceForm();
+            clearSourceMessage();
+            document.getElementById('sourceName').focus();
+        });
         document.getElementById('sourceForm').addEventListener('submit', async (event) => {
             event.preventDefault();
             const form = event.currentTarget;
+            const saveButton = document.getElementById('saveSourceBtn');
             const displayName = document.getElementById('sourceName').value.trim();
             const url = document.getElementById('sourceUrl').value.trim();
             const username = document.getElementById('sourceUser').value.trim();
             const password = document.getElementById('sourcePass').value;
+            const enabled = document.getElementById('sourceEnabled').checked;
+            const editingId = form.dataset.editingId;
             if (!displayName) return setSourceMessage('source.nameRequired', 'error');
             if (!url) return setSourceMessage('source.urlRequired', 'error');
             if (!username) return setSourceMessage('source.userRequired', 'error');
+            if (!editingId && !password) {
+                return setSourceMessage('source.passwordRequired', 'error');
+            }
+            saveButton.disabled = true;
             try {
-                const editingId = form.dataset.editingId;
                 const response = await apiFetch(
                     editingId ? `/api/servers/${encodeURIComponent(editingId)}` : '/api/servers',
                     {
@@ -1181,31 +1383,50 @@
                             url,
                             username,
                             password,
-                            enabled: true,
+                            enabled,
                         }),
                     },
                 );
                 if (!isResponseOk(response)) throw new Error('save failed');
-                document.getElementById('sourcePass').value = '';
-                form.removeAttribute('data-editing-id');
-                renderSourceFormState();
+                resetSourceForm();
                 await Promise.all([loadServers(), loadSourceReadiness()]);
                 setSourceMessage('source.saved', 'success');
             } catch (error) {
                 if (error.message !== 'unauthorized') setSourceMessage('source.saveFailed', 'error');
+            } finally {
+                saveButton.disabled = false;
             }
         });
         document.getElementById('testSourceBtn').addEventListener('click', async () => {
+            const button = document.getElementById('testSourceBtn');
+            const form = document.getElementById('sourceForm');
             setSourceMessage('source.testing');
-            const payload = {};
+            const displayName = document.getElementById('sourceName').value.trim();
             const url = document.getElementById('sourceUrl').value.trim();
             const username = document.getElementById('sourceUser').value.trim();
             const password = document.getElementById('sourcePass').value;
-            if (url) payload.url = url;
-            if (username) payload.username = username;
-            if (password) payload.password = password;
+            const enabled = document.getElementById('sourceEnabled').checked;
+            const editingId = form.dataset.editingId;
+            if (!url) return setSourceMessage('source.urlRequired', 'error');
+            if (!username) return setSourceMessage('source.userRequired', 'error');
+            if (!editingId && !password) {
+                return setSourceMessage('source.passwordRequired', 'error');
+            }
+            const payload = editingId
+                ? {
+                    display_name: displayName || 'Navidrome',
+                    url,
+                    username,
+                    password,
+                    enabled,
+                }
+                : { url, username, password };
+            button.disabled = true;
             try {
-                const response = await apiFetch('/api/source/test', {
+                const endpoint = editingId
+                    ? `/api/servers/${encodeURIComponent(editingId)}/test`
+                    : '/api/source/test';
+                const response = await apiFetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
@@ -1215,15 +1436,34 @@
                 setSourceMessage(data.ok ? 'source.testSuccess' : 'source.testFailure', data.ok ? 'success' : 'error');
             } catch (error) {
                 if (error.message !== 'unauthorized') setSourceMessage('source.testFailed', 'error');
+            } finally {
+                button.disabled = false;
             }
         });
     }
 
     function bindAuthentication() {
+        document.getElementById('loginOverlay').addEventListener('keydown', (event) => {
+            if (event.key !== 'Tab') return;
+            const focusable = [...event.currentTarget.querySelectorAll('input, button')]
+                .filter((element) => !element.disabled && !element.hidden);
+            if (!focusable.length) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
         document.getElementById('loginForm').addEventListener('submit', async (event) => {
             event.preventDefault();
+            const tokenInput = document.getElementById('loginToken');
             try {
-                await submitLogin(document.getElementById('loginToken').value);
+                await submitLogin(tokenInput.value);
+                tokenInput.value = '';
             } catch (_error) {
                 const error = document.getElementById('loginError');
                 error.textContent = t('auth.invalid');

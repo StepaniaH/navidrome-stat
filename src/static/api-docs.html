@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navidrome Statistic API</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/api-docs.css">
+    <script src="/static/api-docs.js" defer></script>
+</head>
+<body>
+    <main class="api-shell">
+        <header class="api-header">
+            <div>
+                <p class="api-eyebrow">Navidrome Statistic</p>
+                <h1>API reference</h1>
+                <p id="apiDescription" class="api-description">Loading the runtime OpenAPI schema…</p>
+            </div>
+            <nav class="api-links" aria-label="API reference links">
+                <a href="/">Dashboard</a>
+                <a href="/openapi.json">OpenAPI JSON</a>
+            </nav>
+        </header>
+
+        <section class="api-tools" aria-labelledby="filterTitle">
+            <label for="endpointFilter">
+                <span id="filterTitle">Filter endpoints</span>
+                <input id="endpointFilter" type="search" autocomplete="off" placeholder="Method, path, or description">
+            </label>
+            <p id="apiStatus" role="status" aria-live="polite">Loading endpoints…</p>
+        </section>
+
+        <div id="apiGroups" class="api-groups"></div>
+        <noscript>
+            <p class="api-error">JavaScript is required for the searchable view. The <a href="/openapi.json">OpenAPI JSON schema</a> remains available.</p>
+        </noscript>
+    </main>
+</body>
+</html>

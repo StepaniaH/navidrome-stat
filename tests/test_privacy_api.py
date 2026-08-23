@@ -1,10 +1,11 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.database import init_db, save_play_session
+from src.database import get_summary, init_db, save_play_session
 from src.main import app
 
 
@@ -45,10 +46,129 @@ async def test_privacy_retention_update_and_preview(isolated_db):
         assert body["records_to_delete"] == 1
         assert body["database_bytes"] > 0
         assert "estimated_database_bytes_after" in body
-        denied = await ac.post("/api/privacy/retention/apply", json={"confirm": False})
+        denied = await ac.post(
+            "/api/privacy/retention/apply",
+            json={"confirm": False, "expected_retention_days": 90},
+        )
         assert denied.status_code == 400
-        applied = await ac.post("/api/privacy/retention/apply", json={"confirm": True})
+        applied = await ac.post(
+            "/api/privacy/retention/apply",
+            json={"confirm": True, "expected_retention_days": 90},
+        )
         assert applied.json()["deleted"] == 1
+
+
+@pytest.mark.asyncio
+async def test_retention_apply_rejects_changed_policy_without_deleting(isolated_db):
+    await init_db(isolated_db)
+    old_at = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+    await save_play_session(
+        {
+            "last_seen_at": old_at,
+            "username": "user1",
+            "client_name": "Web",
+            "track_id": "t1",
+            "title": "Song",
+            "artist": "A",
+            "album": "B",
+            "is_transcoding": 0,
+            "duration_sec": 40,
+        },
+        db_path=isolated_db,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        assert (
+            await ac.put("/api/privacy/settings", json={"retention_days": 90})
+        ).status_code == 200
+        assert (
+            await ac.get("/api/privacy/retention/preview")
+        ).json()["retention_days"] == 90
+        assert (
+            await ac.put("/api/privacy/settings", json={"retention_days": 30})
+        ).status_code == 200
+        response = await ac.post(
+            "/api/privacy/retention/apply",
+            json={"confirm": True, "expected_retention_days": 90},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Retention policy changed; preview again"}
+    assert (await get_summary(db_path=isolated_db))["total_plays"] == 1
+
+
+@pytest.mark.asyncio
+async def test_retention_apply_accepts_expected_permanent_policy(isolated_db):
+    await init_db(isolated_db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/privacy/retention/apply",
+            json={"confirm": True, "expected_retention_days": None},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "deleted": 0,
+        "history_deleted": 0,
+        "attempts_deleted": 0,
+        "retention_days": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_retention_apply_requires_expected_policy(isolated_db):
+    await init_db(isolated_db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/privacy/retention/apply",
+            json={"confirm": True},
+        )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_retention_policy_update_waits_for_matching_apply(isolated_db):
+    await init_db(isolated_db)
+    purge_started = asyncio.Event()
+    release_purge = asyncio.Event()
+
+    async def blocked_purge():
+        purge_started.set()
+        await release_purge.wait()
+        return {
+            "deleted": 0,
+            "history_deleted": 0,
+            "attempts_deleted": 0,
+            "retention_days": 90,
+        }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        await ac.put("/api/privacy/settings", json={"retention_days": 90})
+        with patch("src.main.apply_retention_purge", side_effect=blocked_purge):
+            apply_task = asyncio.create_task(
+                ac.post(
+                    "/api/privacy/retention/apply",
+                    json={"confirm": True, "expected_retention_days": 90},
+                )
+            )
+            await purge_started.wait()
+            update_task = asyncio.create_task(
+                ac.put("/api/privacy/settings", json={"retention_days": 30})
+            )
+            await asyncio.sleep(0)
+            try:
+                assert not update_task.done()
+            finally:
+                release_purge.set()
+            apply_response, update_response = await asyncio.gather(
+                apply_task,
+                update_task,
+            )
+
+    assert apply_response.status_code == 200
+    assert update_response.status_code == 200
+    assert update_response.json()["retention_days"] == 30
 
 
 @pytest.mark.asyncio
