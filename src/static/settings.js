@@ -12,7 +12,7 @@
 
     const messages = {
         'zh-CN': {
-            'page.title': '设置 · Navidrome Statistics',
+            'page.title': '设置 · Navidrome Statistic',
             'page.heading': '设置',
             'page.description': '管理连接、数据边界与本地显示偏好。',
             'nav.back': '返回统计',
@@ -164,7 +164,7 @@
             'error.settingsLoad': '部分设置未能加载；未完成的项目已标出。',
         },
         en: {
-            'page.title': 'Settings · Navidrome Statistics',
+            'page.title': 'Settings · Navidrome Statistic',
             'page.heading': 'Settings',
             'page.description': 'Manage connections, data boundaries, and local display preferences.',
             'nav.back': 'Back to statistics',

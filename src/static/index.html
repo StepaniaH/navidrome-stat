@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Navidrome Statistics</title>
+    <title>Navidrome Statistic</title>
     <link rel="stylesheet" href="/static/vendor/tailwind.css">
     <script src="/static/localization.js"></script>
     <script src="/static/vendor/echarts.min.js"></script>
@@ -68,7 +68,7 @@
         #historyTableWrap[data-panel-state="loading"] table {
             visibility: hidden;
         }
-        /* Ranking lists have ten variable-height rows; let their cards grow instead of clipping rows. */
+        /* Ranking cards grow with their variable-height rows. */
         .chart-container.ranking-table { height: auto; min-height: 280px; }
         @media (min-width: 768px) { .chart-container.ranking-table { min-height: 320px; } }
         .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
@@ -861,7 +861,7 @@
             </div>
         </section>
 
-        <!-- History -->
+        <!-- Server sources -->
         <section class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5 mb-8" aria-label="服务器来源分析">
             <div class="flex items-center justify-between gap-3 mb-1">
                 <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.sources">服务器来源</h2>
@@ -880,7 +880,7 @@
             </div>
         </section>
 
-        <!-- History -->
+        <!-- Recent plays -->
         <section class="history-section rounded-2xl bg-ink-900/80 shadow-card border border-white/5 overflow-hidden" aria-label="播放历史" data-i18n-attr="aria-label:dashboard.history">
             <div class="px-5 sm:px-6 py-5 border-b border-white/5">
                 <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.history">最近播放</h2>
@@ -960,9 +960,7 @@
         const dailyChart = echarts.init(document.getElementById('dailyChart'), null, { renderer: 'canvas' });
         const weekdayHourChart = echarts.init(document.getElementById('weekdayHourChart'), null, { renderer: 'canvas' });
 
-        // Static axis labels for the weekday x hour heatmap. Weekday order
-        // follows Python's ``date.weekday()`` (0=Monday ... 6=Sunday) which is
-        // what the backend emits; hours are 0..23 (no leading zeros).
+        // The backend uses Python's `date.weekday()` order: Monday=0 through Sunday=6.
         const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         const HOUR_LABELS = Array.from({ length: 24 }, (_, h) => String(h));
 
@@ -978,18 +976,11 @@
         let customEndDate = '';
         let selectedSourceId = '';
         const knownSources = new Map();
-        // Ranking metric state shared by the top artists and top albums cards.
-        // ``plays`` keeps the historical count-based ranking; ``listen_time``
-        // ranks by total observed listen seconds. Switching it only re-fetches
-        // the two ranking endpoints via ``fetchRankings`` (its own in-flight
-        // guard); a full ``fetchStats`` also forwards the current metric.
+        // Shared by the artist and album rankings; changing it refreshes both.
         let rankingMetric = 'plays';
         let rankingInFlight = false;
 
-        // Timezone control state. ``browser`` resolves to the IANA name
-        // reported by ``Intl.DateTimeFormat`` at load time and is forwarded to
-        // the API as that IANA name (the backend never accepts the literal
-        // "browser" token). ``UTC`` is forwarded verbatim.
+        // `browser` resolves to an IANA zone before requests; the API does not accept the token.
         let statsTimezone = 'browser';
         const savedStatsTimezone = window.NavidromeI18n.readPreference('navidrome-timezone');
         if (savedStatsTimezone === 'browser' || savedStatsTimezone === 'UTC') statsTimezone = savedStatsTimezone;
@@ -1338,13 +1329,10 @@
             return `${minutes}:${String(secs).padStart(2, '0')}`;
         }
 
-        // Local-only elapsed ticker for "正在播放". Increments displayed
-        // elapsed seconds every second between server refreshes; the baseline
-        // is always the most recent server-provided seconds_elapsed so the
-        // authorit side stays intact. No extra API calls are made.
+        // Advance elapsed time locally; each server refresh resets the authoritative baseline.
         let nowPlayingTicker = null;
         let nowPlayingRenderedAt = 0;
-        let nowPlayingEntries = []; // [{ span: HTMLSpanElement, baseline: int }]
+        let nowPlayingEntries = [];
 
         function stopNowPlayingTicker() {
             if (nowPlayingTicker) {
@@ -1877,9 +1865,7 @@
             container.setAttribute('role', 'table');
             container.setAttribute('aria-label', ariaLabel);
 
-            // HasData uses value so listen_time rankings with zero plays still
-            // render when there is real data; counts of zero with non-zero
-            // seconds are unlikely but supported.
+            // Check both ranking dimensions so sparse results still render.
             const rows = beginArrayPanel(
                 panel,
                 data,
@@ -1888,10 +1874,7 @@
             );
             if (!rows) return;
 
-            // Backend already returns deterministic value DESC, name ASC.
-            // Bar widths use the active ranking key (``value``) so the same
-            // renderer works for both metrics; the secondary cell always
-            // exposes the other dimension so both are visible.
+            // The backend sorts by `value`, then name; the secondary cell shows the other metric.
             const maxValue = Math.max(
                 1,
                 ...data.map(d => Number(d.value) || 0),

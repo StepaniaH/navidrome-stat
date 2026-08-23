@@ -1,30 +1,36 @@
 ---
 name: Bug report
-about: Report a defect using synthetic or redacted information only
-title: "[bug] "
+about: Report a reproducible problem
+title: "[Bug] "
 labels: []
 assignees: []
 ---
 
-## Privacy check
+## Description
 
-- [ ] This report does **not** include real server URLs, usernames, passwords, tokens, `.env` files, database dumps, or play history.
-- [ ] Logs are redacted to status codes and exception types.
+Describe the problem and its impact.
 
-## What happened
+## Steps to reproduce
 
-## What I expected
+1.
+2.
+3.
 
-## How to reproduce
+## Expected behavior
 
-Use placeholders such as `http://navidrome.example.invalid:4533` and `example_user`.
+Describe what you expected to happen.
 
 ## Environment
 
-- Navidrome Statistic version or image tag (for example `v0.7.0` or `0.7.0-dev`)
-- Install method: Docker image / Compose build / source
-- Python or container OS (if relevant)
+- Navidrome Statistic version or image tag:
+- Navidrome version:
+- Installation method:
+- Browser and operating system, if relevant:
+
+## Logs or screenshots
+
+Attach only the information needed to diagnose the problem. Remove server addresses, usernames, passwords, tokens, cookies, Subsonic request URLs, database contents, and listening history.
 
 ## Additional context
 
-Do not paste Subsonic request URLs. They contain authentication query parameters.
+Add any other relevant details.

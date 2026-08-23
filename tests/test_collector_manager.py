@@ -181,6 +181,67 @@ async def test_finalize_failure_still_closes_old_and_starts_replacement():
 
 
 @pytest.mark.asyncio
+async def test_stop_cleans_up_after_poller_task_has_failed():
+    import src.main as main
+
+    client = AsyncMock()
+
+    async def failed_poller(_client, _tracker):
+        raise RuntimeError("synthetic poller failure")
+
+    trackers = []
+    manager = main.CollectorManager(lambda **_config: client, failed_poller, trackers)
+    await manager.start(server_config())
+    await asyncio.sleep(0)
+    assert manager.collectors["server-1"].task.done()
+
+    with pytest.raises(RuntimeError, match="Failed to clean up collector"):
+        await manager.stop("server-1")
+
+    assert manager.collectors == {}
+    assert trackers == []
+    assert "server-1" not in main.runtime_state.collectors
+    client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_replace_starts_new_collector_after_old_poller_task_failed():
+    from src.main import CollectorManager
+
+    clients = []
+    poller_calls = 0
+
+    def client_factory(**_config):
+        client = AsyncMock()
+        clients.append(client)
+        return client
+
+    async def poller(_client, _tracker):
+        nonlocal poller_calls
+        poller_calls += 1
+        if poller_calls == 1:
+            raise RuntimeError("synthetic poller failure")
+        await asyncio.Event().wait()
+
+    trackers = []
+    manager = CollectorManager(client_factory, poller, trackers)
+    await manager.start(server_config())
+    old = manager.collectors["server-1"]
+    await asyncio.sleep(0)
+    assert old.task.done()
+
+    await manager.replace(server_config(password="replacement-password"))
+
+    assert clients[0].close.await_count == 1
+    assert old.tracker not in trackers
+    assert trackers == [manager.collectors["server-1"].tracker]
+    assert manager.collectors["server-1"].client is clients[1]
+    assert not manager.collectors["server-1"].task.done()
+
+    await manager.stop_all()
+
+
+@pytest.mark.asyncio
 async def test_stop_all_continues_after_one_collector_finalize_fails():
     from src.main import CollectorManager
 

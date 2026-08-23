@@ -14,37 +14,18 @@ DAILY_DAYS_DEFAULT = 30
 DAILY_DAYS_MIN = 7
 DAILY_DAYS_MAX = 90
 
-# Unified dashboard statistics window contract.
-#
-# `days` API query form uses these bounds:
-#   - 0 (STATS_DAYS_ALL): all history, no WHERE filter
-#   - finite window: STATS_DAYS_MIN..STATS_DAYS_MAX (7..90)
-# Any other value (e.g. 1..6 or >90) must be rejected with HTTP 422.
+# `days=0` selects all history; finite windows accept 7 through 90 days.
 STATS_DAYS_ALL = 0
 STATS_DAYS_MIN = 7
 STATS_DAYS_MAX = 90
 STATS_DAYS_DEFAULT = 30
 STATS_DAYS_PRESETS = (7, 30, 90, 0)
 
-# Timezone query parameter contract. The default ``UTC`` matches the historical
-# backend behavior, so existing callers that omit ``timezone`` keep seeing the
-# same window/bucket boundaries. The value is validated against Python's
-# stdlib ``zoneinfo.ZoneInfo`` (no new dependency); invalid names return 422.
-# Timezone only controls date/hour/weekday bucket boundaries and finite-window
-# UTC cutoff computation; timestamps are always stored as UTC ISO strings.
+# Timezones affect bucket boundaries and finite windows; timestamps remain UTC.
 TIMEZONE_DEFAULT = "UTC"
 TIMEZONE_VALIDATION_ERROR = "timezone must be a valid IANA timezone name"
 
-# Ranking metric contract for ``/api/stats/top-artists`` and
-# ``/api/stats/top-albums``. ``plays`` (default) keeps the historical
-# ordering by play count; ``listen_time`` ranks by total observed listen
-# seconds. ``value`` is the ranking key for the requested metric (count for
-# ``plays``, seconds for ``listen_time``) so the frontend can compute bar
-# widths without branching on the metric. rankings are deterministically
-# ordered by ``value DESC, name ASC``. ``total_listen_sec`` is always
-# provided for the secondary "12 次 · 3h 42m" line and is independent of the
-# selected metric. This does not change playback/session semantics or the
-# stored data; it only re-reads ``listen_duration_sec`` for aggregation.
+# `value` mirrors the selected sort key so one frontend renderer handles both metrics.
 RANKING_METRIC_PLAYS = "plays"
 RANKING_METRIC_LISTEN_TIME = "listen_time"
 RANKING_METRIC_DEFAULT = RANKING_METRIC_PLAYS
@@ -57,13 +38,6 @@ RANKING_METRIC_VALIDATION_ERROR = (
 class PlayerStat(BaseModel):
     client_name: Optional[str] = None
     count: int
-    # Extended client distribution fields. All optional so callers that only
-    # read ``client_name``/``count`` keep working. ``total_listen_sec`` is the
-    # sum of ``listen_duration_sec`` for this client; ``average_listen_sec``
-    # is per-play mean; ``transcoded_count`` is plays with ``is_transcoding=1``
-    # and ``transcoding_rate_pct`` is ``transcoded_count / count * 100``
-    # rounded to 2 decimals (``0`` when ``count == 0``). Ordering is
-    # ``count DESC, client_name ASC`` (null client_name sorts as "").
     total_listen_sec: Optional[int] = None
     average_listen_sec: Optional[float] = None
     transcoded_count: Optional[int] = None
@@ -73,37 +47,24 @@ class PlayerStat(BaseModel):
 class TranscodingStat(BaseModel):
     is_transcoding: Optional[int] = None
     count: int
-    # Extended transcoding fields. All optional so callers that only read
-    # ``is_transcoding``/``count`` keep working. ``total_listen_sec`` is the
-    # sum of ``listen_duration_sec`` for rows in this mode; ``plays_pct`` is
-    # the share of plays in this mode (``count / total_plays * 100``) and
-    # ``listen_sec_pct`` is the share of listen time
-    # (``total_listen_sec / total_listen_sec_all * 100``), both rounded to 2
-    # decimals and ``0`` when the respective denominator is zero.
     total_listen_sec: Optional[int] = None
     plays_pct: Optional[float] = None
     listen_sec_pct: Optional[float] = None
 
 
 class SummaryStat(BaseModel):
-    # Existing required totals (backward compatible).
     total_plays: int
     total_listen_sec: int
     unique_tracks: int
     client_count: int
-    # Unified-window comparison metrics. All optional so existing callers that
-    # only supply the four totals above still validate against this model.
     active_days: Optional[int] = None
     average_daily_plays: Optional[float] = None
     average_daily_listen_sec: Optional[float] = None
     previous_total_plays: Optional[int] = None
     previous_total_listen_sec: Optional[int] = None
-    # Percentage changes vs the previous equal-length window. null when the
-    # previous value is zero or the comparison is not applicable (days=0).
+    # Null when the previous value is zero or all history is selected.
     plays_change_pct: Optional[float] = None
     listen_change_pct: Optional[float] = None
-    # Echo of the requested window: ``days`` for finite windows, ``null`` for
-    # all history (days=0).
     window_days: Optional[int] = None
 
 
@@ -118,9 +79,8 @@ class DailyStat(BaseModel):
 
 
 class WeekdayHourStat(BaseModel):
-    # Weekday convention follows Python ``date.weekday()``: 0=Monday .. 6=Sunday.
+    # Python date.weekday(): Monday=0 through Sunday=6.
     weekday: int
-    # Hour of local time in the requested timezone, 0..23 (no leading zeros).
     hour: int
     count: int
 
@@ -142,11 +102,6 @@ class SourceStat(BaseModel):
 class TopArtistItem(BaseModel):
     artist: str
     count: int
-    # Ranking additions. ``total_listen_sec`` is the sum of
-    # ``listen_duration_sec`` for this artist; ``value`` is the ranking key
-    # for the requested ``metric`` (count for ``plays``, seconds for
-    # ``listen_time``). Both optional so existing callers that only read
-    # ``artist``/``count`` keep validating.
     total_listen_sec: Optional[int] = None
     value: Optional[int] = None
 

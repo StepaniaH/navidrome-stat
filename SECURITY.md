@@ -1,27 +1,24 @@
 # Security policy
 
-This project is a self-hosted companion that stores listening history in a local SQLite file. Treat the database, Docker volume, backups, and any settings-page credentials as sensitive.
-
 ## Supported versions
 
-Security fixes are accepted against the default branch and the latest tagged `vX.Y.Z` release. Older tags are not separately maintained.
+Security fixes target the default branch and the latest tagged release. Older releases are not maintained separately.
 
-## How to report
+## Reporting a vulnerability
 
-Do **not** open a public issue with credentials, tokens, `.env` contents, database files, or real play history.
+Please report vulnerabilities privately through [GitHub Security Advisories](https://github.com/StepaniaH/navidrome-stat/security/advisories/new).
 
-1. Prefer a private [GitHub Security Advisory](https://github.com/StepaniaH/navidrome-stat/security/advisories/new) if that feature is enabled on the repository.
-2. Otherwise contact the repository owner through GitHub without attaching secrets. Wait for a reply before sending details.
+Do not include vulnerability details, credentials, tokens, `.env` contents, database files, logs, or listening history in a public issue. If private reporting is unavailable, open a public issue requesting a private contact channel without describing the vulnerability.
 
-Whether private advisories are enabled is a repository-owner setting and is not claimed by this file.
+Include the following in a private report when possible:
 
-## Known deployment boundaries
+- The affected version or image tag
+- The expected security impact
+- Redacted reproduction steps or a minimal proof of concept
+- Any suggested mitigation
 
-Documented in [`docs/security.md`](docs/security.md) and [`docs/privacy.md`](docs/privacy.md):
+## Deployment responsibilities
 
-- Without `STATS_API_TOKEN`, the dashboard and statistics APIs are anonymous and must stay on a trusted network.
-- `/health`, `/health/ready` remain reachable without a token. `/metrics` is public by default; set `STATS_METRICS_AUTH=true` when `STATS_API_TOKEN` is configured if the metrics endpoint should not be anonymous.
-- Settings-page Navidrome passwords are stored in plaintext in SQLite when saved through the GUI. Prefer environment variables if that is unacceptable.
-- The application does not terminate TLS.
+Navidrome Statistic stores listening history and server configuration in SQLite. Protect the application, its Docker volume, exported data, and backups as sensitive resources.
 
-Please include only redacted reproduction steps: status codes, exception types, and whether a field was present—not full request URLs.
+The application does not terminate TLS. Use a trusted network or a TLS-enabled reverse proxy, and configure `STATS_API_TOKEN` before exposing the dashboard outside a private network. Review the deployment guidance in [`README.md`](README.md) and the data-handling details in [`docs/privacy.md`](docs/privacy.md).

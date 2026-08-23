@@ -5,8 +5,7 @@ __pycache__/
 *.db
 *.db-*
 .env
-PRD.md
-.alma-snapshots
+.env.*
 node_modules/
 test-results/
 playwright-report/

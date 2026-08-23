@@ -1,19 +1,14 @@
 ## Summary
 
-## Privacy
+Describe the problem and the approach used to solve it.
 
-- [ ] No real credentials, hostnames, tokens, databases, or play history are in this pull request.
+## Testing
 
-## Task ID
+List the commands or manual checks used to verify the change.
 
-Link the `docs/tasks.md` ID when this change implements tracked work.
+## Checklist
 
-## Verification
-
-Commands you ran (from the repository root) and their outcomes. If Docker was unavailable, write “environment blocked” instead of claiming success.
-
-## Interface / privacy docs
-
-- [ ] Not applicable
-- [ ] `docs/interfaces.md` updated
-- [ ] `docs/privacy.md` / `docs/security.md` updated
+- [ ] The change is focused and includes tests where appropriate.
+- [ ] User-facing setup or configuration changes are documented in both READMEs.
+- [ ] Architecture or data-handling documentation is updated where applicable.
+- [ ] No credentials, private server details, databases, logs, or listening history are included.

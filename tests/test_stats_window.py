@@ -1,21 +1,4 @@
-"""Tests for the unified dashboard statistics window contract (Phase 1).
-
-Covers:
-
-* ``get_summary`` with finite windows: ``active_days``, averages and the
-  current-vs-previous comparison metrics (including zero previous window).
-* ``get_summary`` with ``days=0`` (all history): averages span over the
-  actual min..max played date and previous/comparison fields are ``null``.
-* Empty database resilience.
-* Window filtering applied consistently by every aggregate query
-  (players, transcoding, hourly, daily, top artists, top albums, history).
-* API propagation: each historical endpoint forwards the ``days`` query to
-  the matching database function and rejects invalid bounds with 422.
-* Now-playing is NOT window-filtered.
-
-All timestamps are synthetic and explicitly offset from the current UTC
-clock so this suite has no dependence on real playback data.
-"""
+"""Tests for dashboard statistics windows and API propagation."""
 
 import asyncio
 from datetime import date, datetime, timedelta, timezone
@@ -76,11 +59,6 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(microsecond=0)
 
 
-# ----------------------------------------------------------------------------
-# get_summary: empty / comparison / all-history semantics
-# ----------------------------------------------------------------------------
-
-
 def test_get_summary_empty_database_returns_null_safe(db_path):
     asyncio.run(init_db(db_path))
     summary = asyncio.run(get_summary(days=30, db_path=db_path))
@@ -89,13 +67,11 @@ def test_get_summary_empty_database_returns_null_safe(db_path):
     assert summary["unique_tracks"] == 0
     assert summary["client_count"] == 0
     assert summary["active_days"] == 0
-    # Zero previous -> percentages are null even with finite window.
     assert summary["previous_total_plays"] == 0
     assert summary["previous_total_listen_sec"] == 0
     assert summary["plays_change_pct"] is None
     assert summary["listen_change_pct"] is None
     assert summary["window_days"] == 30
-    # With active_days=0 averages fall back to 0.
     assert summary["average_daily_plays"] == 0.0
     assert summary["average_daily_listen_sec"] == 0.0
 
@@ -103,12 +79,10 @@ def test_get_summary_empty_database_returns_null_safe(db_path):
 def test_get_summary_finite_window_comparison_metrics(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
-    # Current window (last 7 days): 1 play, 30 sec.
+    # Seed the current, previous, and an excluded window.
     cur = _iso(now - timedelta(days=1))
-    # Previous window (7..14 days ago): 2 plays, 60 sec each.
     prev1 = _iso(now - timedelta(days=10))
     prev2 = _iso(now - timedelta(days=12))
-    # Far outside (40 days): must not affect either window.
     far = _iso(now - timedelta(days=40))
 
     for ts, dur in [
@@ -132,11 +106,8 @@ def test_get_summary_finite_window_comparison_metrics(db_path):
     assert summary["window_days"] == 7
     assert summary["previous_total_plays"] == 2
     assert summary["previous_total_listen_sec"] == 120
-    # (1 - 2) / 2 * 100 == -50.0
     assert summary["plays_change_pct"] == -50.0
-    # (30 - 120) / 120 * 100 == -75.0
     assert summary["listen_change_pct"] == -75.0
-    # Averages use active_days=1.
     assert summary["average_daily_plays"] == 1.0
     assert summary["average_daily_listen_sec"] == 30.0
 
@@ -150,7 +121,6 @@ def test_get_summary_zero_previous_window_yields_null_pct(db_path):
             db_path=db_path,
         )
     )
-    # Single old play outside the previous window too (40 days).
     asyncio.run(
         save_play_session(
             _session(_iso(now - timedelta(days=40)), track_id="t2", duration_sec=10),
@@ -283,12 +253,10 @@ def test_get_summary_all_history_disables_comparison(db_path):
     assert summary["total_listen_sec"] == 120
     assert summary["active_days"] == 3
     assert summary["window_days"] is None
-    # All-history never compares.
     assert summary["previous_total_plays"] is None
     assert summary["previous_total_listen_sec"] is None
     assert summary["plays_change_pct"] is None
     assert summary["listen_change_pct"] is None
-    # Averages use span min..max date inclusive (20 days).
     assert summary["average_daily_plays"] == round(3 / 20, 2)
     assert summary["average_daily_listen_sec"] == round(120 / 20, 2)
 
@@ -309,14 +277,8 @@ def test_get_summary_all_history_single_day_span_is_one(db_path):
         )
     )
     summary = asyncio.run(get_summary(days=0, db_path=db_path))
-    # Span is min..max date inclusive = 1 day.
     assert summary["average_daily_plays"] == 2.0
     assert summary["average_daily_listen_sec"] == 50.0
-
-
-# ----------------------------------------------------------------------------
-# Aggregate query helpers respect the window
-# ----------------------------------------------------------------------------
 
 
 def _seed_window_data(db_path):
@@ -352,7 +314,6 @@ def test_get_player_stats_respects_window(db_path):
     seven = {r["client_name"]: r["count"] for r in asyncio.run(get_player_stats(days=7, db_path=db_path))}
     assert seven == {"Web": 1}
     ninety = {r["client_name"]: r["count"] for r in asyncio.run(get_player_stats(days=90, db_path=db_path))}
-    # 90-day window excludes the 80-day-old far row? 80 < 90 so it IS included.
     assert ninety == {"Web": 1, "Mobile": 1, "Distant": 1}
 
 
@@ -375,9 +336,7 @@ def test_get_hourly_stats_respects_window(db_path):
 def test_get_daily_stats_all_history_includes_every_date(db_path):
     _seed_window_data(db_path)
     all_rows = asyncio.run(get_daily_stats(days=0, db_path=db_path))
-    # All-history spans from min to max local played date (UTC). Seed date
-    # offsets are today-1, today-20 and today-80, so the inclusive span is 80
-    # calendar days, zero-filled between plays.
+    # The inclusive span from today-80 through today-1 contains 80 dates.
     assert len(all_rows) == 80
     seven = asyncio.run(get_daily_stats(days=7, db_path=db_path))
     assert len(seven) == 7
@@ -410,11 +369,6 @@ def test_get_playback_history_respects_window(db_path):
     seven = asyncio.run(get_playback_history(limit=50, days=7, db_path=db_path))
     assert len(seven) == 1
     assert seven[0]["title"] == "Song r1"
-
-
-# ----------------------------------------------------------------------------
-# API days= propagation and bounds
-# ----------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -514,7 +468,7 @@ async def test_summary_response_includes_comparison_fields(mock_get):
 @pytest.mark.asyncio
 @patch("src.main.get_now_playing_data", new_callable=AsyncMock, create=True)
 async def test_now_playing_endpoint_accepts_no_days_param(_mock):
-    # now-playing stays real-time and must not declare a days query.
+    # Now-playing is real-time and has no statistics window.
     import inspect
 
     from src.main import api_now_playing

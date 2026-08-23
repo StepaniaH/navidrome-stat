@@ -7,7 +7,7 @@ import pytest
 
 from src.database import init_db, save_play_session
 from src.main import polling_loop_for_tracker
-from src.sessions import PlaybackSessionTracker
+from src.sessions import PlaybackPersistenceError, PlaybackSessionTracker
 
 
 @pytest.mark.asyncio
@@ -119,7 +119,9 @@ async def test_ok_poll_records_success_when_persistence_fails(monkeypatch):
     state = RuntimeState()
     monkeypatch.setattr(main, "runtime_state", state)
     tracker = PlaybackSessionTracker(AsyncMock())
-    tracker.process_poll = AsyncMock(side_effect=RuntimeError("synthetic save failure"))
+    tracker.process_poll = AsyncMock(
+        side_effect=PlaybackPersistenceError("synthetic save failure")
+    )
     client = AsyncMock()
     client.supports_playback_report.return_value = False
     client.get_now_playing.return_value = {
@@ -140,3 +142,35 @@ async def test_ok_poll_records_success_when_persistence_fails(monkeypatch):
     assert state.poll_failure_count == 0
     assert slept == [main.POLL_INTERVAL]
     tracker.process_poll.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ok_poll_treats_tracker_failure_as_cycle_failure(monkeypatch):
+    import src.main as main
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState()
+    monkeypatch.setattr(main, "runtime_state", state)
+    tracker = PlaybackSessionTracker(AsyncMock())
+    tracker.process_poll = AsyncMock(side_effect=RuntimeError("synthetic tracker failure"))
+    client = AsyncMock()
+    client.supports_playback_report.return_value = False
+    client.get_now_playing.return_value = {
+        "subsonic-response": {"status": "ok", "nowPlaying": {"entry": []}}
+    }
+    slept = []
+
+    async def stop_after_second_poll(seconds):
+        slept.append(seconds)
+        if len(slept) == 2:
+            raise asyncio.CancelledError()
+
+    monkeypatch.setattr(main.asyncio, "sleep", stop_after_second_poll)
+
+    with pytest.raises(asyncio.CancelledError):
+        await polling_loop_for_tracker(client, tracker)
+
+    assert state.poll_success_count == 0
+    assert state.poll_failure_count == 2
+    assert slept == [main.POLL_INTERVAL, main.POLL_INTERVAL * 2]
+    assert tracker.process_poll.await_count == 2

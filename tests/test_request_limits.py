@@ -1,4 +1,5 @@
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -43,7 +44,7 @@ async def test_read_http_body_limited_joins_chunks_under_limit():
 
 
 @pytest.mark.asyncio
-async def test_read_http_body_limited_drains_overflow_without_returning_body():
+async def test_read_http_body_limited_returns_on_first_overflow():
     messages = [
         {"type": "http.request", "body": b"aaaaaa", "more_body": True},
         {"type": "http.request", "body": b"bbbbbb", "more_body": True},
@@ -55,7 +56,9 @@ async def test_read_http_body_limited_drains_overflow_without_returning_body():
 
     body = await read_http_body_limited(receive, 8)
     assert body is None
-    assert messages == []
+    assert messages == [
+        {"type": "http.request", "body": b"cccccc", "more_body": False},
+    ]
 
 
 @pytest.mark.asyncio
@@ -68,11 +71,9 @@ async def test_replay_body_sends_once_then_disconnects():
 
 
 @pytest.mark.asyncio
-async def test_import_rejects_chunked_body_over_limit_without_parsing(isolated_db, monkeypatch):
-    from src.database import init_db
+async def test_import_rejects_chunked_body_over_limit_without_parsing(monkeypatch):
     from src.main import app
 
-    await init_db(isolated_db)
     called = []
 
     async def should_not_run(*_args, **_kwargs):
@@ -81,7 +82,7 @@ async def test_import_rejects_chunked_body_over_limit_without_parsing(isolated_d
 
     monkeypatch.setattr("src.main.import_user_data", should_not_run)
 
-    oversized = b"{" + (b" " * (IMPORT_MAX_PAYLOAD_BYTES + 1)) + b"}"
+    oversized = b"{" + (b" " * (IMPORT_MAX_PAYLOAD_BYTES + 128_000)) + b"}"
     chunks = [oversized[i : i + 64_000] for i in range(0, len(oversized), 64_000)]
     status = {"code": None, "body": b""}
 
@@ -122,17 +123,18 @@ async def test_import_rejects_chunked_body_over_limit_without_parsing(isolated_d
     assert status["code"] == 413
     assert json.loads(status["body"]) == {"detail": IMPORT_TOO_LARGE_DETAIL}
     assert called == []
-    assert chunks == []
+    assert chunks
 
 
 @pytest.mark.asyncio
-async def test_import_accepts_chunked_body_under_limit(isolated_db):
+async def test_import_accepts_chunked_body_under_limit(monkeypatch):
     from httpx import ASGITransport, AsyncClient
 
-    from src.database import init_db
+    import src.main as main
     from src.main import app
 
-    await init_db(isolated_db)
+    import_user = AsyncMock(return_value={"imported": 0, "attempts_imported": 0})
+    monkeypatch.setattr(main, "import_user_data", import_user)
     payload = {
         "payload": {
             "format_version": 2,
@@ -156,3 +158,8 @@ async def test_import_accepts_chunked_body_under_limit(isolated_db):
         )
     assert response.status_code == 200
     assert response.json()["imported"] == 0
+    import_user.assert_awaited_once_with(
+        "synthetic-user",
+        payload["payload"],
+        merge=True,
+    )

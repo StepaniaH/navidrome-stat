@@ -2,25 +2,27 @@
 
 [简体中文](README.zh-CN.md)
 
-Navidrome Statistic is a self-hosted service that polls the Subsonic `getNowPlaying` API, tracks listening sessions, stores qualified plays in SQLite, and presents the results in a web dashboard.
+Navidrome Statistic collects playback activity reported by Navidrome and presents it in one dashboard. It provides a consistent view across Subsonic-compatible clients, browsers, phones, computers, and multiple Navidrome servers without requiring every client to implement its own statistics.
 
-It is designed for a single application instance. Multiple Navidrome servers can be configured, but running multiple Navidrome Statistic replicas against the same sources is not supported and may double-count plays.
+The service polls `getNowPlaying`, tracks listening sessions in memory, stores results in SQLite, and serves a self-contained web interface.
 
 ## Features
 
-- Tracks active playback with a configurable threshold, pause grace period, idempotent checkpoints, and final session duration.
-- Uses OpenSubsonic playback reports when advertised and records whether duration is reported or estimated; older servers continue to work through polling.
-- Supports multiple Navidrome servers with per-server filtering and collector health.
-- Shows current playback, listening history, clients, transcoding, time trends, and artist or album rankings.
-- Records below-threshold attempts separately from counted plays.
-- Provides configurable retention and per-user JSON export, import, and deletion.
-- Groups connections, privacy, local preferences, and project information in an accessible settings page; language, theme, timezone, and reduced-motion preferences stay in the browser.
-- Offers optional dashboard and API authentication through `STATS_API_TOKEN`.
-- Provides a responsive filter bar with preset or custom inclusive date ranges and per-server filtering.
-- Serves pinned frontend assets locally; normal dashboard use does not contact a public CDN.
-- Runs as a non-root user in a multi-stage Python 3.11 container.
+- Aggregates current and historical playback across clients, devices, users, and Navidrome servers.
+- Shows listening time, play history, hourly and daily trends, client usage, transcoding, and artist or album rankings.
+- Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
+- Supports per-server filtering, connection management, retention settings, and per-user JSON export, import, and deletion.
+- Offers optional token authentication for dashboard data and APIs.
+- Serves pinned frontend assets locally and runs as a non-root user in the published container.
 
-## Docker Deployment
+## Important limitations
+
+- Run a single Navidrome Statistic instance for a set of sources. Multiple instances polling the same sources can double-count plays.
+- Active sessions are held in one process. Multi-worker Uvicorn deployments are not supported.
+- SQLite and any credentials saved through the settings page are stored in plaintext.
+- The application does not provide TLS. Use a trusted network or an HTTPS reverse proxy for remote access.
+
+## Docker deployment
 
 ### Requirements
 
@@ -50,11 +52,11 @@ PLAY_THRESHOLD_SEC=30
 PAUSE_GRACE_SEC=30
 ```
 
-These three `NAVIDROME_*` variables configure the initial or legacy source. Additional servers can be added from **Settings > Connections** after startup. Values saved through the settings page are stored in plaintext in the application database; prefer environment variables when that storage model is unsuitable.
+The three `NAVIDROME_*` variables provide one fallback connection when no server entries have been saved. To aggregate multiple servers, add each connection from **Settings > Connections** after startup. Credentials saved there are stored in plaintext in SQLite. If that storage model is unsuitable, use only the single environment-configured connection and do not save connections through the settings page.
 
 ### 3. Create `compose.yaml`
 
-Pin a version tag instead of `latest` when deployment reproducibility is more important than automatic access to the newest release.
+Use a specific version tag instead of `latest` when you want reproducible deployments.
 
 ```yaml
 services:
@@ -71,16 +73,17 @@ services:
       NAVIDROME_USER: ${NAVIDROME_USER}
       NAVIDROME_PASS: ${NAVIDROME_PASS}
       STATS_API_TOKEN: ${STATS_API_TOKEN}
+      DATABASE_URL: /data/navidrome_stats.db
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
       PLAY_THRESHOLD_SEC: ${PLAY_THRESHOLD_SEC:-30}
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
       CHECKPOINT_INTERVAL_SEC: ${CHECKPOINT_INTERVAL_SEC:-60}
       SAVE_RETRY_ATTEMPTS: ${SAVE_RETRY_ATTEMPTS:-3}
       MAX_POLL_BACKOFF_SEC: ${MAX_POLL_BACKOFF_SEC:-60}
+      RETENTION_MAINTENANCE_SEC: ${RETENTION_MAINTENANCE_SEC:-86400}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       STATS_METRICS_AUTH: ${STATS_METRICS_AUTH:-false}
       OPENAPI_ENABLED: ${OPENAPI_ENABLED:-true}
-      DATABASE_URL: /data/navidrome_stats.db
     restart: unless-stopped
     healthcheck:
       test:
@@ -104,96 +107,87 @@ docker compose up -d
 docker compose ps
 ```
 
-Open `http://localhost:39421`. When `STATS_API_TOKEN` is set, the dashboard asks for that token and stores only an HTTP-only session cookie in the browser.
+Open `http://localhost:39421`. When `STATS_API_TOKEN` is configured, enter it in the login screen; the browser stores an HttpOnly session cookie rather than the token itself.
 
-The `/health` endpoint reports process liveness. `/health/ready` also reports database and collector state; a temporary upstream failure can make readiness degraded without requiring a container restart.
+`/health` reports process liveness. `/health/ready` also checks the database and collectors, so a temporary upstream failure can make readiness degraded while the process remains healthy.
+
+## Configuration
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `NAVIDROME_URL` | None | Initial Navidrome base URL. Not required when a complete saved connection exists. |
+| `NAVIDROME_USER` | None | Initial Subsonic username. |
+| `NAVIDROME_PASS` | None | Initial Subsonic password. |
+| `DATABASE_URL` | `navidrome_stats.db` | SQLite file path; despite the name, this is not a general database URL. |
+| `STATS_API_TOKEN` | Empty | Protects dashboard data, application APIs, and OpenAPI routes when set. |
+| `STATS_METRICS_AUTH` | `false` | Requires authentication for `/metrics` when both this option and `STATS_API_TOKEN` are set. |
+| `OPENAPI_ENABLED` | `true` | Set to `false` to remove `/docs`, `/redoc`, and `/openapi.json`. |
+| `POLL_INTERVAL` | `10` | Poll interval in seconds, limited to 5–300. |
+| `PLAY_THRESHOLD_SEC` | `30` | Active observed seconds required to count a play, limited to 1–3600. |
+| `PAUSE_GRACE_SEC` | `30` | Seconds to retain a paused or missing session, limited to 0–3600. |
+| `CHECKPOINT_INTERVAL_SEC` | `60` | Refresh interval for durable active-session checkpoints, limited to 10–3600 seconds. |
+| `SAVE_RETRY_ATTEMPTS` | `3` | Database save attempts for a session, limited to 1–10. |
+| `MAX_POLL_BACKOFF_SEC` | `60` | Maximum upstream failure backoff, limited to 1–3600 seconds. |
+| `RETENTION_MAINTENANCE_SEC` | `86400` | Automatic retention cleanup interval, limited to 60–604800 seconds. |
+| `SESSION_COOKIE_SECURE` | `false` | Marks the login cookie Secure; enable it when users access the service through HTTPS. |
+
+Environment variables are parsed when the application starts. Restart the container after changing them.
+
+## How plays are counted
+
+A track counts once its accumulated active observation time reaches `PLAY_THRESHOLD_SEC`. Paused and missing intervals are excluded. Reaching the threshold creates a checkpoint; later checkpoints and session finalization update the same database row instead of adding another play.
+
+When a server advertises the OpenSubsonic `playbackReport` extension, position and playback-state fields improve duration accounting. Other servers continue to work through regular polling. Sessions that end below the play threshold are stored separately as playback attempts.
+
+More detail is available in [Architecture](docs/architecture.md).
 
 ## Operations
 
-### View logs
+### Logs
 
 ```bash
 docker compose logs -f --tail=100 navidrome-stat
 ```
 
-Application logs intentionally omit playback metadata and authentication request URLs. Avoid enabling or sharing infrastructure logs that contain Subsonic authentication query parameters.
+Application logs avoid playback metadata and upstream request URLs. Reverse proxies and Navidrome may still log Subsonic authentication query parameters, so review their logging configuration before sharing logs.
 
 ### Update
 
 ```bash
 docker compose pull
 docker compose up -d
-docker image prune
 ```
 
-Back up the database before an update. Review release notes before changing a pinned image tag.
+Back up the database and review the changelog before updating a pinned version.
 
-### Back up and restore
+### Backup and restore
 
-The named volume contains the SQLite database, listening history, and any server credentials saved through the settings page. Treat every backup as sensitive.
+The data volume contains listening history and may contain saved Navidrome credentials. Treat backups as sensitive.
 
-Stop the application before copying the database:
+Stop the service before copying the SQLite file:
 
 ```bash
 mkdir -p backups
 docker compose stop navidrome-stat
 docker run --rm \
-  -v navidrome-stat_navidrome-stat-data:/data:ro \
+  --volumes-from navidrome-stat:ro \
   -v "$PWD/backups:/backup" \
   alpine:3.20 \
   cp /data/navidrome_stats.db /backup/navidrome_stats.db
 docker compose start navidrome-stat
 ```
 
-The actual volume name is shown by `docker volume ls`; Compose usually prefixes it with the deployment directory name. Store backups in an access-controlled location and define an appropriate retention policy.
+To restore, stop the service, preserve the current database, copy a verified backup to `/data/navidrome_stats.db`, ensure UID and GID `1000:1000` can write it, and start the service. Test restores away from the production volume first.
 
-To restore, stop the service, preserve the current volume, copy a verified backup to `/data/navidrome_stats.db`, ensure UID and GID `1000:1000` can write it, and then start the service. Test restoration away from the production volume first.
+## Security and privacy
 
-## Configuration
+- Without `STATS_API_TOKEN`, dashboard data and APIs are anonymous. Use this only on a trusted network.
+- `/health` and `/health/ready` remain public. `/metrics` is public by default unless `STATS_METRICS_AUTH=true` is used with a token.
+- Static dashboard files remain loadable when authentication is enabled; their data requests require authorization.
+- The browser policy blocks public script and style origins, while permitting the inline code used by the bundled pages.
+- Inform affected users before collecting their listening activity and choose an appropriate retention period.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `NAVIDROME_URL` | None | Initial Navidrome base URL. Required unless a complete source was previously saved. |
-| `NAVIDROME_USER` | None | Initial Subsonic username. |
-| `NAVIDROME_PASS` | None | Initial Subsonic password. |
-| `DATABASE_URL` | `navidrome_stats.db` | SQLite file path. The Docker example uses `/data/navidrome_stats.db`. |
-| `STATS_API_TOKEN` | Empty | Protects the dashboard, statistics APIs, settings APIs, and OpenAPI routes when set. |
-| `STATS_METRICS_AUTH` | `false` | When `true` and `STATS_API_TOKEN` is set, `/metrics` requires the same authentication as the statistics APIs. |
-| `OPENAPI_ENABLED` | `true` | Set to `false` to unregister `/docs`, `/redoc`, and `/openapi.json`. |
-| `POLL_INTERVAL` | `10` | Poll interval in seconds, clamped to 5-300. |
-| `PLAY_THRESHOLD_SEC` | `30` | Active observed seconds required to count a play, clamped to 1-3600. |
-| `PAUSE_GRACE_SEC` | `30` | Seconds to retain a paused or missing in-memory session, clamped to 0-3600. |
-| `CHECKPOINT_INTERVAL_SEC` | `60` | Refresh interval for durable active-session checkpoints, clamped to 10-3600 seconds. |
-| `MAX_POLL_BACKOFF_SEC` | `60` | Maximum upstream failure backoff, clamped to 1-3600 seconds. |
-| `SAVE_RETRY_ATTEMPTS` | `3` | Database save attempts for a session, clamped to 1-10. A failed save remains retryable. |
-| `SESSION_COOKIE_SECURE` | `false` | Set to `true` when the application is reached through HTTPS so the login cookie is marked Secure. |
-| `RETENTION_MAINTENANCE_SEC` | `86400` | Retention cleanup interval, clamped to 60-604800 seconds. |
-
-A track counts once its accumulated active time is greater than or equal to `PLAY_THRESHOLD_SEC`. That threshold creates an idempotent checkpoint, which is refreshed every `CHECKPOINT_INTERVAL_SEC`; session end updates the same row with the final active duration rather than adding another play. On startup, an interrupted checkpoint is finalized at its last persisted duration without inventing unobserved listening time. When the server advertises OpenSubsonic playback reports, media position and playback state improve the estimate. Otherwise those extension fields are ignored and the service uses poll intervals. Paused intervals are excluded.
-
-## Security and Privacy
-
-- Without `STATS_API_TOKEN`, the dashboard and APIs are anonymous. Use that mode only on a trusted network.
-- The application does not terminate TLS. Place it behind a correctly configured HTTPS reverse proxy before remote access.
-- SQLite stores usernames, media metadata, listening timestamps, and settings-page credentials in plaintext.
-- Inform affected Navidrome users before collecting their listening activity and choose an appropriate retention period under **Settings > Privacy & Data**. A fill-in template is in [`docs/privacy-notice.template.md`](docs/privacy-notice.template.md); it is not legal advice.
-- Protect `.env`, the Docker volume, backups, browser access, and reverse-proxy logs.
-- Tailwind CSS and ECharts are pinned and served by the application itself. The browser CSP permits only same-origin scripts and styles.
-- User exports use a fixed filename, include counted plays and short attempts, and can be imported from format version 1 or 2. Imports are bounded to 5 MiB and 10,000 records and validate timestamps, lengths, and duration ranges.
-
-No generic Compose example can establish your authorization rules, TLS termination, backup security, or public exposure policy. Those remain deployment-owner decisions.
-
-## Build from Source
-
-The repository includes a development-oriented [`docker-compose.yml`](docker-compose.yml) that builds the local checkout:
-
-```bash
-git clone https://github.com/StepaniaH/navidrome-stat.git
-cd navidrome-stat
-docker compose up -d --build
-```
-
-Create `.env` from the placeholder example in the Docker deployment section before running Compose. Never place real credentials in a tracked file.
+See [Privacy](docs/privacy.md) and the [security policy](SECURITY.md) for details.
 
 ## Development
 
@@ -208,9 +202,15 @@ pytest -q --cov=src --cov-report=term-missing --cov-fail-under=80
 uvicorn src.main:app --host 127.0.0.1 --port 39421
 ```
 
-Runtime dependencies are pinned in `requirements.txt`; the fully resolved lock used by Docker is `requirements.lock`; test dependencies are in `requirements-dev.txt`.
+The repository also includes a development-oriented [`docker-compose.yml`](docker-compose.yml) that builds the current checkout:
 
-To rebuild the pinned frontend assets and run synthetic browser tests:
+```bash
+git clone https://github.com/StepaniaH/navidrome-stat.git
+cd navidrome-stat
+docker compose up -d --build
+```
+
+Frontend assets and browser tests use Node.js:
 
 ```bash
 npm ci
@@ -218,28 +218,16 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The browser tests use a temporary SQLite database and intercepted synthetic API data. They do not require a real Navidrome account.
+Tests use temporary databases and synthetic API data; they do not require a live Navidrome server.
 
-Run the reproducible time-bucket benchmark with synthetic data:
+## Project information
 
-```bash
-python -m scripts.benchmark_stats --rows 100000
-```
-
-## Documentation
-
-- [Project documentation map](docs/README.md)
+- [Architecture](docs/architecture.md)
+- [Privacy](docs/privacy.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
 - [Security policy](SECURITY.md)
-- [Open-source roadmap](docs/roadmap.md)
-- [Current implementation](docs/current-state.md)
-- [Interfaces and configuration](docs/interfaces.md)
-- [Privacy boundaries](docs/privacy.md)
-- [Security model](docs/security.md)
-- [Task register](docs/tasks.md)
 
 ## License
 
-Navidrome Statistic is available under the [MIT License](LICENSE).
-Bundled Tailwind CSS and Apache ECharts retain their respective license and notice files under `src/static/vendor/`.
+Navidrome Statistic is available under the [MIT License](LICENSE). Bundled Tailwind CSS and Apache ECharts retain their respective license and notice files under `src/static/vendor/`.

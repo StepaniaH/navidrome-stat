@@ -6,7 +6,7 @@ import string
 import httpx
 from dotenv import load_dotenv
 
-# Load .env file for local development
+# Support local .env configuration.
 load_dotenv()
 
 def generate_auth(password: str):
@@ -23,7 +23,6 @@ class NavidromeClient:
         if not all([self.url, self.user, self.password]):
             raise ValueError("Missing Navidrome configuration. Provide via __init__ or environment variables (NAVIDROME_URL, NAVIDROME_USER, NAVIDROME_PASS).")
         
-        # Strip trailing slash from URL
         self.url = self.url.rstrip("/")
         self._http_client = httpx.AsyncClient(
             trust_env=False,
@@ -36,9 +35,9 @@ class NavidromeClient:
             "u": self.user,
             "t": token,
             "s": salt,
-            "v": "1.16.1", # Subsonic version compatibility
+            "v": "1.16.1", # Subsonic API version
             "c": "navidrome-statistic", # Client identifier
-            "f": "json" # Force JSON response
+            "f": "json" # Request JSON responses
         }
 
     async def get_now_playing(self):
@@ -49,11 +48,7 @@ class NavidromeClient:
         return await self._get_json("getOpenSubsonicExtensions")
 
     async def supports_playback_report(self) -> bool:
-        """Capability-detect the standardized now-playing progress fields.
-
-        Unsupported endpoints and malformed extension payloads are treated as
-        a legacy server so polling remains backwards compatible.
-        """
+        """Return whether the server advertises the playbackReport extension."""
         try:
             data = await self.get_open_subsonic_extensions()
         except (httpx.HTTPError, ValueError, TypeError):
@@ -84,12 +79,7 @@ class NavidromeClient:
 
     @staticmethod
     def now_playing_entries(data) -> list:
-        """Return now-playing entries from an already-ok Subsonic payload.
-
-        Missing or null ``nowPlaying`` means nobody is playing. A non-object
-        ``nowPlaying`` is treated the same way so an idle ok response is not
-        turned into a poll failure.
-        """
+        """Extract entries from an ok response; missing nowPlaying means idle."""
         envelope = data.get("subsonic-response") if isinstance(data, dict) else None
         now_playing = envelope.get("nowPlaying") if isinstance(envelope, dict) else None
         if not isinstance(now_playing, dict):

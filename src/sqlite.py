@@ -9,13 +9,7 @@ SQLITE_BUSY_TIMEOUT_MS = 5_000
 
 @asynccontextmanager
 async def connect_db(path: str, *, initialize: bool = False):
-    """Open one configured aiosqlite connection.
-
-    WAL is selected while initializing the database. Every connection enables
-    foreign-key enforcement and the same bounded busy timeout. This remains a
-    single-host SQLite policy; it does not make network filesystems or multiple
-    application replicas safe.
-    """
+    """Open a connection with the application's SQLite pragmas."""
 
     async with aiosqlite.connect(
         path,

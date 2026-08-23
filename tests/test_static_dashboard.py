@@ -1,14 +1,4 @@
-"""Source-level checks for dashboard additions introduced alongside the
-prioritized robustness/UX changes:
-
-* the "正在播放" local elapsed ticker exists and only updates DOM text via
-  ``textContent`` (no extra API calls, no innerHTML/insertAdjacentHTML),
-* the global statistics window control renders 7/30/90/全部 buttons and
-  propagates ``?days=${statsDays}`` to every historical widget, while the
-  now-playing endpoint stays real-time (no window filter).
-
-No browser is required - the HTML is inspected as text.
-"""
+"""Source-level dashboard checks that do not require a browser."""
 
 from pathlib import Path
 

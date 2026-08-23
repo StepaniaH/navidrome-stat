@@ -1,23 +1,4 @@
-"""Tests for the Phase 3 richer rankings and client/transcoding analytics.
-
-Covers:
-
-* ``get_top_artists`` / ``get_top_albums`` with ``metric=plays`` (default)
-  and ``metric=listen_time``: shape (``{name,count,total_listen_sec,value}``),
-  ranking key, deterministic tie-breaking (``value DESC, name ASC``), empty
-  and ``null`` name exclusion, limit, empty database.
-* ``get_player_stats`` extended fields: ``count`` / ``total_listen_sec`` /
-  ``average_listen_sec`` / ``transcoded_count`` / ``transcoding_rate_pct``,
-  ordering by ``count DESC, client_name ASC`` for empty/null/non-empty client
-  names, empty database.
-* ``get_transcoding_stats`` extended fields: ``total_listen_sec``,
-  ``plays_pct``, ``listen_sec_pct``; zero-denominator safety.
-* API propagation: ``metric`` query forward, invalid ``metric`` returns 422,
-  ``days``/``timezone`` still applied to the top-* endpoints.
-* Empty database resilience for the extended queries.
-
-All timestamps are synthetic; no real data is used.
-"""
+"""Tests for rankings and client/transcoding aggregates."""
 
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -69,11 +50,6 @@ def _session(
     }
 
 
-# ----------------------------------------------------------------------------
-# Ranking metric: shape, value, count, total_listen_sec
-# ----------------------------------------------------------------------------
-
-
 def test_top_artists_plays_default_uses_count_as_value(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
@@ -92,8 +68,7 @@ def test_top_artists_plays_default_uses_count_as_value(db_path):
 def test_top_artists_listen_time_ranks_by_seconds(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
-    # Beta: 1 play, 600 sec. Alpha: 10 plays, 100 sec total. By plays, Alpha
-    # ranks first; by listen_time, Beta ranks first.
+    # Fewer plays but more listening time puts Beta first for this metric.
     for i in range(10):
         asyncio.run(save_play_session(_session(_iso(now), track_id=f"a{i}", artist="Alpha", duration_sec=10), db_path=db_path))
     asyncio.run(save_play_session(_session(_iso(now), track_id="b1", artist="Beta", duration_sec=600), db_path=db_path))
@@ -103,7 +78,6 @@ def test_top_artists_listen_time_ranks_by_seconds(db_path):
     assert [r["artist"] for r in rows] == ["Beta", "Alpha"]
     assert rows[0]["value"] == 600
     assert rows[1]["value"] == 100
-    # value is seconds under listen_time, count remains row count.
     assert rows[0]["count"] == 1
     assert rows[1]["count"] == 10
 
@@ -122,16 +96,10 @@ def test_top_albums_listen_time_ranks_by_seconds(db_path):
     assert rows[1]["value"] == 40
 
 
-# ----------------------------------------------------------------------------
-# Deterministic tie-breaking: value DESC, name ASC
-# ----------------------------------------------------------------------------
-
-
 def test_top_artists_ties_break_by_name_asc_under_plays(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
-    # Same count; tie should order Zephyr < Alpha? No - name ASC means Alpha
-    # comes first.
+    # Equal counts sort by name.
     for artist in ("Zephyr", "Alpha", "Mike"):
         asyncio.run(save_play_session(_session(_iso(now), track_id=f"t-{artist}", artist=artist, duration_sec=10), db_path=db_path))
         asyncio.run(save_play_session(_session(_iso(now), track_id=f"t-{artist}-2", artist=artist, duration_sec=10), db_path=db_path))
@@ -145,8 +113,7 @@ def test_top_artists_ties_break_by_name_asc_under_plays(db_path):
 def test_top_artists_ties_break_by_name_asc_under_listen_time(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
-    # Three artists, identical total_listen_sec (60). Tie-break must be name
-    # ascending, not insertion order.
+    # Equal listening times sort by name, not insertion order.
     for artist in ("Zulu", "Alpha", "Mike"):
         asyncio.run(save_play_session(_session(_iso(now), track_id=f"{artist}-1", artist=artist, duration_sec=30), db_path=db_path))
         asyncio.run(save_play_session(_session(_iso(now), track_id=f"{artist}-2", artist=artist, duration_sec=30), db_path=db_path))
@@ -174,17 +141,10 @@ def test_invalid_metric_raises_value_error_db_layer(db_path):
         asyncio.run(get_top_artists(limit=10, days=0, metric="invalid", db_path=db_path))
 
 
-# ----------------------------------------------------------------------------
-# Window and timezone propagation at the DB layer
-# ----------------------------------------------------------------------------
-
-
 def test_top_artists_listen_time_respects_window(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
-    # Recent (in 7-day window): Beta 600 sec.
     asyncio.run(save_play_session(_session(_iso(now - timedelta(days=1)), track_id="b1", artist="Beta", duration_sec=600), db_path=db_path))
-    # Far outside (40 days): Alpha 1000 sec - must be excluded on a 7-day window.
     asyncio.run(save_play_session(_session(_iso(now - timedelta(days=40)), track_id="a1", artist="Alpha", duration_sec=1000), db_path=db_path))
 
     rows = asyncio.run(get_top_artists(limit=10, days=7, metric="listen_time", db_path=db_path))
@@ -193,9 +153,7 @@ def test_top_artists_listen_time_respects_window(db_path):
 
 
 def test_top_artists_listen_time_respects_timezone_window(db_path):
-    # Identical to the plays contract: timezone determines finite-window UTC
-    # cutoffs but does not affect totals (sec). Here the seed sits near "now"
-    # so it stays inside any finite window regardless of timezone.
+    # Timezone changes the cutoff boundary, not accumulated seconds.
     asyncio.run(init_db(db_path))
     now = _now()
     asyncio.run(save_play_session(_session(_iso(now - timedelta(hours=2)), track_id="b1", artist="Beta", duration_sec=600), db_path=db_path))
@@ -203,11 +161,6 @@ def test_top_artists_listen_time_respects_timezone_window(db_path):
     rows = asyncio.run(get_top_artists(limit=10, days=7, timezone_name="Asia/Shanghai", metric="listen_time", db_path=db_path))
 
     assert rows == [{"artist": "Beta", "count": 1, "total_listen_sec": 600, "value": 600}]
-
-
-# ----------------------------------------------------------------------------
-# API propagation for the metric query
-# ----------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -279,11 +232,6 @@ async def test_api_top_albums_default_metric_is_plays(mock_get):
     mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="plays")
 
 
-# ----------------------------------------------------------------------------
-# Empty database resilience
-# ----------------------------------------------------------------------------
-
-
 def test_top_artists_listen_time_empty_database(db_path):
     asyncio.run(init_db(db_path))
     rows = asyncio.run(get_top_artists(limit=10, days=0, metric="listen_time", db_path=db_path))
@@ -294,11 +242,6 @@ def test_top_albums_listen_time_empty_database(db_path):
     asyncio.run(init_db(db_path))
     rows = asyncio.run(get_top_albums(limit=10, days=0, metric="listen_time", db_path=db_path))
     assert rows == []
-
-
-# ----------------------------------------------------------------------------
-# get_player_stats extended fields
-# ----------------------------------------------------------------------------
 
 
 def _player_row(client_name, count, total_listen_sec, average_listen_sec, transcoded_count, transcoding_rate_pct):
@@ -334,7 +277,7 @@ def test_player_stats_extended_fields_and_ordering(db_path):
 def test_player_stats_tie_breaks_by_client_name_asc(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
-    # Three clients with the same count; tie-break by name ASC.
+    # Equal counts sort by name.
     for client in ("Zeta", "Alpha", "Mike"):
         asyncio.run(save_play_session(_session(_iso(now), track_id=f"{client}-1", client=client, duration_sec=30), db_path=db_path))
 
@@ -347,22 +290,14 @@ def test_player_stats_tie_breaks_by_client_name_asc(db_path):
 def test_player_stats_groups_null_and_empty_separately_and_sorts_above_nonempty(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
-    # Big name should beat small/null even though null normally sorts first; the
-    # tie-break only applies inside equal counts so we use distinct counts.
+    # Count ordering puts BigClient first; empty and null remain separate tied groups.
     asyncio.run(save_play_session(_session(_iso(now), track_id="a1", client="BigClient", duration_sec=30), db_path=db_path))
     asyncio.run(save_play_session(_session(_iso(now), track_id="a2", client="BigClient", duration_sec=30), db_path=db_path))
-    # Empty string + null each aggregate to their own group with count 1.
     asyncio.run(save_play_session(_session(_iso(now), track_id="e1", client="", duration_sec=10), db_path=db_path))
     asyncio.run(save_play_session(_session(_iso(now), track_id="n1", client=None, duration_sec=10), db_path=db_path))
-    # Actually "null" requires us to pass a None; the session dict allows it.
 
     rows = asyncio.run(get_player_stats(days=0, db_path=db_path))
 
-    # Ordering by count DESC: BigClient(2) first, then two count-1 groups tied.
-    # Tie-break by name ASC with "" < None? COALESCE(NULL,'')='' so empty and
-    # null collapse into a single comparison bucket; here they happen to be
-    # distinct groups in the GROUP BY but both sort as ''. The two count-1
-    # rows order between each other is stable but both come after BigClient.
     assert rows[0]["client_name"] == "BigClient"
     assert rows[0]["count"] == 2
     assert {rows[1]["client_name"], rows[2]["client_name"]} == {"", None}
@@ -371,7 +306,6 @@ def test_player_stats_groups_null_and_empty_separately_and_sorts_above_nonempty(
 
 
 def test_player_stats_zero_rates_when_count_is_zero_is_safe(db_path):
-    # Empty DB: every denominator is zero, must not divide.
     asyncio.run(init_db(db_path))
     rows = asyncio.run(get_player_stats(days=0, db_path=db_path))
     assert rows == []
@@ -388,11 +322,6 @@ def test_player_stats_window_filter_applies(db_path):
     assert rows == [_player_row("Web", 1, 10, 10.0, 1, 100.0)]
 
 
-# ----------------------------------------------------------------------------
-# get_transcoding_stats extended fields
-# ----------------------------------------------------------------------------
-
-
 def test_transcoding_stats_extended_fields_and_percentages(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
@@ -405,8 +334,7 @@ def test_transcoding_stats_extended_fields_and_percentages(db_path):
 
     rows = asyncio.run(get_transcoding_stats(days=0, db_path=db_path))
 
-    # Source order is GROUP BY is_transcoding; we don't assume an ORDER BY here
-    # apart from the historical unsorted return. Build a lookup.
+    # Query order is unspecified, so compare rows by mode.
     by_mode = {r["is_transcoding"]: r for r in rows}
     assert by_mode[0] == {
         "is_transcoding": 0,

@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.sessions import PAUSE_GRACE_SEC, PLAY_THRESHOLD_SEC, PlaybackSessionTracker
+from src.sessions import (
+    PAUSE_GRACE_SEC,
+    PLAY_THRESHOLD_SEC,
+    PlaybackPersistenceError,
+    PlaybackSessionTracker,
+)
 
 
 def _entry(
@@ -143,7 +148,7 @@ async def test_paused_entry_keeps_session_in_grace(tracker, save_mock):
 
     await tracker.process_poll([_entry()], t0)
     await tracker.process_poll([_entry()], t1)
-    # A transient pause within the grace window must not finalize or double-save.
+    # A pause inside the grace window keeps the committed session open.
     await tracker.process_poll([_entry(is_playing=False)], t1)
 
     save_mock.assert_awaited_once()
@@ -214,35 +219,29 @@ async def test_finalize_all_continues_after_one_session_fails():
 @pytest.mark.asyncio
 async def test_pause_resume_same_track_continues_session(tracker, save_mock):
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-    t_active10 = t0 + timedelta(seconds=10)  # extra active interval -> 10s
+    t_active10 = t0 + timedelta(seconds=10)
     t_pause = t0 + timedelta(seconds=20)
-    t_resume = t_pause + timedelta(seconds=30)  # idle gap, excluded
-    t_resume_active = t_resume + timedelta(seconds=20)  # +20s active -> 30s total
+    t_resume = t_pause + timedelta(seconds=30)
+    t_resume_active = t_resume + timedelta(seconds=20)
 
     await tracker.process_poll([_entry()], t0)
     await tracker.process_poll([_entry()], t_active10)
     await tracker.process_poll([_entry(is_playing=False)], t_pause)
-    # Resume the same track within the grace window: session continues.
     await tracker.process_poll([_entry()], t_resume)
     assert "p1" in tracker.active_sessions
     assert tracker.active_sessions["p1"]["last_active_at"] == t_resume
     assert tracker.active_sessions["p1"]["first_seen_at"] == t0
     assert tracker.active_sessions["p1"]["active_duration_sec"] == 10.0
 
-    # Finalize after threshold is reached on active time only.
     await tracker.process_poll([_entry()], t_resume_active)
     save_mock.assert_awaited_once()
     saved = save_mock.await_args.args[0]
-    # Duration counts only active observations: (t_active10 - t0)=10s
-    # plus (t_resume_active - t_resume)=20s -> 30s. The 30s pause
-    # at t_pause..t_resume is excluded.
+    # The two active intervals total 30 seconds; the pause is excluded.
     assert saved["duration_sec"] == PLAY_THRESHOLD_SEC
 
 
 @pytest.mark.asyncio
 async def test_mid_session_pause_excluded_from_duration(save_mock):
-    # Spec example: active t0, active t=10, pause t=20, resume t=50,
-    # finalize t=60 => active duration 20, not 60.
     tracker = PlaybackSessionTracker(save_mock, play_threshold_sec=15)
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     t10 = t0 + timedelta(seconds=10)
@@ -258,8 +257,7 @@ async def test_mid_session_pause_excluded_from_duration(save_mock):
 
     save_mock.assert_awaited_once()
     saved = save_mock.await_args.args[0]
-    # Active time: (t10 - t0)=10s plus (t60 - t50)=10s -> 20s.
-    # The 30s pause (t20..t50) is excluded; wall-clock 60s is *not* recorded.
+    # Two ten-second active intervals exclude the paused wall-clock time.
     assert saved["duration_sec"] == 20
 
 
@@ -267,9 +265,7 @@ async def test_mid_session_pause_excluded_from_duration(save_mock):
 async def test_pause_does_not_advance_listen_duration(tracker, save_mock):
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     t_pause = t0 + timedelta(seconds=20)
-    # Still within grace (PAUSE_GRACE_SEC default 30): 20s + 5s = 25s since
-    # last active observation, so the in-memory session is kept. Wall-clock
-    # advances but listen duration must not include the paused window.
+    # The paused poll remains inside grace without adding listen time.
     t_still_paused = t_pause + timedelta(seconds=5)
 
     await tracker.process_poll([_entry()], t0)
@@ -288,19 +284,17 @@ async def test_long_pause_finalizes_session_once(tracker, save_mock):
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     t_active = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
     t_pause = t_active + timedelta(seconds=1)
-    # Beyond PAUSE_GRACE_SEC (30) since last active observation.
     t_after_grace = t_active + timedelta(seconds=PLAY_THRESHOLD_SEC + 5)
 
     await tracker.process_poll([_entry()], t0)
     await tracker.process_poll([_entry()], t_active)
-    save_mock.assert_awaited_once()  # early commit at threshold while playing
+    save_mock.assert_awaited_once()
     save_mock.reset_mock()
 
     await tracker.process_poll([_entry(is_playing=False)], t_pause)
     await tracker.process_poll([], t_after_grace)
 
-    # Finalization updates the checkpoint with the final flag using the same
-    # session ID, so the database upsert keeps one row.
+    # Finalization reuses the checkpoint ID so the upsert remains idempotent.
     save_mock.assert_awaited_once()
     assert save_mock.await_args.args[0]["finalized"] is True
     assert "p1" not in tracker.active_sessions
@@ -310,23 +304,18 @@ async def test_long_pause_finalizes_session_once(tracker, save_mock):
 async def test_missing_player_resumed_within_grace(tracker, save_mock):
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     t_missing = t0 + timedelta(seconds=10)
-    # Within grace (last_active=t0, grace=30): 10 + 15 = 25s since active.
     t_resume = t_missing + timedelta(seconds=15)
 
     await tracker.process_poll([_entry()], t0)
-    # Player disappears entirely (no entry at all, not a paused entry).
     await tracker.process_poll([], t_missing)
     assert "p1" in tracker.active_sessions
     save_mock.assert_not_called()
 
-    # Player comes back actively on the same track within grace.
     await tracker.process_poll([_entry()], t_resume)
     assert tracker.active_sessions["p1"]["last_active_at"] == t_resume
 
     await tracker.finalize_session("p1")
-    # Active duration since first_seen: 0..15=15s + 30s = 45s? No — last_active
-    # is t_resume (15s) then we finalize immediately after, duration = 15-0 = 15
-    # which is below threshold; no save.
+    # Immediate finalization after resume leaves active time below threshold.
     save_mock.assert_not_called()
 
 
@@ -336,20 +325,18 @@ async def test_committed_missing_within_grace_remains_beyond_grace_dropped(
 ):
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     t_active = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
-    t_missing_in = t_active + timedelta(seconds=5)  # within grace (30)
+    t_missing_in = t_active + timedelta(seconds=5)
     t_beyond = t_active + timedelta(seconds=PLAY_THRESHOLD_SEC + 1)
 
     await tracker.process_poll([_entry()], t0)
     await tracker.process_poll([_entry()], t_active)
-    save_mock.assert_awaited_once()  # early commit at threshold while playing
+    save_mock.assert_awaited_once()
 
-    # Player disappears but still inside the grace window: session kept,
-    # no duplicate save.
+    # A temporary disappearance does not duplicate the checkpoint.
     await tracker.process_poll([], t_missing_in)
     assert "p1" in tracker.active_sessions
     save_mock.assert_awaited_once()
 
-    # Beyond grace: the same durable row is finalized.
     await tracker.process_poll([], t_beyond)
     assert "p1" not in tracker.active_sessions
     assert save_mock.await_count == 2
@@ -362,12 +349,11 @@ async def test_committed_missing_within_grace_remains_beyond_grace_dropped(
 async def test_missing_player_beyond_grace_finalizes(tracker, save_mock):
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     t_active = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
-    # Missing for longer than grace since last active observation.
     t_after_grace = t_active + timedelta(seconds=PLAY_THRESHOLD_SEC + 1)
 
     await tracker.process_poll([_entry()], t0)
     await tracker.process_poll([_entry()], t_active)
-    save_mock.assert_awaited_once()  # early commit at threshold
+    save_mock.assert_awaited_once()
     save_mock.reset_mock()
 
     await tracker.process_poll([], t_after_grace)
@@ -387,8 +373,7 @@ async def test_periodic_checkpoint_refresh_does_not_duplicate_identity(save_mock
     await tracker.process_poll([_entry()], t1)
     assert tracker.active_sessions["p1"]["committed"] is True
 
-    # A short continuation does not refresh; reaching the checkpoint interval
-    # updates the same durable session ID with a fresher duration.
+    # Checkpoint refreshes update the same durable session ID.
     await tracker.process_poll([_entry()], t1 + timedelta(seconds=30))
     assert save_mock.await_count == 1
     await tracker.process_poll([_entry()], t1 + timedelta(seconds=60))
@@ -408,10 +393,9 @@ async def test_different_active_track_finalizes_old_immediately(tracker, save_mo
 
     await tracker.process_poll([_entry(track_id="t1")], t0)
     await tracker.process_poll([_entry(track_id="t1")], t_active)
-    save_mock.assert_awaited_once()  # threshold reached
+    save_mock.assert_awaited_once()
     save_mock.reset_mock()
 
-    # Different actively-playing track finalizes the existing durable row.
     await tracker.process_poll(
         [_entry(track_id="t2", title="Song 2")], t_other
     )
@@ -423,7 +407,6 @@ async def test_different_active_track_finalizes_old_immediately(tracker, save_mo
 
 @pytest.mark.asyncio
 async def test_threshold_and_grace_params_independent(tracker, save_mock):
-    """The threshold and grace defaults are independent."""
     custom = PlaybackSessionTracker(
         save_mock, play_threshold_sec=15, pause_grace_sec=10
     )
@@ -446,20 +429,16 @@ async def test_custom_play_threshold_shortens_required_listen(save_mock):
 
 @pytest.mark.asyncio
 async def test_repeated_paused_polls_expire_committed_after_grace(tracker, save_mock):
-    """Active session reaches threshold (committed), then Navidrome keeps
-    reporting the same track as ``isPlaying=false``. The in-memory session
-    must remain inside the grace window and be expired (dropped without a
-    duplicate save) once grace elapses since the last active observation."""
+    """Repeated paused polls expire a committed session after grace."""
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     t_active = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
 
     await tracker.process_poll([_entry()], t0)
     await tracker.process_poll([_entry()], t_active)
-    save_mock.assert_awaited_once()  # early commit at threshold while playing
+    save_mock.assert_awaited_once()
     save_mock.reset_mock()
 
-    # Repeated matching paused polls well inside the grace window keep the
-    # in-memory session alive and marked paused, without re-saving.
+    # Paused polls inside grace do not rewrite the checkpoint.
     t_pause_1 = t_active + timedelta(seconds=5)
     t_pause_2 = t_active + timedelta(seconds=20)
     await tracker.process_poll([_entry(is_playing=False)], t_pause_1)
@@ -469,7 +448,6 @@ async def test_repeated_paused_polls_expire_committed_after_grace(tracker, save_
     assert tracker.active_sessions["p1"]["committed"] is True
     save_mock.assert_not_called()
 
-    # A further repeated paused poll beyond grace finalizes the checkpoint.
     t_beyond = t_active + timedelta(seconds=PAUSE_GRACE_SEC + 1)
     await tracker.process_poll([_entry(is_playing=False)], t_beyond)
     assert "p1" not in tracker.active_sessions
@@ -484,11 +462,12 @@ async def test_failed_threshold_checkpoint_remains_retryable():
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
     await tracker.process_poll([_entry()], t0)
-    with pytest.raises(RuntimeError, match="synthetic persistence failure"):
+    with pytest.raises(PlaybackPersistenceError) as exc_info:
         await tracker.process_poll(
             [_entry()],
             t0 + timedelta(seconds=PLAY_THRESHOLD_SEC),
         )
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
 
     session = tracker.active_sessions["p1"]
     session_id = session["session_id"]
@@ -514,8 +493,9 @@ async def test_failed_final_update_keeps_session_for_retry():
     )
     save.side_effect = RuntimeError("synthetic finalization failure")
 
-    with pytest.raises(RuntimeError, match="synthetic finalization failure"):
+    with pytest.raises(PlaybackPersistenceError) as exc_info:
         await tracker.finalize_session("p1")
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
     assert "p1" in tracker.active_sessions
 
     save.side_effect = None
@@ -583,12 +563,8 @@ async def test_legacy_mode_ignores_unadvertised_playback_report_fields():
 async def test_repeated_paused_polls_finalize_uncommitted_after_grace(
     tracker, save_mock
 ):
-    """An uncommitted (sub-threshold) session that Navidrome keeps reporting
-    as ``isPlaying=false`` must be finalized once grace elapses, even when the
-    pause is represented by repeated paused entries rather than a gap. Since
-    accumulated active duration is below threshold, no save occurs."""
+    """Repeated paused polls discard a sub-threshold session after grace."""
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-    # Sub-threshold active observation: still below threshold, no commit.
     t_active = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC - 10)
 
     await tracker.process_poll([_entry()], t0)
@@ -596,7 +572,6 @@ async def test_repeated_paused_polls_finalize_uncommitted_after_grace(
     save_mock.assert_not_called()
     assert not tracker.active_sessions["p1"].get("committed")
 
-    # Repeated matching paused polls within grace keep the session.
     t_pause_1 = t_active + timedelta(seconds=5)
     t_pause_2 = t_active + timedelta(seconds=20)
     await tracker.process_poll([_entry(is_playing=False)], t_pause_1)
@@ -605,8 +580,6 @@ async def test_repeated_paused_polls_finalize_uncommitted_after_grace(
     assert tracker.active_sessions["p1"]["paused"] is True
     save_mock.assert_not_called()
 
-    # Beyond grace: uncommitted session finalizes once. Active duration is
-    # below threshold, so no save; the session is removed.
     t_beyond = t_active + timedelta(seconds=PAUSE_GRACE_SEC + 1)
     await tracker.process_poll([_entry(is_playing=False)], t_beyond)
     assert "p1" not in tracker.active_sessions

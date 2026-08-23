@@ -4,15 +4,11 @@ from typing import Awaitable, Callable
 
 from src.config import env_int
 
-# Module-level defaults keep backwards compatibility for direct construction
-# (tests, embedders). Effective runtime values are resolved in ``src.main``
-# from the environment and passed into the tracker constructor.
 PLAY_THRESHOLD_SEC = 30
 STALE_THRESHOLD_SEC = 30
 PAUSE_GRACE_SEC = 30
 
-# Resolve env-driven defaults once at import time so simple consumers that
-# construct ``PlaybackSessionTracker(save_session)`` still honour env vars.
+# Constructor defaults are read from the environment once at import time.
 _DEFAULT_PLAY_THRESHOLD_SEC = env_int(
     "PLAY_THRESHOLD_SEC", default=30, min_value=1, max_value=3600
 )
@@ -30,26 +26,16 @@ class SessionFinalizationError(RuntimeError):
     """Redacted batch-finalization failure."""
 
 
+class PlaybackPersistenceError(RuntimeError):
+    """A durable playback write failed after the upstream poll succeeded."""
+
+
 class PlaybackSessionTracker:
     """Tracks in-memory playback sessions between Navidrome polls.
 
-    Duration semantics (active listen time)
-    --------------------------------------
-    A running session accumulates ``active_duration_sec`` from
-    actively-playing observations only. Each actively-playing poll of the
-    same track adds ``current_time - previous_active_at`` to the accumulator;
-    paused (``isPlaying=false``) and missing polls update neither the
-    accumulator nor ``last_active_at``. On the next actively-playing poll
-    after a pause/missing interval, accumulation is continued from the
-    resume timestamp, so the idle gap is excluded from listen duration.
-    A different actively-playing track from the same player finalizes the
-    old session immediately.
-
-    The accumulator already includes the final active interval when the
-    commit is triggered during an actively-playing poll. ``finalize_session``
-    uses ``active_duration_sec`` verbatim with no further addition, matching
-    the documented ``>= threshold`` behavior for the common
-    ``t0`` active, ``t1`` active sequence (yields ``t1 - t0``).
+    Only intervals between active observations add to `active_duration_sec`;
+    paused and missing gaps are excluded. A track change finalizes the current
+    session immediately.
     """
 
     def __init__(
@@ -77,7 +63,7 @@ class PlaybackSessionTracker:
         self.checkpoint_interval_sec = checkpoint_interval_sec
 
     def set_playback_report_supported(self, supported: bool) -> None:
-        """Select the duration contract advertised by the upstream server."""
+        """Use playback-report timing when the server advertises it."""
         self.supports_playback_report = bool(supported)
 
     async def finalize_session(self, player_id: str) -> None:
@@ -89,13 +75,27 @@ class PlaybackSessionTracker:
         if duration >= self.play_threshold_sec:
             await self._commit_session(session, int(duration), finalized=True)
         elif self._save_attempt is not None:
-            await self._save_attempt({
-                **session,
-                "duration_sec": int(duration),
-                "outcome": "short_play",
-                "last_seen_at": (session.get("last_active_at") or session["last_seen_at"]).isoformat(),
-            })
+            await self._persist(
+                self._save_attempt,
+                {
+                    **session,
+                    "duration_sec": int(duration),
+                    "outcome": "short_play",
+                    "last_seen_at": (
+                        session.get("last_active_at") or session["last_seen_at"]
+                    ).isoformat(),
+                },
+            )
         self.active_sessions.pop(player_id, None)
+
+    @staticmethod
+    async def _persist(callback: SaveSessionCallback, payload: dict) -> None:
+        try:
+            await callback(payload)
+        except PlaybackPersistenceError:
+            raise
+        except Exception as exc:
+            raise PlaybackPersistenceError("Playback persistence failed") from exc
 
     async def _commit_session(
         self,
@@ -104,8 +104,7 @@ class PlaybackSessionTracker:
         *,
         finalized: bool,
     ) -> None:
-        # ``played_at`` is anchored to the last actively-playing observation,
-        # excluding the post-pause/missing wall-clock gap.
+        # Anchor played_at to active listening, excluding any trailing idle gap.
         last_active = session.get("last_active_at") or session["last_seen_at"]
         payload = {
             **session,
@@ -115,7 +114,7 @@ class PlaybackSessionTracker:
             "finalized_at": last_active.isoformat() if finalized else None,
             "checkpointed_at": last_active.isoformat(),
         }
-        await self._save_session(payload)
+        await self._persist(self._save_session, payload)
 
     async def _maybe_commit_active_session(self, player_id: str) -> None:
         session = self.active_sessions.get(player_id)
@@ -133,8 +132,7 @@ class PlaybackSessionTracker:
             return
 
         await self._commit_session(session, int(duration), finalized=False)
-        # Update in-memory checkpoint state only after durable persistence
-        # succeeds. A failed refresh therefore remains eligible for retry.
+        # Mark the checkpoint only after persistence so failures remain retryable.
         session["committed"] = True
         session["last_checkpoint_duration_sec"] = duration
 
@@ -245,13 +243,7 @@ class PlaybackSessionTracker:
         return wall_delta
 
     async def process_poll(self, entries, current_time: datetime) -> None:
-        # Players in this set emitted an actively-playing observation this
-        # poll and are skipped by the grace-expiration sweep below. Paused
-        # matching entries update the session but are deliberately NOT added
-        # here, so the sweep can still finalize/expire them once
-        # ``pause_grace_sec`` elapses since the last actively-playing
-        # observation. This keeps repeated ``isPlaying=false`` polls for the
-        # same track from keeping a session alive past its grace window.
+        # Paused players stay out of this set so repeated pause polls still expire.
         actively_seen_player_ids: set[str] = set()
 
         for entry in self._normalize_entries(entries):
@@ -264,9 +256,7 @@ class PlaybackSessionTracker:
             is_playing = self._is_playing(entry)
 
             if not is_playing:
-                # Paused entry for a matching in-memory session: refresh the
-                # seen timestamp and mark it paused without advancing listen
-                # duration, but do not suppress the grace-expiration sweep.
+                # A pause updates visibility without advancing listen duration.
                 if (
                     player_id in self.active_sessions
                     and self.active_sessions[player_id]["track_id"] == track_id
@@ -282,9 +272,7 @@ class PlaybackSessionTracker:
                 if self.active_sessions[player_id]["track_id"] == track_id:
                     session = self.active_sessions[player_id]
                     if session.get("paused"):
-                        # Resume same track after a pause/missing window:
-                        # continue accumulating from the resume timestamp so
-                        # the idle gap is excluded from listen duration.
+                        # Resume from this timestamp so the idle gap is excluded.
                         session["last_active_at"] = current_time
                         session["last_position_ms"] = self._position_ms(entry)
                         session["paused"] = False
@@ -297,8 +285,6 @@ class PlaybackSessionTracker:
                     session["last_seen_at"] = current_time
                     await self._maybe_commit_active_session(player_id)
                 else:
-                    # Different actively-playing track: finalize old session
-                    # immediately and start a new one.
                     await self.finalize_session(player_id)
                     self.active_sessions[player_id] = self._session_from_entry(entry, current_time)
             else:
@@ -311,10 +297,7 @@ class PlaybackSessionTracker:
             last_active = session.get("last_active_at") or session["last_seen_at"]
             time_since_active = (current_time - last_active).total_seconds()
             if time_since_active < self.pause_grace_sec:
-                # Player paused or went missing but still inside the grace
-                # window: keep the in-memory session alive (whether or not it
-                # has been committed) and exclude the idle gap from duration
-                # by anchoring the next active poll to its resume timestamp.
+                # Keep the session during grace; the next active poll starts a new interval.
                 session["paused"] = True
                 session["last_seen_at"] = current_time
                 continue

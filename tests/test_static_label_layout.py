@@ -1,19 +1,4 @@
-"""Source-level checks for the top artist/album ranking list.
-
-These tests assert static properties of the ranked bar-list implementation in
-``src/static/index.html`` (formerly ECharts horizontal bar charts). They ensure
-that:
-
-* the two ECharts instances and their resize calls are gone,
-* names are rendered as DOM rows with ``role="table"``/``role="row"`` and
-  ``textContent`` assignment (no ``innerHTML`` XSS surface),
-* bar widths are derived only from numeric counts and clamped to 0-100,
-* the responsive fixed label column (42%) plus bar/value column layout is in
-  place via a CSS grid,
-* the purple (artists) and green (albums) gradients are preserved.
-
-No browser is required - the HTML is inspected as text.
-"""
+"""Source-level checks for the artist and album ranking lists."""
 
 from pathlib import Path
 

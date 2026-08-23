@@ -2,31 +2,33 @@
 
 [English](README.md)
 
-Navidrome Statistic 是一个自托管服务。它轮询 Subsonic 的 `getNowPlaying` 接口、追踪收听会话、将达到条件的播放记录写入 SQLite，并通过网页仪表盘展示统计结果。
+Navidrome Statistic 汇总 Navidrome 上报的播放活动，并通过一个仪表盘统一展示。无论使用 Subsonic 兼容客户端、浏览器、手机、电脑，还是连接多个 Navidrome 服务器，都可以得到一致的统计视图，无需每个客户端单独实现统计功能。
 
-本项目按单个应用实例设计。一个实例可以配置多个 Navidrome 服务器，但不支持多个 Navidrome Statistic 副本同时采集相同的数据源，否则可能重复计数。
+服务通过轮询 `getNowPlaying`、在内存中追踪收听会话、将结果保存到 SQLite，并提供完整的本地网页界面。
 
 ## 功能
 
-- 按可配置的播放阈值和暂停宽限期追踪活跃播放，通过幂等检查点保存并在结束时更新最终时长。
-- 上游声明支持时使用 OpenSubsonic 播放报告并记录时长是上报值还是估算值；旧版服务器继续使用轮询兼容路径。
-- 在一个仪表盘中管理多个 Navidrome 服务器，支持按服务器筛选和查看采集器健康状态。
-- 展示正在播放、播放历史、客户端、转码、时间趋势以及艺人和专辑排行。
-- 将未达到播放阈值的尝试与正式播放分开记录。
-- 支持配置保留期，以及按用户导出、导入和删除 JSON 数据。
-- 设置页按连接、隐私、本地偏好和项目信息组织；语言、主题、时区与减少动态效果偏好只保存在当前浏览器。
-- 可通过 `STATS_API_TOKEN` 为仪表盘和接口启用认证。
-- 提供响应式筛选栏，支持预设时间、自定义起止日期和按服务器筛选。
-- 固定并自托管前端资源；仪表盘正常使用时不会访问公共 CDN。
-- 使用 Python 3.11 多阶段镜像，并以非 root 用户运行。
+- 汇总不同客户端、设备、用户和 Navidrome 服务器的当前与历史播放活动。
+- 展示收听时长、播放历史、小时与每日趋势、客户端使用、转码，以及艺人和专辑排行。
+- 支持自定义播放阈值与暂停宽限期、持久化会话检查点，并在上游支持时使用 OpenSubsonic 播放进度。
+- 支持按服务器筛选、连接管理、保留策略，以及按用户导出、导入和删除 JSON 数据。
+- 可为仪表盘数据和接口启用 token 认证。
+- 固定并自托管前端资源；发布的容器以非 root 用户运行。
+
+## 重要限制
+
+- 同一组数据源只能运行一个 Navidrome Statistic 实例。多个实例轮询同一数据源可能导致重复计数。
+- 活跃会话只保存在单个进程中，不支持多 worker 的 Uvicorn 部署。
+- SQLite 以及通过设置页保存的凭据均为明文存储。
+- 应用本身不提供 TLS。远程访问时应使用可信网络或 HTTPS 反向代理。
 
 ## Docker 部署
 
 ### 前置条件
 
-- 安装了 Docker Engine 和 Docker Compose v2
+- Docker Engine 与 Docker Compose v2
 - 容器能够访问每个 Navidrome 服务器
-- 拥有可调用 Subsonic 接口的 Navidrome 账户
+- 拥有可调用 Subsonic API 的 Navidrome 账户
 
 ### 1. 创建部署目录
 
@@ -50,11 +52,11 @@ PLAY_THRESHOLD_SEC=30
 PAUSE_GRACE_SEC=30
 ```
 
-这三个 `NAVIDROME_*` 变量用于配置初始数据源或兼容旧配置。启动后可以在“设置 > 连接”中添加其他服务器。通过设置页保存的值会以明文形式写入应用数据库；如果不能接受这种存储方式，请优先使用环境变量。
+没有已保存的服务器条目时，三个 `NAVIDROME_*` 变量提供一个回退连接。如需汇总多个服务器，请在启动后通过“设置 > 连接”逐个添加；其中保存的凭据会以明文写入 SQLite。如果不能接受这种存储方式，请只使用环境变量配置的单一连接，不要通过设置页保存连接。
 
 ### 3. 创建 `compose.yaml`
 
-如果部署可复现性比自动获取最新版本更重要，请使用具体版本标签，不要使用 `latest`。
+如需可复现的部署，请使用具体版本标签，不要使用 `latest`。
 
 ```yaml
 services:
@@ -71,16 +73,17 @@ services:
       NAVIDROME_USER: ${NAVIDROME_USER}
       NAVIDROME_PASS: ${NAVIDROME_PASS}
       STATS_API_TOKEN: ${STATS_API_TOKEN}
+      DATABASE_URL: /data/navidrome_stats.db
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
       PLAY_THRESHOLD_SEC: ${PLAY_THRESHOLD_SEC:-30}
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
       CHECKPOINT_INTERVAL_SEC: ${CHECKPOINT_INTERVAL_SEC:-60}
       SAVE_RETRY_ATTEMPTS: ${SAVE_RETRY_ATTEMPTS:-3}
       MAX_POLL_BACKOFF_SEC: ${MAX_POLL_BACKOFF_SEC:-60}
+      RETENTION_MAINTENANCE_SEC: ${RETENTION_MAINTENANCE_SEC:-86400}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       STATS_METRICS_AUTH: ${STATS_METRICS_AUTH:-false}
       OPENAPI_ENABLED: ${OPENAPI_ENABLED:-true}
-      DATABASE_URL: /data/navidrome_stats.db
     restart: unless-stopped
     healthcheck:
       test:
@@ -104,96 +107,87 @@ docker compose up -d
 docker compose ps
 ```
 
-打开 `http://localhost:39421`。设置 `STATS_API_TOKEN` 后，仪表盘会要求输入该令牌，浏览器只保存一个 HTTP-only 会话 Cookie。
+打开 `http://localhost:39421`。配置 `STATS_API_TOKEN` 后，在登录界面输入该 token；浏览器保存的是 HttpOnly 会话 Cookie，而不是 token 本身。
 
-`/health` 用于检查进程是否存活。`/health/ready` 还会报告数据库和采集器状态；上游短暂失败可能使就绪状态降级，但不要求重启容器。
+`/health` 用于检查进程是否存活。`/health/ready` 还会检查数据库与采集器，因此上游短暂故障可能使就绪状态降级，但进程仍保持健康。
+
+## 配置
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `NAVIDROME_URL` | 无 | 初始 Navidrome 基础 URL；数据库已有完整连接时可以不设置。 |
+| `NAVIDROME_USER` | 无 | 初始 Subsonic 用户名。 |
+| `NAVIDROME_PASS` | 无 | 初始 Subsonic 密码。 |
+| `DATABASE_URL` | `navidrome_stats.db` | SQLite 文件路径；虽然名称中包含 URL，但不支持其他数据库。 |
+| `STATS_API_TOKEN` | 空 | 设置后保护仪表盘数据、应用接口和 OpenAPI 路由。 |
+| `STATS_METRICS_AUTH` | `false` | 本项与 `STATS_API_TOKEN` 同时设置时，`/metrics` 需要认证。 |
+| `OPENAPI_ENABLED` | `true` | 设为 `false` 时移除 `/docs`、`/redoc` 和 `/openapi.json`。 |
+| `POLL_INTERVAL` | `10` | 轮询间隔，限制在 5–300 秒。 |
+| `PLAY_THRESHOLD_SEC` | `30` | 计为一次播放所需的活跃观测秒数，限制在 1–3600。 |
+| `PAUSE_GRACE_SEC` | `30` | 在内存中保留暂停或暂时消失会话的秒数，限制在 0–3600。 |
+| `CHECKPOINT_INTERVAL_SEC` | `60` | 活跃会话持久化检查点的刷新间隔，限制在 10–3600 秒。 |
+| `SAVE_RETRY_ATTEMPTS` | `3` | 会话数据库写入尝试次数，限制在 1–10。 |
+| `MAX_POLL_BACKOFF_SEC` | `60` | 上游故障退避上限，限制在 1–3600 秒。 |
+| `RETENTION_MAINTENANCE_SEC` | `86400` | 自动执行保留期清理的间隔，限制在 60–604800 秒。 |
+| `SESSION_COOKIE_SECURE` | `false` | 为登录 Cookie 添加 Secure 标记；用户通过 HTTPS 访问时应启用。 |
+
+环境变量在应用启动时解析。修改后需重启容器。
+
+## 播放计数方式
+
+当累计活跃观测时长达到 `PLAY_THRESHOLD_SEC` 时，一首曲目计为一次播放。暂停或暂时消失的时间不计入时长。达到阈值时会创建检查点，之后的检查点与会话结算只更新同一条数据库记录，不会重复增加播放次数。
+
+服务器声明支持 OpenSubsonic `playbackReport` 扩展时，媒体位置和播放状态可提高时长统计质量；其他服务器继续使用常规轮询。未达到播放阈值便结束的会话会单独记录为播放尝试。
+
+详细原理见[架构说明](docs/architecture.md)。
 
 ## 日常运维
 
-### 查看日志
+### 日志
 
 ```bash
 docker compose logs -f --tail=100 navidrome-stat
 ```
 
-应用日志会主动避免输出播放元数据和认证请求地址。不要启用或分享可能包含 Subsonic 认证查询参数的基础设施日志。
+应用日志会避免输出播放元数据和上游请求 URL。反向代理与 Navidrome 仍可能记录 Subsonic 认证查询参数，分享日志前请检查相关日志配置。
 
 ### 更新
 
 ```bash
 docker compose pull
 docker compose up -d
-docker image prune
 ```
 
-更新前应备份数据库。使用固定镜像标签时，请先阅读版本说明再修改标签。
+更新固定版本前，请备份数据库并阅读变更记录。
 
 ### 备份与恢复
 
-命名卷包含 SQLite 数据库、收听历史，以及通过设置页保存的服务器凭据。所有备份都应按敏感数据处理。
+数据卷包含收听历史，也可能包含已保存的 Navidrome 凭据。所有备份都应按敏感数据处理。
 
-复制数据库前先停止应用：
+复制 SQLite 文件前先停止服务：
 
 ```bash
 mkdir -p backups
 docker compose stop navidrome-stat
 docker run --rm \
-  -v navidrome-stat_navidrome-stat-data:/data:ro \
+  --volumes-from navidrome-stat:ro \
   -v "$PWD/backups:/backup" \
   alpine:3.20 \
   cp /data/navidrome_stats.db /backup/navidrome_stats.db
 docker compose start navidrome-stat
 ```
 
-实际卷名可通过 `docker volume ls` 查看；Compose 通常会加上部署目录名称作为前缀。备份应保存在受访问控制的位置，并设置合适的保留策略。
-
-恢复时应先停止服务、保留当前卷、把已验证的备份复制到 `/data/navidrome_stats.db`，确认 UID 和 GID `1000:1000` 具有写权限，然后再启动服务。请先在生产卷之外验证恢复流程。
-
-## 配置
-
-| 变量 | 默认值 | 用途 |
-| --- | --- | --- |
-| `NAVIDROME_URL` | 无 | 初始 Navidrome 基础地址；除非数据库中已有完整数据源，否则必需。 |
-| `NAVIDROME_USER` | 无 | 初始 Subsonic 用户名。 |
-| `NAVIDROME_PASS` | 无 | 初始 Subsonic 密码。 |
-| `DATABASE_URL` | `navidrome_stats.db` | SQLite 文件路径；Docker 示例使用 `/data/navidrome_stats.db`。 |
-| `STATS_API_TOKEN` | 空 | 设置后保护仪表盘、统计接口、设置接口和 OpenAPI 路由。 |
-| `STATS_METRICS_AUTH` | `false` | 为 `true` 且已设置 `STATS_API_TOKEN` 时，`/metrics` 需要与统计接口相同的认证。 |
-| `OPENAPI_ENABLED` | `true` | 设为 `false` 时不注册 `/docs`、`/redoc` 和 `/openapi.json`。 |
-| `POLL_INTERVAL` | `10` | 轮询间隔，限制在 5 至 300 秒。 |
-| `PLAY_THRESHOLD_SEC` | `30` | 计为一次播放所需的活跃观测秒数，限制在 1 至 3600。 |
-| `PAUSE_GRACE_SEC` | `30` | 在内存中保留暂停或暂时消失会话的秒数，限制在 0 至 3600。 |
-| `CHECKPOINT_INTERVAL_SEC` | `60` | 活跃会话持久化检查点的刷新间隔，限制在 10 至 3600 秒。 |
-| `MAX_POLL_BACKOFF_SEC` | `60` | 上游故障退避上限，限制在 1 至 3600 秒。 |
-| `SAVE_RETRY_ATTEMPTS` | `3` | 会话数据库写入尝试次数，限制在 1 至 10；失败后会话仍可重试。 |
-| `SESSION_COOKIE_SECURE` | `false` | 应用通过 HTTPS 访问时设为 `true`，使登录 Cookie 带 Secure 标记。 |
-| `RETENTION_MAINTENANCE_SEC` | `86400` | 保留期清理间隔，限制在 60 至 604800 秒。 |
-
-当累计活跃时长大于等于 `PLAY_THRESHOLD_SEC` 时，一首曲目计为一次播放。达到阈值时写入幂等检查点，之后每隔 `CHECKPOINT_INTERVAL_SEC` 刷新；会话结束时更新同一行的最终活跃时长，不会再增加一次播放。启动时发现异常中断留下的检查点，会按最后一次已持久化时长标记为恢复完成，不推测未观测时长。服务器声明支持 OpenSubsonic 播放报告时，会结合媒体位置和播放状态提高估算质量；未声明时会忽略扩展字段并继续按轮询间隔估算。暂停区间不计入时长。
+恢复时应先停止服务、保留当前数据库、把已验证的备份复制到 `/data/navidrome_stats.db`，确认 UID 和 GID `1000:1000` 具有写权限，然后启动服务。请先在生产卷之外验证恢复流程。
 
 ## 安全与隐私
 
-- 未设置 `STATS_API_TOKEN` 时，仪表盘和接口允许匿名访问，只应在可信网络中使用。
-- 应用本身不终止 TLS。远程访问前，应部署配置正确的 HTTPS 反向代理。
-- SQLite 以明文保存用户名、媒体元数据、收听时间，以及通过设置页保存的凭据。
-- 收集播放活动前应告知受影响的 Navidrome 用户，并在“设置 > 隐私与数据”中选择适当的保留期。可复制 [`docs/privacy-notice.template.md`](docs/privacy-notice.template.md) 自行编辑，该模板不是法律意见。
-- 应保护 `.env`、Docker 卷、备份、浏览器访问和反向代理日志。
-- Tailwind CSS 和 ECharts 固定版本并由应用自身提供；浏览器 CSP 只允许同源脚本和样式。
-- 用户导出使用固定文件名，包含正式播放与短播放尝试；可导入第 1 或第 2 版格式。导入限制为 5 MiB、10000 条，并校验时间、字段长度和时长范围。
+- 未设置 `STATS_API_TOKEN` 时，仪表盘数据和接口允许匿名访问，只应在可信网络中使用。
+- `/health` 与 `/health/ready` 始终公开。`/metrics` 默认公开；设置 token 并启用 `STATS_METRICS_AUTH=true` 后可要求认证。
+- 启用认证后，仪表盘静态文件仍可加载，但数据请求需要授权。
+- 浏览器策略会阻止公共脚本和样式来源，同时允许页面使用的内联代码。
+- 收集播放活动前应告知受影响的用户，并选择适当的保留期。
 
-通用 Compose 示例无法替你确定授权规则、TLS 终止、备份安全或公网暴露策略，这些事项必须由部署负责人决定。
-
-## 从源码构建
-
-仓库中的 [`docker-compose.yml`](docker-compose.yml) 用于构建当前本地检出：
-
-```bash
-git clone https://github.com/StepaniaH/navidrome-stat.git
-cd navidrome-stat
-docker compose up -d --build
-```
-
-运行 Compose 前，请根据 Docker 部署章节中的占位示例创建 `.env`。不要把真实凭据写入受版本控制的文件。
+详细说明见[隐私文档](docs/privacy.md)与[安全政策](SECURITY.md)。
 
 ## 开发
 
@@ -208,9 +202,15 @@ pytest -q --cov=src --cov-report=term-missing --cov-fail-under=80
 uvicorn src.main:app --host 127.0.0.1 --port 39421
 ```
 
-直接运行依赖固定在 `requirements.txt`，Docker 使用完整解析后的 `requirements.lock`，测试依赖位于 `requirements-dev.txt`。
+仓库还提供用于构建当前本地检出的 [`docker-compose.yml`](docker-compose.yml)：
 
-重建固定版本的前端资源并运行合成浏览器测试：
+```bash
+git clone https://github.com/StepaniaH/navidrome-stat.git
+cd navidrome-stat
+docker compose up -d --build
+```
+
+前端资源和浏览器测试使用 Node.js：
 
 ```bash
 npm ci
@@ -218,28 +218,16 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-浏览器测试使用临时 SQLite 数据库和拦截后的合成接口数据，不需要真实 Navidrome 账户。
+测试使用临时数据库和合成 API 数据，不需要连接真实 Navidrome 服务器。
 
-可使用合成数据运行可复现的时间分桶基准：
+## 项目信息
 
-```bash
-python -m scripts.benchmark_stats --rows 100000
-```
-
-## 项目文档
-
-- [项目文档索引](docs/README.md)
+- [架构说明](docs/architecture.md)
+- [隐私说明](docs/privacy.md)
 - [贡献指南](CONTRIBUTING.md)
 - [变更记录](CHANGELOG.md)
 - [安全政策](SECURITY.md)
-- [开源版本路线](docs/roadmap.md)
-- [当前实现事实](docs/current-state.md)
-- [接口与配置](docs/interfaces.md)
-- [隐私边界](docs/privacy.md)
-- [安全模型](docs/security.md)
-- [任务登记](docs/tasks.md)
 
 ## 许可证
 
-Navidrome Statistic 使用 [MIT License](LICENSE)。
-随应用分发的 Tailwind CSS 与 Apache ECharts 在 `src/static/vendor/` 中保留各自的许可证和声明文件。
+Navidrome Statistic 使用 [MIT License](LICENSE)。随应用分发的 Tailwind CSS 与 Apache ECharts 在 `src/static/vendor/` 中保留各自的许可证和声明文件。

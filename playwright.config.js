@@ -16,7 +16,6 @@ module.exports = defineConfig({
   use: {
     baseURL: "http://127.0.0.1:39422",
     trace: "retain-on-failure",
-    ...(process.env.CI ? {} : { channel: "chrome" }),
   },
   projects: [
     {

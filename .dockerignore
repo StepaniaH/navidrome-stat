@@ -13,8 +13,4 @@ test-results/
 playwright-report/
 tests/
 docs/
-AGENTS.md
-PRD.md
-.alma-snapshots
 *.md
-.alma-snapshots

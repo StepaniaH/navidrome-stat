@@ -1,85 +1,50 @@
-# 隐私与敏感信息
+# Privacy
 
-本文基于仓库代码的数据流进行登记。仓库无法证明实际部署的网络边界、用户授权、数据保留、备份或法规适用范围，因此相关内容明确列为人工确认项。
+Navidrome Statistic stores listening activity so it can build a shared dashboard across Navidrome servers, clients, and devices. This page describes what the application handles and what operators should protect.
 
-## 1. 数据清单
+## Data stored
 
-| 数据 | 来源 | 处理位置 | 持久化 | 分类 |
-| --- | --- | --- | --- | --- |
-| Navidrome 基础 URL | 环境变量/构造参数/GUI 保存 | `src/client.py`、`src/source_config.py` | GUI 保存值落入 `schema_meta.source_url` | 部署敏感信息 |
-| Navidrome 用户名 | 环境变量/构造参数/GUI 保存 | 认证请求、`src/source_config.py` | GUI 保存值落入 `schema_meta.source_user`；播放 entry 中的 username 另存数据库 | 账户标识/个人数据 |
-| Navidrome 密码 | 环境变量/构造参数/GUI 保存 | 内存中生成 token | GUI 保存值**明文**落入 `schema_meta.source_password`（仅作 env 缺失时回退） | 高敏感凭据 |
-| token 与 salt | 每次请求生成 | 上游请求查询参数 | 代码不主动持久化 | 敏感认证数据 |
-| playerId、trackId、客户端名称 | 上游 nowPlaying | 内存状态；部分写库 | 是，除 playerId | 使用行为数据 |
-| 用户名、曲名、艺人、专辑 | 上游 nowPlaying | 内存、SQLite、统计 API、Dashboard | 是 | 个人收听行为数据 |
-| Dashboard 自定义起止日期 | 浏览器查询控件 | HTTP 查询参数、短期进程内缓存键 | 否 | 仅控制聚合范围，不写入 SQLite；访问日志策略仍由部署方确认 |
-| 播放时间、观测时长、转码状态 | 本服务推导 | SQLite、统计 API | 是 | 个人使用行为数据 |
-| 时长置信度、检查点时间、来源服务器 ID/显示名 | 上游能力与本服务配置 | SQLite、统计 API、导出包 | 是（检查点时间不导出） | 数据质量与行为来源元数据 |
+The SQLite database can contain:
 
-即使曲目元数据本身可能公开，与用户名、时间和客户端组合后也能描述个人习惯。默认按隐私数据处理，而不是普通遥测。
+- Navidrome usernames;
+- track IDs, titles, artists, and albums;
+- client names and transcoding status;
+- playback timestamps and observed listening duration;
+- Navidrome server identifiers and display names;
+- counted plays and below-threshold playback attempts;
+- retention settings and internal session checkpoints.
 
-## 2. 当前处理边界
+These fields can reveal personal listening habits when combined, even when the media metadata is otherwise public.
 
-- 密码保存在 `NavidromeClient` 实例内存中，用于每次生成 Subsonic token；代码默认不把密码写入 SQLite。**例外**：通过 `PUT /api/source/config` 保存的 GUI 来源配置会将 Navidrome 密码以**明文**写入 `schema_meta.source_password`，作为环境变量 `NAVIDROME_PASS` 缺失时的回退。这是自托管场景的已知安全权衡：`GET /api/source/config` 与所有日志只返回/记录 `password_configured: bool`，从不返回密码本身；部署方须确保数据库文件受文件系统访问控制保护（见 NDS-SRC-001 完成记录）。
-- token 和 salt 作为 URL 查询参数发送。应用没有主动记录请求 URL，但代理、上游服务器或网络设施是否记录查询参数不由本仓库控制。
-- SQLite 保存用户名和播放历史明细，明文存储于本地文件；可通过 `/settings` 配置保留期、导出、导入或按用户删除。
-- SQLite 使用 WAL；数据库旁的 `-wal`/`-shm` 文件可能包含同类敏感数据，必须与主数据库使用相同访问控制。备份前停止应用，以便关闭连接和检查点收敛。
-- Docker 默认部署将 SQLite 文件保存在挂载到 `/data` 的命名卷中。该卷以及从中复制的备份同时包含明文收听行为数据，并可能包含通过设置页保存的服务器凭据；卷、备份和恢复环境必须使用与数据库相同或更严格的访问控制。
-- 播放历史**默认永久保留**（用户确认，2026-07-16）；保留期可在 1–360 天与永久之间切换，变更后需预览并确认才执行清理。
-- 按用户导出格式版本 2 同时携带正式播放和短播放尝试，并包含来源与时长置信度；不导出内部 `session_id`/`attempt_id`。附件固定命名为 `navidrome-stat-export.json`，用户名不会进入文件名。导入兼容版本 1/2，最大 5 MiB、10000 条，校验字段长度、带时区时间戳、转码值和 0–7 天时长。超限请求在读取过程中拒绝，不把完整超限正文写入应用日志。
-- 保留预览、存储统计和实际清理统一覆盖 `play_history` 与 `play_attempts`，只返回总计及分表条数，不返回或记录曲目内容。过期判断使用 `datetime(played_at)` 与统计窗口相同的 UTC cutoff 格式。按用户删除同样覆盖两张表。
-- 启用 `STATS_API_TOKEN` 时，统计 API、隐私 API 与 OpenAPI 需 Bearer 令牌或登录会话；`/health` 探针仍匿名。`/metrics` 默认仍匿名（不含用户名或曲目标签），可设 `STATS_METRICS_AUTH=true` 要求同一认证。未设置令牌时仅适用于可信网络。
-- Tailwind CSS 与 ECharts 已固定版本并从本服务 `/static/vendor/` 提供，正常页面加载不向公共 CDN 发请求；CSP 的脚本与样式来源仅允许同源。用户/媒体/服务器显示名均通过 `textContent` 或节点属性安全写入。
-- 页面语言、主题、统计时区和减少动态效果偏好只保存在当前浏览器的 `localStorage`，不包含用户名、曲目或凭据；其中只有统计时区会解析为已登记的 IANA 名称并发送到统计 API，用于日期/小时分桶。设置页“恢复默认值”仅删除 `navidrome-language`、`navidrome-theme`、`navidrome-timezone` 与 `navidrome-motion`，不会删除或读取播放数据。
-- `/health/ready` 仅输出聚合指标与状态枚举，不含服务器地址、用户名或曲目信息；`httpx` 请求日志级别为 WARNING。
-- collector 热更新、上游和数据库写入失败只记录状态码或异常类型，不记录异常正文、服务器地址、用户名、密码、token、上游响应或播放元数据。
-- 登录限流键是原始客户端地址经进程随机盐 HMAC 得到的摘要，只保存在进程内且不持久化；原始地址不写入应用日志或数据库。
-- 活跃会话达到阈值后会周期刷新同一隐私安全随机 `session_id` 的检查点。异常启动恢复只把最后已持久化记录标记完成，不生成额外行为记录，不向日志输出用户名、曲目或检查点内容。
-- `.env`、数据库文件和真实部署值是否被正确排除、备份或保护取决于实际工作区及部署流程；文档不得复制这些值。
-- 本服务不读取 Navidrome 私有数据库或未公开的历史 HTTP。NDS-DATA-004（2026-08-21）结论为不实施原生历史导入，直至上游发布公开只读 API；隐私面因此不因该方向扩大。
+## Navidrome credentials
 
-## 3. 敏感值规则
+Credentials supplied through `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` remain in the process environment and memory. Credentials saved from **Settings > Connections** are stored in plaintext in SQLite so the service can reconnect after a restart.
 
-- 真实 `NAVIDROME_URL`、`NAVIDROME_USER`、`NAVIDROME_PASS`、token、salt、cookie、反向代理地址和数据库内容不得写入版本控制、任务记录、测试 fixture、截图或提交信息。GUI 保存的 `source_*` 值同样不得在文档/日志/响应中回显。
-- 文档示例使用保留域名或明确占位符，例如 `http://navidrome.example.invalid:4533`、`example_user`、`<set-in-runtime-environment>`。
-- 排障时优先记录状态码、异常类型和字段是否存在；不得粘贴完整认证 URL 或完整上游响应。
-- 测试必须使用合成数据。当前测试中的账户和媒体值是固定测试字符串，不应替换为真实样本。
-- 读取真实 `.env`、数据库、日志或部署配置前必须得到用户明确授权；输出只报告脱敏结论。
-- 发现疑似真实凭据进入 Git 历史时应立即停止传播，通知用户轮换，并单独制定历史清理方案。
-- 开源协作（issue、PR、截图、CI 日志、CHANGELOG、任务完成记录）适用同一规则。贡献约定见 [`../CONTRIBUTING.md`](../CONTRIBUTING.md)；安全漏洞不要发公开 issue，见 [`../SECURITY.md`](../SECURITY.md)。
-- 仓库所有者已公开的 GitHub 仓库 URL、Docker Hub 镜像名和 GitHub Funding 用户名可以出现在文档中；未在仓库中出现的个人邮箱、真实部署主机和播放明细不得补写。
+The settings APIs return configured URLs and usernames to authorized viewers, but never return saved passwords. Protect the database, Docker volume, `.env` file, and backups as credentials.
 
-## 4. 必须由用户人工确认/编辑
+Subsonic authentication uses token and salt query parameters. The application avoids logging upstream request URLs, but reverse proxies, network tools, and the Navidrome server may have their own access logs. Configure those systems so authentication query parameters are not retained or shared.
 
-以下事项无法从仓库代码确定，AI 不得代填或假设：
+## Retention and data controls
 
-| 确认项 | 用户需要决定或提供的结论 | 未确认前的默认处理 |
-| --- | --- | --- |
-| 部署访问范围 | 仅本机、可信局域网、VPN 还是公网 | 不声称服务是私有或安全暴露的 |
-| 认证与授权 | 哪些人可查看按用户名聚合的播放历史 | 可设置 `STATS_API_TOKEN` 或反向代理认证；未设置时不声称安全 |
-| TLS 与反向代理 | TLS 在何处终止，代理是否清除认证查询参数日志 | 不记录真实地址或证书信息 |
-| 上游账户权限 | 轮询账户是否专用、最小权限、如何轮换 | 不创建或猜测账户配置 |
-| 数据保留期 | 播放明细保留多久、何时聚合或删除 | **用户确认（2026-07-16）**：默认永久；可通过设置页选择 1–360 天或永久；清理前预览条数并需确认 |
-| 用户告知/同意 | 被监控用户是否知情，适用的政策或法规 | **设计原则**：部署方须确保被统计用户知情；设置页明示隐私原则，不代填合规声明 |
-| 数据主体请求 | 导出、更正、删除某用户数据的流程 | **用户确认（2026-07-16）**：支持按用户 JSON 导出/导入与删除；操作需确认；备份中的数据删除由部署方负责 |
-| 备份与恢复 | 备份位置、加密、保留和恢复责任人 | 不复制数据库到未知位置 |
-| 日志策略 | 日志级别、收集方、保留期、访问权限 | 不启用含个人数据的 debug 日志 |
-| 前端资产策略 | 是否允许浏览器访问公共 CDN，是否要求自托管 | **已采用隐私优先实现（2026-07-28）**：固定版本并随应用自托管，不再产生公共 CDN 请求 |
-| 多用户隔离 | 是否需要按查看者限制数据范围 | 当前 API 视为无隔离 |
+Listening records are retained permanently by default. The settings page can change retention to 1–360 days and provides preview and confirmation steps before deletion.
 
-人工结论应写入部署方控制的安全文档或秘密管理系统。若必须在本仓库记录，只能记录非敏感决策，不记录地址、账户或凭据值。
+Per-user controls support JSON export, import, and deletion. Exports contain listening activity and should be handled as sensitive files. Deleting data from the application database does not remove copies already present in backups or external storage.
 
-## 5. 建议验证清单
+SQLite uses write-ahead logging. The database file, `-wal` and `-shm` files, volume snapshots, and backups can all contain the same sensitive data. Stop the application before taking a simple file-level backup, as shown in the README.
 
-实施隐私或安全任务时至少验证：
+## Browser and network behavior
 
-1. API 未授权访问是否符合用户确认的边界。
-2. 代理、应用和上游日志是否避免记录认证查询参数及播放明细。
-3. 数据库、备份和挂载目录的权限是否符合部署要求。
-4. 保留和删除流程是否可重复执行，并有备份与回滚证据。
-5. 页面是否安全渲染异常用户名和媒体元数据。
-6. 构建产物是否包含固定版本的本地前端资产，CSP 是否未重新放开公共 CDN。
-7. 错误响应、日志和测试产物是否不包含真实敏感值。
-8. 即将提交的 diff、issue 与 PR 描述是否不含真实主机、凭据、邮箱或播放明细。
+Language, theme, timezone, and reduced-motion preferences are stored in browser `localStorage`. They do not include listening history or Navidrome credentials. The selected timezone is sent with statistics requests to calculate local date and hour buckets.
 
-对应实施工作见 [`tasks.md`](tasks.md)。隐私相关任务在人工确认未完成时只能标记为“阻塞”或“待验收”，不得标记“已完成”。部署方可复制 [`privacy-notice.template.md`](privacy-notice.template.md) 自行编辑，不得由 AI 代填法规或机构名。
+Frontend assets are served by the application. Normal dashboard use does not load JavaScript or CSS from a public CDN, and the project does not include usage analytics or telemetry.
+
+Without `STATS_API_TOKEN`, dashboard data and APIs are available to anyone who can reach the service. The application does not provide TLS; use a trusted network or an HTTPS reverse proxy with appropriate access control.
+
+## Operator checklist
+
+- Tell affected users what listening activity is collected and why.
+- Set `STATS_API_TOKEN` or equivalent proxy authentication when access is not limited to a trusted network.
+- Restrict access to `.env`, SQLite files, Docker volumes, exports, and backups.
+- Review proxy and Navidrome logs for authentication query parameters.
+- Choose a retention period and backup policy appropriate for the deployment.
+- Use synthetic or redacted data in issues, logs, screenshots, and test fixtures.

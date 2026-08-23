@@ -33,7 +33,7 @@ def declared_content_length_exceeds(
 
 
 async def read_http_body_limited(receive: Receive, max_bytes: int) -> bytes | None:
-    """Assemble an HTTP body, draining and returning None if it exceeds ``max_bytes``."""
+    """Assemble an HTTP body, returning immediately when it exceeds the limit."""
     chunks: list[bytes] = []
     total = 0
     while True:
@@ -47,14 +47,6 @@ async def read_http_body_limited(receive: Receive, max_bytes: int) -> bytes | No
         more = bool(message.get("more_body", False))
         total += len(body)
         if total > max_bytes:
-            while more:
-                extra = await receive()
-                extra_type = extra.get("type")
-                if extra_type == "http.disconnect":
-                    break
-                if extra_type != "http.request":
-                    continue
-                more = bool(extra.get("more_body", False))
             return None
         if body:
             chunks.append(body)

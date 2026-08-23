@@ -430,6 +430,8 @@ def _validate_import_record(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_import_attempt(record: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(record, dict):
+        raise ValueError("Import attempts must be objects")
     validated = _validate_import_record({
         **record,
         "listen_duration_sec": record.get("duration_sec", 0),

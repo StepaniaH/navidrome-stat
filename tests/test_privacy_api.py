@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -102,8 +103,7 @@ async def test_export_filename_does_not_embed_username(isolated_db):
 
 
 @pytest.mark.asyncio
-async def test_import_rejects_oversized_content_length_before_parsing(isolated_db):
-    await init_db(isolated_db)
+async def test_import_rejects_oversized_content_length_before_parsing():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.post(
             "/api/privacy/users/synthetic-user/import",
@@ -116,8 +116,7 @@ async def test_import_rejects_oversized_content_length_before_parsing(isolated_d
 
 
 @pytest.mark.asyncio
-async def test_import_rejects_invalid_content_length_header(isolated_db):
-    await init_db(isolated_db)
+async def test_import_rejects_invalid_content_length_header():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.post(
             "/api/privacy/users/synthetic-user/import",
@@ -126,3 +125,55 @@ async def test_import_rejects_invalid_content_length_header(isolated_db):
         )
     assert response.status_code == 413
     assert response.json() == {"detail": "Import payload is too large"}
+
+
+@pytest.mark.asyncio
+async def test_empty_replace_import_invalidates_dashboard_cache(monkeypatch):
+    import src.main as main
+
+    import_user = AsyncMock(return_value={"imported": 0, "attempts_imported": 0})
+    invalidate = AsyncMock()
+    monkeypatch.setattr(main, "import_user_data", import_user)
+    monkeypatch.setattr(main.dashboard_snapshot_cache, "invalidate", invalidate)
+    request_body = {
+        "payload": {
+            "format_version": 2,
+            "username": "synthetic-user",
+            "records": [],
+            "attempts": [],
+        },
+        "merge": False,
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/privacy/users/synthetic-user/import",
+            json=request_body,
+        )
+
+    assert response.status_code == 200
+    import_user.assert_awaited_once_with(
+        "synthetic-user",
+        request_body["payload"],
+        merge=False,
+    )
+    invalidate.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_import_rejects_non_object_attempt_as_validation_error():
+    payload = {
+        "format_version": 2,
+        "username": "synthetic-user",
+        "records": [],
+        "attempts": ["not-an-object"],
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/privacy/users/synthetic-user/import",
+            json={"payload": payload, "merge": True},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Import attempts must be objects"}

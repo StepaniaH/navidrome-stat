@@ -26,6 +26,31 @@ async def test_stats_require_token_when_auth_enabled(mock_get_stats):
             response = await ac.get("/api/stats/players")
     assert response.status_code == 401
     assert response.json()["detail"] == "Unauthorized"
+    assert response.headers.get("x-content-type-options") == "nosniff"
+    assert response.headers.get("x-frame-options") == "DENY"
+    assert "content-security-policy" in response.headers
+
+
+@pytest.mark.asyncio
+async def test_unauthorized_privacy_import_does_not_read_request_body():
+    body_reads = 0
+
+    async def body_iter():
+        nonlocal body_reads
+        body_reads += 1
+        yield b'{"payload":{}}'
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+            response = await ac.post(
+                "/api/privacy/users/synthetic-user/import",
+                content=body_iter(),
+                headers={"content-type": "application/json"},
+            )
+
+    assert response.status_code == 401
+    assert body_reads == 0
+    assert response.headers.get("x-content-type-options") == "nosniff"
 
 
 @pytest.mark.asyncio

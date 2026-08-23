@@ -48,7 +48,7 @@ def _presented_bearer_token(request: Request) -> Optional[str]:
 
 
 def session_cookie_params() -> dict:
-    """Attributes that must match between Set-Cookie and deletion."""
+    """Return attributes shared by cookie creation and deletion."""
     return {
         "path": "/",
         "httponly": True,
@@ -103,7 +103,7 @@ def secure_session_cookie_enabled() -> bool:
 
 
 class LoginRateLimiter:
-    """Small process-local limiter that never stores raw client addresses."""
+    """Process-local limiter keyed by HMAC-derived client identifiers."""
 
     def __init__(self, max_attempts: int = 5, window_sec: int = 60):
         self.max_attempts = max_attempts

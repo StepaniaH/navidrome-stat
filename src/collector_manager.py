@@ -102,33 +102,36 @@ class CollectorManager:
         if collector is None:
             self._sync_runtime_state()
             return
-        finalize_error = None
-        try:
-            await collector.tracker.finalize_all()
-        except Exception as exc:
-            finalize_error = exc
+        errors: list[Exception] = []
         collector.task.cancel()
         try:
-            await collector.task
-        except asyncio.CancelledError:
-            pass
-        try:
-            await collector.client.close()
+            try:
+                await collector.task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                errors.append(exc)
+            try:
+                await collector.tracker.finalize_all()
+            except Exception as exc:
+                errors.append(exc)
         finally:
-            if collector.tracker in self._tracker_registry:
-                self._tracker_registry.remove(collector.tracker)
-            self._sync_runtime_state()
-        if finalize_error is not None:
-            raise CollectorCleanupError(
-                "Failed to finalize collector sessions (1 error)"
-            )
+            try:
+                await collector.client.close()
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                if collector.tracker in self._tracker_registry:
+                    self._tracker_registry.remove(collector.tracker)
+                self._sync_runtime_state()
+        self._raise_errors(errors, "clean up collector")
 
     async def _stop_for_replace(self, server_id: str) -> None:
         """Tear down a collector without aborting the replacement that follows."""
         try:
             await self._stop_unlocked(server_id)
         except CollectorCleanupError:
-            logger.error("Collector session finalization failed during replace")
+            logger.error("Collector cleanup failed during replace")
 
     async def start(self, server: dict) -> None:
         async with self._lock:

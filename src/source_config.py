@@ -1,18 +1,7 @@
-"""Navidrome source configuration persistence and resolution.
+"""Persist and resolve Navidrome source configuration.
 
-Configuration precedence (highest first):
-  1. Non-empty values supplied by an API request (e.g. the /api/source/test
-     "test these values" payload).
-  2. Environment variables (NAVIDROME_URL / NAVIDROME_USER / NAVIDROME_PASS).
-  3. Saved values stored in the local SQLite `schema_meta` table.
-
-The password is treated as sensitive: it is persisted locally so the GUI can
-be a fallback when the corresponding env var is absent, but it is never
-returned by GET endpoints and never logged here. Local SQLite storage is an
-accepted tradeoff for self-hosted software; deployers must protect the
-database file with filesystem access controls.
-
-This module must not import from `src.main` to avoid circular imports.
+Non-empty request values override environment variables, which override saved
+SQLite values. Saved passwords are never returned by GET endpoints or logged.
 """
 
 from __future__ import annotations

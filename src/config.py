@@ -1,9 +1,4 @@
-"""Safe environment-variable parsing for numeric runtime configuration.
-
-These helpers centralise clamping/validation so module-level imports in
-``src.main`` and ``src.sessions`` cannot crash on user-supplied env values.
-They never read secrets and only return deterministic ints.
-"""
+"""Parse bounded runtime values from environment variables."""
 
 from __future__ import annotations
 
@@ -18,11 +13,7 @@ def parse_clamped_int(
     min_value: int,
     max_value: int,
 ) -> int:
-    """Parse ``raw`` to int with safe bounds.
-
-    Non-numeric / missing values fall back to ``default``. Numeric values
-    outside ``[min_value, max_value]`` are clamped to the nearest bound.
-    """
+    """Parse an integer, using the default for invalid input and clamping bounds."""
     if raw is None:
         return default
     try:
@@ -47,12 +38,7 @@ def env_int(name: str, *, default: int, min_value: int, max_value: int) -> int:
 
 
 def env_flag(name: str, *, default: bool = False) -> bool:
-    """Read a boolean environment flag.
-
-    Missing or blank values use ``default``. Truthy values are
-    ``1`` / ``true`` / ``yes`` / ``on`` (case-insensitive). Any other
-    non-empty value is false. The raw value is never logged.
-    """
+    """Read a flag accepting 1, true, yes, or on; blank values use the default."""
     raw = os.getenv(name)
     if raw is None or str(raw).strip() == "":
         return default

@@ -19,12 +19,9 @@ def _path(db_path: str | None = None) -> str:
 
 
 def resolve_timezone(timezone_name: str | None) -> ZoneInfo:
-    """Resolve a user-supplied timezone name to a ``ZoneInfo`` instance.
+    """Resolve an IANA timezone name, normalizing unknown names to ``ValueError``.
 
-    Raises ``ValueError`` on unknown names (``zoneinfo.ZoneInfoNotFoundError``
-    is a ``KeyError`` subclass, so it is normalized to ``ValueError`` here;
-    callers translate this to HTTP 422). Never accept arbitrary SQL fragments
-    here; the value is only used for Python date math.
+    The name is used only for Python date arithmetic, never SQL construction.
     """
     try:
         return ZoneInfo(timezone_name or TIMEZONE_DEFAULT)
@@ -33,23 +30,18 @@ def resolve_timezone(timezone_name: str | None) -> ZoneInfo:
 
 
 def _format_utc(dt: datetime) -> str:
-    """Format a timezone-aware datetime as a UTC ``YYYY-MM-DD HH:MM:SS`` string.
+    """Format an aware datetime for SQLite instant comparisons.
 
-    SQLite ``datetime()`` normalizes ISO 8601 ``played_at`` strings (including
-    ``...T...Z``) to UTC. Returning the bound in the same canonical form keeps
-    comparisons by real time, independent of byte order or local timezone.
+    SQLite ``datetime()`` normalizes stored ISO 8601 timestamps to this UTC form.
     """
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _window_bounds(days: int, tz: ZoneInfo) -> tuple[str | None, str | None]:
-    """Return UTC cutoff strings for ``[today-(days-1), today+1)`` in ``tz``.
+    """Return UTC bounds for ``[today-(days-1), tomorrow)`` in ``tz``.
 
-    ``days <= 0`` returns ``(None, None)`` (all history, no filter). The upper
-    bound is exclusive (start of tomorrow) so the window covers every play on
-    today's local date. Both bounds are computed as timezone-aware datetimes
-    in ``tz`` and converted to UTC before formatting; SQLite never sees the
-    user timezone name and never relies on its local time mode.
+    Local-calendar arithmetic happens before UTC conversion, preserving DST
+    transitions. ``days <= 0`` returns unbounded values.
     """
     if days <= 0:
         return (None, None)
@@ -72,13 +64,9 @@ def _date_window_bounds(
 
 
 def _previous_window_bounds(days: int, tz: ZoneInfo) -> tuple[str | None, str | None]:
-    """Return UTC cutoff strings for the previous equal-length local window.
+    """Return UTC bounds for the preceding equal-length local-calendar window.
 
-    Only meaningful for finite windows (``days > 0``); returns ``(None, None)``
-    otherwise. The previous window is the ``days`` local calendar days
-    immediately before the current window's first local date, matching custom
-    date-range comparison. Subtracting the current window's UTC timedelta
-    would shift the bound by ±1 hour across DST transitions.
+    Local-date arithmetic avoids a one-hour shift across DST transitions.
     """
     if days <= 0:
         return (None, None)
@@ -95,18 +83,10 @@ def _window_predicate(
     start_date: date | None = None,
     end_date: date | None = None,
 ) -> tuple[str, list]:
-    """Return a parameterized SQL predicate selecting rows inside the window.
+    """Return a parameterized predicate and UTC bounds for a local window.
 
-    ``days <= 0`` means all history (no filter); the returned predicate is
-    ``"1=1"`` so it can be safely AND-ed into an existing WHERE clause when
-    more conditions are needed. For ``days > 0`` the predicate compares
-    SQLite-normalized ``datetime(played_at)`` against two UTC cutoff strings
-    computed from the requested timezone, so date/hour bucket boundaries
-    follow the user's local calendar rather than SQLite's local time mode.
-    ``timezone_name`` is validated via ``ZoneInfo`` before being used and is
-    never string-interpolated into SQL.
-
-    The returned tuple is ``(predicate, params)``.
+    All history uses ``("1=1", [])``. Timezone names are validated and never
+    interpolated into SQL.
     """
     if start_date is not None and end_date is not None:
         start, end = _date_window_bounds(
@@ -130,12 +110,9 @@ def _previous_window_predicate(
     start_date: date | None = None,
     end_date: date | None = None,
 ) -> tuple[str, list]:
-    """Return a parameterized SQL predicate for the previous equal-length window.
+    """Return a predicate for the previous equal-length local window.
 
-    Only meaningful for finite windows (``days > 0``); for ``days <= 0`` returns
-    ``("1=0", [])`` to select nothing (caller must skip comparisons for all
-    history). Bounds are computed in the requested timezone (see
-    ``_previous_window_bounds``).
+    All history selects no rows; local-date bounds preserve DST semantics.
     """
     if start_date is not None and end_date is not None:
         tz = resolve_timezone(timezone_name)
@@ -360,7 +337,7 @@ async def _set_meta_value(db: aiosqlite.Connection, key: str, value: str) -> Non
 
 
 async def init_db(db_path: str | None = None):
-    """Initializes the database and creates the play_history table."""
+    """Initialize the schema and recover durable playback checkpoints."""
     path = _path(db_path)
     async with connect_db(path, initialize=True) as db:
         await db.execute("""
@@ -397,7 +374,7 @@ async def _recover_incomplete_sessions(db: aiosqlite.Connection) -> int:
 
 
 async def recover_incomplete_sessions(db_path: str | None = None) -> int:
-    """Public maintenance hook used by tests and operational tooling."""
+    """Finalize durable checkpoints left by an interrupted process."""
 
     path = _path(db_path)
     async with connect_db(path) as db:
@@ -407,11 +384,9 @@ async def recover_incomplete_sessions(db_path: str | None = None) -> int:
 
 
 async def save_play_session(session: dict, db_path: str | None = None):
-    """Insert or update one playback session by its privacy-safe random ID.
+    """Upsert a playback session by ID, or append when the ID is absent.
 
-    Older/imported callers may omit ``session_id`` and retain append-only
-    behavior. Poller sessions always provide an ID, allowing the threshold
-    checkpoint and final duration update to be retried without duplicate rows.
+    Checkpoint retries and final updates reuse the ID to avoid duplicate rows.
     """
     path = _path(db_path)
     async with connect_db(path) as db:
@@ -536,7 +511,7 @@ async def get_short_play_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFA
 async def get_source_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
                            db_path: str | None = None,
                            source_id: str | None = None):
-    """Return formal play counts grouped by provenance source."""
+    """Return play counts grouped by provenance."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
     pred, params = _source_predicate(pred, params, source_id)
@@ -557,7 +532,7 @@ async def get_server_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
                            source_id: str | None = None, db_path: str | None = None,
                            start_date: date | None = None,
                            end_date: date | None = None):
-    """Return formal play counts grouped by configured server identity."""
+    """Return play counts grouped by configured server."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     where, params = _source_predicate(pred, params, source_id, column="ph.source_id")
@@ -622,19 +597,10 @@ async def get_player_stats(
     start_date: date | None = None,
     end_date: date | None = None,
 ):
-    """Returns the distribution of client usage based on play counts.
+    """Return client play and listening aggregates for the selected window.
 
-    Each row is ``{client_name, count, total_listen_sec, average_listen_sec,
-    transcoded_count, transcoding_rate_pct}``. ``client_name`` and ``count``
-    preserve the historical contract; the additional fields are sourced from
-    ``listen_duration_sec`` and ``is_transcoding`` already stored on each row
-    (no schema change). Ordering is ``count DESC, client_name ASC`` so empty
-    and ``null`` client names sort deterministically above any non-empty name.
-
-    ``days <= 0`` selects all history; ``days > 0`` selects records with
-    ``played_at`` within the window bounds (UTC) derived from the requested
-    timezone's local calendar. The timezone value is validated via
-    ``ZoneInfo`` and never string-interpolated into SQL.
+    Results sort by play count and client name. Window bounds follow the
+    requested local calendar; timezone names are never interpolated into SQL.
     """
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
@@ -685,19 +651,9 @@ async def get_transcoding_stats(
     start_date: date | None = None,
     end_date: date | None = None,
 ):
-    """Returns the ratio of transcoded vs direct play counts plus listen time.
+    """Return play and listen-time aggregates by transcoding mode.
 
-    Each row is ``{is_transcoding, count, total_listen_sec, plays_pct,
-    listen_sec_pct}``. ``is_transcoding`` and ``count`` preserve the historical
-    contract. ``total_listen_sec`` is the sum of ``listen_duration_sec`` for
-    rows in this mode; ``plays_pct`` is the share of plays in this mode and
-    ``listen_sec_pct`` is the share of listen time. Both percentages are
-    rounded to 2 decimals and ``0`` when the respective denominator is zero.
-
-    ``days <= 0`` selects all history; ``days > 0`` selects the last ``days``
-    using UTC bounds derived from the requested timezone's local calendar.
-    The timezone value is validated via ``ZoneInfo`` and never
-    string-interpolated into SQL.
+    Percentages are rounded to two decimals and use zero for empty totals.
     """
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
@@ -741,7 +697,7 @@ async def get_transcoding_stats(
 
 
 async def ping_db(db_path: str | None = None) -> bool:
-    """Returns True when the SQLite database is reachable."""
+    """Return whether the SQLite database is reachable."""
     path = _path(db_path)
     try:
         async with connect_db(path) as db:
@@ -760,25 +716,11 @@ async def get_summary(
     start_date: date | None = None,
     end_date: date | None = None,
 ):
-    """Returns aggregate listening statistics for the selected window.
+    """Return listening aggregates and previous-window comparisons.
 
-    ``days <= 0`` selects all history; ``days > 0`` selects the last ``days``.
-
-    Comparison metrics compare the current window against the previous
-    equal-length window:
-
-    * ``active_days`` - count of distinct dates with at least one play in the
-      current window.
-    * ``average_daily_plays`` / ``average_daily_listen_sec`` - for finite
-      windows, divided by ``active_days``; for ``days=0`` (all history),
-      divided by the inclusive span from the minimum to the maximum played
-      date (or ``null`` if there are no records). ``0`` when ``active_days``
-      is zero.
-    * ``previous_total_plays`` / ``previous_total_listen_sec`` - aggregates
-      over the previous equal-length window (``null`` for all history).
-    * ``plays_change_pct`` / ``listen_change_pct`` - percentage change versus
-      the previous window; ``null`` when the previous value is zero or the
-      comparison is not applicable (``days <= 0``).
+    Finite-window daily averages divide by active days; all-history averages
+    divide by the inclusive date span. All history omits comparisons, and
+    percentage changes are null when the previous total is zero.
     """
     path = _path(db_path)
     tz = resolve_timezone(timezone_name)
@@ -915,18 +857,10 @@ async def get_hourly_stats(
     db_path: str | None = None,
     source_id: str | None = None,
 ):
-    """Returns play counts grouped by local hour of day (0-23).
+    """Return non-empty local-hour buckets in ascending order.
 
-    Hours are taken in the requested timezone, not the stored UTC value; this
-    matches the heatmap and daily semantics where timezone controls bucket
-    boundaries. Only hours present in the data are returned (no zero-fill),
-    ordered by hour ascending, preserving the historical shape of the
-    endpoint. ``days <= 0`` selects all history; ``days > 0`` selects a finite
-    window whose UTC bounds are derived from the requested timezone's local
-    calendar.
-
-    The user timezone value is never string-interpolated into SQL and is
-    validated via ``ZoneInfo``.
+    Stored timestamps remain UTC; timezone conversion controls window and
+    bucket boundaries.
     """
     buckets = await get_time_bucket_stats(
         days=days,
@@ -960,11 +894,7 @@ def _played_at_to_local_datetime(
 
 
 def _played_at_to_local_date(played_at: str, tz: ZoneInfo) -> date | None:
-    """Convert a stored UTC ``played_at`` ISO string to a local ``date`` in ``tz``.
-
-    Returns ``None`` when the value cannot be parsed. Stored timestamps remain
-    UTC; the timezone only controls date/hour/weekday bucket boundaries here.
-    """
+    """Return the local date for a stored UTC timestamp, or None if invalid."""
     local = _played_at_to_local_datetime(played_at, tz)
     return local.date() if local is not None else None
 
@@ -975,11 +905,7 @@ def _local_date_range(
     start_date: date | None = None,
     end_date: date | None = None,
 ) -> tuple[date | None, date | None]:
-    """Return ``(start_date, end_date)`` for finite windows, both local in ``tz``.
-
-    For ``days <= 0`` returns ``(None, None)``; the caller derives the all-history
-    range from the database itself.
-    """
+    """Return the requested or derived finite local-date range."""
     if start_date is not None and end_date is not None:
         return (start_date, end_date)
     if days <= 0:
@@ -1062,17 +988,10 @@ async def get_daily_stats(
     db_path: str | None = None,
     source_id: str | None = None,
 ):
-    """Returns play counts per local day, ordered by date ASC, zero-filled.
+    """Return zero-filled local-date buckets in ascending order.
 
-    * ``days > 0``: every calendar date in ``[today-(days-1), today]`` in the
-      requested timezone is included with at least count 0, ordered ascending.
-    * ``days <= 0`` (all history): every date from the earliest local played
-      date to the latest local played date is included, zero-filled. An empty
-      table returns ``[]``.
-
-    Stored ``played_at`` timestamps remain UTC; only bucket boundaries shift
-    with the timezone. The user timezone value is never string-interpolated
-    into SQL and is validated via ``ZoneInfo``.
+    Finite windows cover every requested date; all history spans the earliest
+    through latest play. Bucketing converts stored UTC timestamps to local time.
     """
     buckets = await get_time_bucket_stats(
         days=days,
@@ -1094,18 +1013,10 @@ async def get_weekday_hour_stats(
     db_path: str | None = None,
     source_id: str | None = None,
 ):
-    """Returns play counts for every weekday x hour cell (7 x 24 = 168 rows).
+    """Return a zero-filled 7 by 24 local weekday/hour grid.
 
-    Each row is ``{"weekday": 0..6, "hour": 0..23, "count": int}``. The grid is
-    fully zero-filled so consumers can render a complete heatmap regardless of
-    data presence. Weekday convention follows Python's ``date.weekday()``: 0 =
-    Monday ... 6 = Sunday. Stored timestamps remain UTC; the timezone only
-    controls bucket boundaries (weekday and hour are taken in the requested
-    timezone). All-history (``days <= 0``) aggregates every row; finite windows
-    filter by UTC bounds derived from the timezone's local calendar.
-
-    The user timezone value is never string-interpolated into SQL and is
-    validated via ``ZoneInfo``.
+    Weekdays follow ``date.weekday()`` (Monday=0); stored UTC timestamps are
+    converted to the requested timezone before bucketing.
     """
     buckets = await get_time_bucket_stats(
         days=days,
@@ -1126,25 +1037,10 @@ async def get_top_artists(
     start_date: date | None = None,
     end_date: date | None = None,
 ):
-    """Returns top artists ranked by ``metric`` over the selected window.
+    """Return artists ranked by plays or listen time for the selected window.
 
-    Each row is ``{artist, count, total_listen_sec, value}``:
-
-    * ``count`` is the play count (rows in the window for this artist) and
-      preserves the historical contract;
-    * ``total_listen_sec`` is the sum of ``listen_duration_sec`` for this
-      artist, used to render a secondary "12 次 · 3h 42m" line;
-    * ``value`` is ``count`` for ``metric="plays"`` and ``total_listen_sec``
-      for ``metric="listen_time"`` so the frontend can compute bar widths
-      from a single field.
-
-    Ordering is deterministic: ``value DESC, artist ASC``. Empty and ``null``
-    artists are excluded (matches the historical contract).
-
-    ``days <= 0`` selects all history; ``days > 0`` selects the last ``days``
-    using UTC bounds derived from the requested timezone's local calendar.
-    The timezone and metric values are validated by ``src.main`` before being
-    passed here and are never string-interpolated into SQL.
+    ``value`` contains the selected metric; ties sort by artist name. Metric
+    values map to fixed SQL expressions and timezone bounds stay parameterized.
     """
     return await _get_top_entity(
         entity_column="artist",
@@ -1169,11 +1065,7 @@ async def get_top_albums(
     start_date: date | None = None,
     end_date: date | None = None,
 ):
-    """Returns top albums ranked by ``metric`` over the selected window.
-
-    Same contract as ``get_top_artists`` with ``album`` in place of
-    ``artist``; empty and ``null`` albums are excluded.
-    """
+    """Return albums ranked by plays or listen time for the selected window."""
     return await _get_top_entity(
         entity_column="album",
         limit=limit,
@@ -1199,15 +1091,9 @@ async def _get_top_entity(
     end_date: date | None,
 ):
     if metric not in ("plays", "listen_time"):
-        # Defensive: callers should validate; reject defensively rather than
-        # silently fall back to a different ranking.
         raise ValueError(f"unknown ranking metric: {metric!r}")
 
-    # ``value`` mirrors the selected metric so the frontend can render bar
-    # widths without branching. The expression is repeated (rather than
-    # reusing the ``count``/``total_listen_sec`` aliases) because SQLite does
-    # not allow SELECT-list aliases to be referenced in other SELECT-list
-    # expressions. ``ORDER BY value`` does resolve the alias.
+    # SQLite cannot reuse a SELECT alias elsewhere in the same SELECT list.
     if metric == "plays":
         value_expr = "COUNT(*)"
     else:
@@ -1252,13 +1138,7 @@ async def get_playback_history(
     start_date: date | None = None,
     end_date: date | None = None,
 ):
-    """Returns recent tracks with aggregated play counts.
-
-    ``days <= 0`` selects all history; ``days > 0`` selects the last ``days``
-    using UTC bounds derived from the requested timezone's local calendar.
-    The timezone value is validated via ``ZoneInfo`` and never
-    string-interpolated into SQL.
-    """
+    """Return recent tracks with aggregated play counts for the selected window."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)

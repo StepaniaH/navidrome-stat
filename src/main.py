@@ -124,7 +124,7 @@ from src.schemas import (
     UserSummary,
     WeekdayHourStat,
 )
-from src.sessions import PlaybackSessionTracker
+from src.sessions import PlaybackPersistenceError, PlaybackSessionTracker
 from src.source_config import (
     get_saved_source_config,
     has_full_config,
@@ -239,7 +239,7 @@ def _active_sessions() -> list[dict]:
 
 
 async def finalize_session(player_id: str):
-    """Calculates session duration and saves to DB if threshold is met."""
+    """Finalize one legacy-source playback session."""
     await session_tracker.finalize_session(player_id)
 
 
@@ -288,7 +288,7 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
                 entries = NavidromeClient.now_playing_entries(data)
                 try:
                     await tracker.process_poll(entries, current_time)
-                except Exception as exc:
+                except PlaybackPersistenceError as exc:
                     logger.error(
                         "Play persistence failed after successful poll (type=%s)",
                         _exception_kind(exc),
@@ -326,7 +326,7 @@ def _tracker_for_server(server: dict) -> PlaybackSessionTracker:
 
 
 class CollectorManager(BaseCollectorManager):
-    """Application-configured collector manager; kept import-compatible."""
+    """Collector manager bound to the application factories and runtime state."""
 
     def __init__(self, client_factory, poller, tracker_registry: list):
         super().__init__(
@@ -485,13 +485,7 @@ async def _reconcile_collectors() -> None:
 
 
 def _validate_stats_days(days: int) -> int:
-    """Validate the unified ``days`` window query parameter.
-
-    Allowed values are ``STATS_DAYS_ALL`` (0, all history) and finite windows
-    in ``[STATS_DAYS_MIN, STATS_DAYS_MAX]`` (7..90). Any other value produces
-    HTTP 422. The endpoint-level ``Query`` already enforces ``ge=0, le=90`` so
-    this function focuses on the finite bound gap (1..6).
-    """
+    """Accept all history or a supported finite statistics window."""
     if days == STATS_DAYS_ALL:
         return STATS_DAYS_ALL
     if STATS_DAYS_MIN <= days <= STATS_DAYS_MAX:
@@ -504,13 +498,7 @@ def _validate_stats_days(days: int) -> int:
 
 
 def _validate_stats_timezone(timezone_name: str) -> str:
-    """Validate the optional ``timezone`` query parameter.
-
-    Resolved against Python stdlib ``zoneinfo.ZoneInfo`` (no new dependency).
-    Invalid names raise HTTP 422. The validated value is only used for Python
-    date/hour/weekday bucket math and UTC cutoff computation in ``database.py``;
-    it is never string-interpolated into SQL.
-    """
+    """Validate an IANA timezone name."""
     try:
         resolve_timezone(timezone_name)
     except ValueError:
@@ -519,13 +507,7 @@ def _validate_stats_timezone(timezone_name: str) -> str:
 
 
 def _validate_ranking_metric(metric: str) -> str:
-    """Validate the ranking ``metric`` query parameter for top artists/albums.
-
-    Accepted values are defined by ``src.schemas.RANKING_METRICS``. Any other
-    value produces HTTP 422 via FastAPI's request validation surface (the
-    check happens here so the error body is uniform with the other stats
-    validation errors).
-    """
+    """Validate a ranking metric shared by artist and album endpoints."""
     if metric not in RANKING_METRICS:
         raise HTTPException(status_code=422, detail=RANKING_METRIC_VALIDATION_ERROR)
     return metric
@@ -607,10 +589,13 @@ def _with_security_headers(response: Response) -> Response:
     return response
 
 
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    response = await call_next(request)
-    return _with_security_headers(response)
+# Starlette prepends middleware, so auth and security declared below run before
+# the body limiter. Unauthorized imports therefore never consume the payload.
+app.add_middleware(
+    PrivacyImportBodyLimitMiddleware,
+    max_bytes=IMPORT_MAX_PAYLOAD_BYTES,
+    apply_headers=_with_security_headers,
+)
 
 
 @app.middleware("http")
@@ -632,11 +617,10 @@ async def stats_auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-app.add_middleware(
-    PrivacyImportBodyLimitMiddleware,
-    max_bytes=IMPORT_MAX_PAYLOAD_BYTES,
-    apply_headers=_with_security_headers,
-)
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    return _with_security_headers(response)
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(STATIC_DIR):
@@ -872,16 +856,7 @@ async def api_summary_stats(
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
-    """Endpoint for aggregate listening statistics over the selected window.
-
-    ``days=0`` (default) means all history; ``days=7..90`` selects a finite
-    rolling window with current-vs-previous comparison metrics. See
-    ``src.database.get_summary`` for the exact semantics.
-
-    ``timezone`` (optional, default ``UTC``) is validated against
-    ``zoneinfo.ZoneInfo`` and controls date bucket boundaries and finite-window
-    UTC cutoffs only; timestamps remain stored as UTC ISO strings.
-    """
+    """Return aggregate listening totals and period comparisons."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
@@ -973,9 +948,7 @@ async def api_hourly_stats(
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
-    """Endpoint for play counts grouped by local hour of day (0-23) over the
-    selected window. Hours are taken in the requested timezone (default UTC).
-    """
+    """Return play counts grouped by local hour."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
@@ -991,15 +964,7 @@ async def api_weekday_hour_stats(
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
-    """Endpoint for the 7x24 weekday x hour heatmap over the selected window.
-
-    Returns every cell (168 rows) of ``{weekday: 0..6, hour: 0..23, count: int}``,
-    zero-filled. Weekday convention is Python's ``date.weekday()``: 0=Monday
-    ... 6=Sunday. Hours are taken in the requested timezone (default ``UTC``).
-    Default window is ``STATS_DAYS_DEFAULT`` (30 days); ``days=0`` selects all
-    history. Finite windows must be ``0`` or ``7..90`` (1..6 returns 422 as on
-    the other historical endpoints).
-    """
+    """Return a zero-filled 7-by-24 local-time listening heatmap."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
@@ -1019,15 +984,7 @@ async def api_daily_stats(
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
-    """Endpoint for play counts per local day over the last ``days`` days.
-
-    Backward compatible default is 30 days; ``days=0`` selects all history.
-    Finite windows must be 7-90 (daily does not allow intermediate values).
-    Every calendar date in the window (or all-history span) is included with
-    at least count 0, ordered ascending. Date bucket boundaries use the
-    requested timezone (default ``UTC``); timestamps are stored as UTC ISO
-    strings.
-    """
+    """Return zero-filled play counts grouped by local calendar day."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
@@ -1049,16 +1006,7 @@ async def api_top_artists(
     metric: str = Query(default=RANKING_METRIC_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
-    """Endpoint for top artists ranked by ``metric`` over the selected window.
-
-    ``metric=plays`` (default) preserves the historical ``count DESC``
-    ordering; ``metric=listen_time`` ranks by ``total_listen_sec``. Both
-    responses keep ``count`` for backward compatibility and add
-    ``total_listen_sec`` plus ``value`` (the active ranking key). Invalid
-    metric values return 422. ``days``/``timezone`` filtering matches the
-    other historical endpoints; timezone is not needed for totals but is
-    accepted to keep the API contract consistent.
-    """
+    """Return top artists ranked by plays or listening time."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     m = _validate_ranking_metric(metric)
@@ -1085,11 +1033,7 @@ async def api_top_albums(
     metric: str = Query(default=RANKING_METRIC_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
 ):
-    """Endpoint for top albums ranked by ``metric`` over the selected window.
-
-    Same contract as ``/api/stats/top-artists`` with ``album`` in place of
-    ``artist``.
-    """
+    """Return top albums ranked by plays or listening time."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     m = _validate_ranking_metric(metric)
@@ -1251,7 +1195,7 @@ async def api_import_user(username: str, body: UserImportRequest):
             body.payload,
             merge=body.merge,
         )
-        if result["imported"] or result.get("attempts_imported", 0):
+        if not body.merge or result["imported"] or result.get("attempts_imported", 0):
             await dashboard_snapshot_cache.invalidate()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1290,10 +1234,7 @@ async def api_delete_user(username: str, body: ConfirmRequest):
 
 @app.get("/api/source/config", response_model=SourceConfigResponse)
 async def api_source_config_get():
-    """Return non-sensitive view of the effective source config (env > saved).
-
-    Never returns the password; only reports whether one is configured.
-    """
+    """Return the effective source configuration without its password."""
     saved = await get_saved_source_config()
     config = resolve_source_config(overrides=None, saved=saved)
     view = redacted_view(config)
@@ -1302,11 +1243,7 @@ async def api_source_config_get():
 
 @app.put("/api/source/config", response_model=SourceConfigResponse)
 async def api_source_config_put(body: SourceConfigUpdate):
-    """Persist GUI fallback source config. Env vars keep priority at runtime.
-
-    The password only changes when a non-empty value is supplied; the request
-    value is never echoed back. URLs are validated to http/https.
-    """
+    """Save fallback source settings; environment variables retain priority."""
     if body.url is not None:
         try:
             body.url = validate_source_url(body.url)
@@ -1340,11 +1277,7 @@ async def api_source_config_put(body: SourceConfigUpdate):
 
 @app.post("/api/source/test", response_model=SourceTestResponse)
 async def api_source_test(body: SourceTestRequest):
-    """Test connectivity with supplied/current settings without persisting.
-
-    Returns only generic success/failure; never echoes upstream responses,
-    credentials, or passwords.
-    """
+    """Test source connectivity without persisting or echoing credentials."""
     saved = await get_saved_source_config()
     overrides = {
         "url": body.url,

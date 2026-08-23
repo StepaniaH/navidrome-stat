@@ -1,25 +1,4 @@
-"""Tests for the Phase 2 timezone-aware listening heatmap.
-
-All timestamps are synthetic and pinned to UTC instants around midnight or
-close to DST transitions to exercise timezone bucket boundaries without any
-dependence on real playback data. Cases covered:
-
-* ``get_weekday_hour_stats`` always returns exactly 168 zero-filled cells
-  (7 weekdays x 24 hours); empty database still returns the full grid.
-* UTC midnight timestamps bucket into the correct UTC weekday/hour.
-* Asia/Shanghai (UTC+08:00) boundary: a play at ``23:30Z`` lands on the
-  next local date and hour 07, weekday advances across midnight.
-* America/New_York (UTC-05:00 standard time): a play at ``04:30Z`` lands on
-  the previous local date in the late evening.
-* Finite window filtering uses UTC bounds derived from the requested
-  timezone's local calendar.
-* All-history aggregates every row.
-* ``get_daily_stats`` zeroes through midnight in a non-UTC timezone and
-  emits every calendar date in the requested window.
-* API endpoint ``GET /api/stats/heatmap`` returns the full grid, forwards
-  ``days`` and ``timezone``, and rejects 1..6 with 422 just like the other
-  historical endpoints.
-"""
+"""Tests for timezone-aware heatmap and daily buckets."""
 
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -75,7 +54,7 @@ def test_heatmap_returns_full_168_grid_for_empty_database(db_path):
 
 def test_heatmap_buckets_utc_midnight_correctly(db_path):
     asyncio.run(init_db(db_path))
-    # 2024-03-24 is a Sunday (weekday 6 in Python's date.weekday()).
+    # Python date.weekday() maps Sunday to 6.
     asyncio.run(save_play_session(_session("2024-03-24T00:30:00Z", "t1"), db_path=db_path))
     asyncio.run(save_play_session(_session("2024-03-24T00:45:00Z", "t2"), db_path=db_path))
 
@@ -99,27 +78,19 @@ def test_heatmap_utc_window_excludes_old_rows(db_path):
 
 def test_heatmap_shanghai_boundary_pushes_into_next_local_day(db_path):
     asyncio.run(init_db(db_path))
-    # 2024-03-24T23:30:00Z -> Asia/Shanghai is 2024-03-25T07:30:00+08:00.
-    # Python weekday: 2024-03-25 is a Monday (0). Local hour 7.
+    # 23:30 UTC becomes Monday 07:30 in Asia/Shanghai.
     asyncio.run(save_play_session(_session("2024-03-24T23:30:00Z", "t1"), db_path=db_path))
 
     rows = asyncio.run(get_weekday_hour_stats(days=0, timezone_name=SHANGHAI, db_path=db_path))
     lookup = _grid_lookup(rows)
     assert lookup[(0, 7)] == 1
-    # The UTC weekday at 23:30 of Sunday was 6, so that UTC cell MUST be 0.
+    # The original Sunday 23:00 UTC bucket remains empty.
     assert lookup[(6, 23)] == 0
 
 
 def test_heatmap_new_york_boundary_pulls_into_previous_local_day(db_path):
     asyncio.run(init_db(db_path))
-    # 2024-03-24T04:30:00Z -> America/New_York (UTC-05:00 standard / -04:00 DST
-    # in mid-March after US DST begins). 2024-03-24 is a Sunday (6). On
-    # 2024-03-24 DST was already in effect (-04:00), so local time is
-    # 2024-03-24T00:30:00-04:00 -- same calendar date but hour 0. Use an
-    # earlier instant instead so the boundary clearly crosses midnight backward.
-    # 2024-03-24T03:30:00Z -> 2024-03-23T23:30:00-04:00. The UTC instant falls
-    # on Sunday 03:30Z, but the NY local date is 2024-03-23 (Saturday, weekday 5)
-    # at hour 23.
+    # After the DST transition, Sunday 03:30 UTC is Saturday 23:30 in New York.
     asyncio.run(save_play_session(_session("2024-03-24T03:30:00Z", "t1"), db_path=db_path))
 
     rows = asyncio.run(get_weekday_hour_stats(days=0, timezone_name=NEW_YORK, db_path=db_path))
@@ -136,10 +107,7 @@ def test_heatmap_invalid_timezone_raises_valueerror(db_path):
 
 def test_daily_zero_filled_in_shanghai_timestamps_cross_midnight(db_path):
     asyncio.run(init_db(db_path))
-    # Two plays at 2024-03-24T23:30:00Z and 2024-03-25T00:30:00Z.
-    # In Asia/Shanghai these become 2024-03-25T07:30 and 2024-03-25T08:30 -- both
-    # on the same local date. The UTC date for the second play is 25 March, the
-    # first UTC date is 24 March, but local grouping collapses both to 25 March.
+    # Adjacent UTC dates collapse into one local date in Asia/Shanghai.
     asyncio.run(save_play_session(_session("2024-03-24T23:30:00Z", "t1"), db_path=db_path))
     asyncio.run(save_play_session(_session("2024-03-25T00:30:00Z", "t2"), db_path=db_path))
 

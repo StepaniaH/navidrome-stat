@@ -1,23 +1,23 @@
 ---
 name: Feature request
-about: Propose a change that fits the self-hosted, privacy-first scope
-title: "[feature] "
+about: Suggest an improvement
+title: "[Feature] "
 labels: []
 assignees: []
 ---
 
-## Privacy check
-
-- [ ] This request does **not** include real listening data or credentials.
-
 ## Problem
 
-## Proposed change
+What problem would this change solve?
 
-Keep this compatible with a single application instance and local SQLite unless you are explicitly asking to change that architecture.
+## Proposed solution
+
+Describe the behavior you would like to see.
 
 ## Alternatives considered
 
-## Documentation / interface impact
+Describe any alternatives or workarounds you considered.
 
-Would this change HTTP APIs, environment variables, or the SQLite schema? If yes, say so; do not invent field names that are not in `docs/interfaces.md`.
+## Additional context
+
+Add examples, mockups, or related links. Do not include real credentials, server details, or listening history.

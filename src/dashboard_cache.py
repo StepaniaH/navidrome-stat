@@ -1,4 +1,4 @@
-"""Small process-local cache for immutable dashboard snapshot payloads."""
+"""Process-local cache for immutable dashboard snapshots."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ class DashboardSnapshotCache:
         try:
             value = await asyncio.shield(task)
         except asyncio.CancelledError:
-            # Shield keeps the shared factory alive for other callers.
+            # Keep the shared factory running if one waiter is cancelled.
             raise
         except Exception:
             async with self._lock:
