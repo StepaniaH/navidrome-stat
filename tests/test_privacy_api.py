@@ -112,3 +112,17 @@ async def test_import_rejects_oversized_content_length_before_parsing(isolated_d
         )
     assert response.status_code == 413
     assert response.json() == {"detail": "Import payload is too large"}
+    assert "X-Content-Type-Options" in response.headers
+
+
+@pytest.mark.asyncio
+async def test_import_rejects_invalid_content_length_header(isolated_db):
+    await init_db(isolated_db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/privacy/users/synthetic-user/import",
+            headers={"Content-Length": "not-a-number"},
+            content=b"{}",
+        )
+    assert response.status_code == 413
+    assert response.json() == {"detail": "Import payload is too large"}

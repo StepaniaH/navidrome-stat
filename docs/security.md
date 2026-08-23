@@ -27,20 +27,21 @@
 | 路径 | 策略 |
 | --- | --- |
 | `/health`、`/health/ready` | 始终公开，供存活/就绪探针使用 |
+| `/metrics` | 默认公开；`STATS_METRICS_AUTH=true` 且已设置 `STATS_API_TOKEN` 时需认证。输出轮询/保存计数等低基数指标，不含用户名或曲目 |
 | `/api/auth/status`、`/api/auth/login` | 公开；login 需正确令牌 |
-| `/api/auth/logout` | 公开；清除会话 Cookie |
-| `/api/stats/*` | 需 `Authorization: Bearer <token>` 或有效会话 Cookie |
+| `/api/auth/logout` | 公开；清除会话 Cookie，属性与登录时一致（含 Secure） |
+| `/api/stats/*`、`/api/source/*`、`/api/servers*`、`/api/about` | 需 `Authorization: Bearer <token>`（方案名大小写不敏感）或有效会话 Cookie |
 | `/api/privacy/*` | 需认证（与统计 API 相同策略） |
 | `/`、`/settings`、`/static/*` | 可加载页面；数据请求仍受 API 保护 |
-| `/docs`、`/redoc`、`/openapi.json` | 需认证 |
+| `/docs`、`/redoc`、`/openapi.json` | 需认证；`OPENAPI_ENABLED=false` 时路由不存在（404） |
 
 **反向代理替代方案**：可在代理层统一做 Basic/OIDC 认证，此时可不设置 `STATS_API_TOKEN`，但须确保代理覆盖所有外部入口。
 
-登录失败按客户端地址的进程内 HMAC 摘要限制为 5 次/分钟。摘要使用每次进程启动生成的随机盐，不保存原始地址，也不作为持久化审计日志。该措施只用于降低在线猜测速度，不替代反向代理限流。HTTPS 部署应设置 `SESSION_COOKIE_SECURE=true`；应用无法自动判断代理外部协议。
+登录失败按客户端地址的进程内 HMAC 摘要限制为 5 次/分钟。摘要使用每次进程启动生成的随机盐，不保存原始地址，也不作为持久化审计日志。该措施只用于降低在线猜测速度，不替代反向代理限流。HTTPS 部署应设置 `SESSION_COOKIE_SECURE=true`；应用无法自动判断代理外部协议。公网部署若暴露指标抓取口，应设置 `STATS_METRICS_AUTH=true`。不需要交互式 API 文档时可设 `OPENAPI_ENABLED=false`。
 
 ## 3. 前端与供应链
 
-- 用户数据通过 `textContent` 渲染，服务端不执行 HTML 转义（由浏览器安全插入文本节点）。
+- 用户数据通过 `textContent` 渲染，服务端不执行 HTML 转义（由浏览器安全插入文本节点）。客户端饼图使用 ECharts HTML tooltip 时，动态 `client_name` 会先做实体转义。
 - Tailwind CSS 与 ECharts 使用固定版本构建并随应用从 `/static/vendor/` 提供；正常页面加载不依赖公共 CDN。
 - CSP 的脚本和样式来源仅允许 `'self'`，并保留当前页面所需的内联脚本/样式许可；同时发送 `X-Content-Type-Options`、`X-Frame-Options` 与 `Referrer-Policy`。
 - 合成恶意媒体元数据、服务器筛选和移动视口由 Playwright 浏览器测试覆盖；CI 重新构建本地资产后执行。
@@ -51,7 +52,7 @@
 - SQLite 使用 WAL；主数据库、`-wal`、`-shm`、卷快照和备份都按同一敏感级别保护。复制备份前停止应用，不要只复制一个仍在写入的主数据库文件。
 - 设置页 `/settings` 与 `/api/privacy/*` 提供保留预览/清理、按用户导出/导入/删除。
 - 删除与过期清理需 `confirm: true`；预览与实际操作统一覆盖两张表，只返回总数与分表条数。
-- 导出固定文件名且内容不写入日志；导入限制 5 MiB、10000 条并做字段边界校验。部署方仍须自行管理数据库备份中的残留数据。
+- 导出固定文件名且内容不写入日志；导入限制 5 MiB、10000 条并做字段边界校验。超限导入在读取请求体时返回 413，不把完整超限 body 交给 JSON 解析。部署方仍须自行管理数据库备份中的残留数据。
 
 ## 5. 迁移与回滚
 
@@ -75,4 +76,4 @@
 5. 页面网络请求不包含公共 CDN，移动视口无页面级横向溢出。
 6. 登录限流返回 429，HTTPS 部署配置下 Cookie 带 Secure。
 
-对应任务：NDS-SEC-001、NDS-SEC-002、NDS-PRIV-001。
+对应任务：NDS-SEC-001、NDS-SEC-002、NDS-SEC-003、NDS-PRIV-001。漏洞报告入口见仓库根目录 [`SECURITY.md`](../SECURITY.md)，不要把凭据发到公开 issue。部署方可编辑的告知模板见 [`privacy-notice.template.md`](privacy-notice.template.md)。

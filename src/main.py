@@ -14,13 +14,13 @@ from src.auth import (
     is_auth_enabled,
     is_authorized,
     login_rate_limiter,
-    secure_session_cookie_enabled,
+    session_cookie_params,
     session_cookie_value,
     verify_login_token,
 )
 from src.client import NavidromeClient
 from src.collector_manager import CollectorManager as BaseCollectorManager
-from src.config import env_int
+from src.config import env_flag, env_int
 from src.dashboard_cache import dashboard_snapshot_cache
 from src.database import (
     LEGACY_SOURCE_ID,
@@ -66,6 +66,7 @@ from src.privacy_ops import (
     set_retention_days,
     validate_retention_days,
 )
+from src.request_limits import PrivacyImportBodyLimitMiddleware
 from src.runtime_state import runtime_state
 from src.schemas import (
     DAILY_DAYS_DEFAULT,
@@ -133,7 +134,7 @@ from src.source_config import (
     set_saved_source_config,
     validate_source_url,
 )
-from src.version import APP_VERSION, LICENSE, PROJECT_NAME
+from src.version import APP_VERSION, LICENSE, PROJECT_NAME, PROJECT_URL
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -155,6 +156,7 @@ SAVE_RETRY_ATTEMPTS = env_int(
 CHECKPOINT_INTERVAL_SEC = env_int(
     "CHECKPOINT_INTERVAL_SEC", default=60, min_value=10, max_value=3600
 )
+OPENAPI_ENABLED = env_flag("OPENAPI_ENABLED", default=True)
 
 
 def _exception_kind(exc: Exception) -> str:
@@ -283,9 +285,14 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
                     MAX_POLL_BACKOFF_SEC,
                 )
             else:
-                now_playing = response.get("nowPlaying", {})
-                entries = now_playing.get("entry", [])
-                await tracker.process_poll(entries, current_time)
+                entries = NavidromeClient.now_playing_entries(data)
+                try:
+                    await tracker.process_poll(entries, current_time)
+                except Exception as exc:
+                    logger.error(
+                        "Play persistence failed after successful poll (type=%s)",
+                        _exception_kind(exc),
+                    )
                 runtime_state.record_poll_success(current_time, tracker.source_id)
                 consecutive_failures = 0
 
@@ -559,9 +566,29 @@ async def lifespan(app: FastAPI):
     runtime_state.polling_task = None
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/docs" if OPENAPI_ENABLED else None,
+    redoc_url="/redoc" if OPENAPI_ENABLED else None,
+    openapi_url="/openapi.json" if OPENAPI_ENABLED else None,
+)
 
-AUTH_EXEMPT_PATHS = frozenset({"/health", "/health/ready", "/metrics", "/api/auth/login", "/api/auth/status"})
+ALWAYS_AUTH_EXEMPT_PATHS = frozenset(
+    {"/health", "/health/ready", "/api/auth/login", "/api/auth/status"}
+)
+
+
+def _metrics_require_auth() -> bool:
+    """Return True when /metrics should follow STATS_API_TOKEN."""
+    return env_flag("STATS_METRICS_AUTH", default=False)
+
+
+def _is_auth_exempt(path: str) -> bool:
+    if path in ALWAYS_AUTH_EXEMPT_PATHS:
+        return True
+    if path == "/metrics":
+        return not _metrics_require_auth()
+    return False
 
 
 def _with_security_headers(response: Response) -> Response:
@@ -582,24 +609,6 @@ def _with_security_headers(response: Response) -> Response:
 
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
-    if (
-        request.method == "POST"
-        and request.url.path.startswith("/api/privacy/users/")
-        and request.url.path.endswith("/import")
-    ):
-        content_length = request.headers.get("content-length")
-        if content_length is not None:
-            try:
-                too_large = int(content_length) > IMPORT_MAX_PAYLOAD_BYTES
-            except ValueError:
-                too_large = True
-            if too_large:
-                return _with_security_headers(
-                    JSONResponse(
-                        {"detail": "Import payload is too large"},
-                        status_code=413,
-                    )
-                )
     response = await call_next(request)
     return _with_security_headers(response)
 
@@ -610,15 +619,24 @@ async def stats_auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     path = request.url.path
-    if path in AUTH_EXEMPT_PATHS:
+    if _is_auth_exempt(path):
         return await call_next(request)
     if is_authorized(request):
         return await call_next(request)
-    if path.startswith("/api/"):
-        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     if path in ("/docs", "/redoc", "/openapi.json"):
+        if not OPENAPI_ENABLED:
+            return await call_next(request)
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    if path.startswith("/api/") or path == "/metrics":
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     return await call_next(request)
+
+
+app.add_middleware(
+    PrivacyImportBodyLimitMiddleware,
+    max_bytes=IMPORT_MAX_PAYLOAD_BYTES,
+    apply_headers=_with_security_headers,
+)
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(STATIC_DIR):
@@ -673,11 +691,8 @@ async def auth_login(body: LoginRequest, request: Request):
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=session_cookie_value(),
-        httponly=True,
-        samesite="lax",
-        secure=secure_session_cookie_enabled(),
         max_age=60 * 60 * 24 * 30,
-        path="/",
+        **session_cookie_params(),
     )
     return response
 
@@ -686,7 +701,7 @@ async def auth_login(body: LoginRequest, request: Request):
 async def auth_logout():
     """Clears the browser session cookie."""
     response = JSONResponse({"status": "ok"})
-    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    response.delete_cookie(key=SESSION_COOKIE_NAME, **session_cookie_params())
     return response
 
 
@@ -700,7 +715,7 @@ async def health_ready():
 
 @app.get("/metrics")
 async def metrics():
-    """Prometheus exposition endpoint; always anonymous."""
+    """Prometheus exposition endpoint; anonymous unless STATS_METRICS_AUTH is on."""
     active = len(_active_sessions())
     return PlainTextResponse(
         content=format_prometheus_metrics(active_sessions=active),
@@ -1471,9 +1486,14 @@ async def api_servers_test(server_id: str, body: ServerRequest | None = None):
 
 @app.get("/api/about", response_model=AboutResponse)
 async def api_about():
-    return AboutResponse(name=PROJECT_NAME, version=APP_VERSION, schema_version=SCHEMA_VERSION,
-                         features=["多 Navidrome 服务器", "播放历史统计", "隐私数据管理", "本地外观偏好"],
-                         license=LICENSE, project_url=None)
+    return AboutResponse(
+        name=PROJECT_NAME,
+        version=APP_VERSION,
+        schema_version=SCHEMA_VERSION,
+        features=["多 Navidrome 服务器", "播放历史统计", "隐私数据管理", "本地外观偏好"],
+        license=LICENSE,
+        project_url=PROJECT_URL,
+    )
 
 
 if __name__ == "__main__":

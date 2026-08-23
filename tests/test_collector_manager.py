@@ -148,7 +148,7 @@ async def test_stop_only_removes_selected_collector():
 
 
 @pytest.mark.asyncio
-async def test_finalize_failure_still_closes_old_and_replacement_clients():
+async def test_finalize_failure_still_closes_old_and_starts_replacement():
     from src.main import CollectorManager
 
     clients = []
@@ -168,13 +168,16 @@ async def test_finalize_failure_still_closes_old_and_replacement_clients():
         side_effect=RuntimeError("synthetic finalize failure")
     )
 
-    with pytest.raises(RuntimeError, match="Failed to finalize collector sessions"):
-        await manager.replace(server_config(password="replacement-password"))
+    await manager.replace(server_config(password="replacement-password"))
 
     clients[0].close.assert_awaited_once()
-    clients[1].close.assert_awaited_once()
+    clients[1].close.assert_not_awaited()
     assert old.task.cancelled()
-    assert manager.collectors == {}
+    assert list(manager.collectors) == ["server-1"]
+    assert manager.collectors["server-1"].client is clients[1]
+    assert not manager.collectors["server-1"].task.done()
+
+    await manager.stop_all()
 
 
 @pytest.mark.asyncio
@@ -209,7 +212,7 @@ async def test_stop_all_continues_after_one_collector_finalize_fails():
 
 
 @pytest.mark.asyncio
-async def test_reconcile_stops_all_changed_collectors_before_reporting_failure():
+async def test_reconcile_activates_replacements_after_finalize_failure():
     from src.main import CollectorManager
 
     clients = []
@@ -233,12 +236,19 @@ async def test_reconcile_stops_all_changed_collectors_before_reporting_failure()
         server_config("server-2", password="replacement-password"),
     ]
 
-    with pytest.raises(RuntimeError, match="Failed to stop collectors"):
-        await manager.reconcile(replacements)
+    await manager.reconcile(replacements)
 
-    assert manager.collectors == {}
-    for client in clients:
-        client.close.assert_awaited_once()
+    assert list(manager.collectors) == ["server-1", "server-2"]
+    clients[0].close.assert_awaited_once()
+    clients[1].close.assert_awaited_once()
+    clients[2].close.assert_not_awaited()
+    clients[3].close.assert_not_awaited()
+    assert manager.collectors["server-1"].client is clients[2]
+    assert manager.collectors["server-2"].client is clients[3]
+    assert not manager.collectors["server-1"].task.done()
+    assert not manager.collectors["server-2"].task.done()
+
+    await manager.stop_all()
 
 
 @pytest.mark.asyncio

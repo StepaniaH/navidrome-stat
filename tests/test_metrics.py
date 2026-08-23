@@ -49,6 +49,31 @@ async def test_metrics_accessible_without_auth_when_token_configured():
 
 
 @pytest.mark.asyncio
+async def test_metrics_require_auth_when_flag_enabled(monkeypatch):
+    monkeypatch.setenv("STATS_METRICS_AUTH", "true")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+            denied = await ac.get("/metrics")
+            allowed = await ac.get(
+                "/metrics",
+                headers={"Authorization": "Bearer synthetic-secret-token"},
+            )
+    assert denied.status_code == 401
+    assert denied.json()["detail"] == "Unauthorized"
+    assert allowed.status_code == 200
+    assert "navidrome_stat_poll_success_total" in allowed.text
+
+
+@pytest.mark.asyncio
+async def test_metrics_stay_public_when_auth_flag_set_without_token(monkeypatch):
+    monkeypatch.setenv("STATS_METRICS_AUTH", "true")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value=None):
+            response = await ac.get("/metrics")
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_readiness_and_metrics_aggregate_non_paused_runtime_sessions(monkeypatch):
     import src.main as main
 
@@ -103,3 +128,42 @@ async def test_readiness_reports_one_failed_collector(monkeypatch):
     assert report["metrics"]["collector_count"] == 2
     assert report["metrics"]["healthy_collector_count"] == 1
     assert report["metrics"]["degraded_collector_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_polling_task_up_requires_every_collector_alive(monkeypatch):
+    import asyncio
+
+    import src.metrics as metrics
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState()
+    alive = asyncio.create_task(asyncio.Event().wait())
+    finished = asyncio.create_task(asyncio.sleep(0))
+    await finished
+    state.set_collector_task("server-a", alive)
+    state.set_collector_task("server-b", finished)
+    monkeypatch.setattr(metrics, "runtime_state", state)
+    try:
+        assert state.polling_task_alive() is False
+        body = metrics.format_prometheus_metrics(0)
+        assert "navidrome_stat_polling_task_up 0\n" in body
+        assert "every collector polling task is alive" in body
+    finally:
+        alive.cancel()
+        await asyncio.gather(alive, return_exceptions=True)
+
+    both_alive = asyncio.create_task(asyncio.Event().wait())
+    other_alive = asyncio.create_task(asyncio.Event().wait())
+    state = RuntimeState()
+    state.set_collector_task("server-a", both_alive)
+    state.set_collector_task("server-b", other_alive)
+    monkeypatch.setattr(metrics, "runtime_state", state)
+    try:
+        assert state.polling_task_alive() is True
+        body = metrics.format_prometheus_metrics(0)
+        assert "navidrome_stat_polling_task_up 1\n" in body
+    finally:
+        both_alive.cancel()
+        other_alive.cancel()
+        await asyncio.gather(both_alive, other_alive, return_exceptions=True)

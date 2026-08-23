@@ -104,3 +104,21 @@ def test_subsonic_error_response_is_not_success():
             "error": {"code": 40},
         }
     }) is False
+
+
+def test_now_playing_entries_treat_null_as_idle():
+    assert NavidromeClient.now_playing_entries({
+        "subsonic-response": {"status": "ok", "nowPlaying": None}
+    }) == []
+    assert NavidromeClient.now_playing_entries({
+        "subsonic-response": {"status": "ok"}
+    }) == []
+    assert NavidromeClient.now_playing_entries({
+        "subsonic-response": {"status": "ok", "nowPlaying": {"entry": None}}
+    }) == []
+    assert NavidromeClient.now_playing_entries({
+        "subsonic-response": {
+            "status": "ok",
+            "nowPlaying": {"entry": [{"id": "synthetic-track"}]},
+        }
+    }) == [{"id": "synthetic-track"}]

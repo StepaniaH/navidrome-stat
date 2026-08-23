@@ -44,3 +44,16 @@ def env_int(name: str, *, default: int, min_value: int, max_value: int) -> int:
         min_value=min_value,
         max_value=max_value,
     )
+
+
+def env_flag(name: str, *, default: bool = False) -> bool:
+    """Read a boolean environment flag.
+
+    Missing or blank values use ``default``. Truthy values are
+    ``1`` / ``true`` / ``yes`` / ``on`` (case-insensitive). Any other
+    non-empty value is false. The raw value is never logged.
+    """
+    raw = os.getenv(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}

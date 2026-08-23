@@ -158,6 +158,45 @@ async def test_retention_preview_matches_history_and_attempt_deletion(db_path):
 
 
 @pytest.mark.asyncio
+async def test_retention_compares_offset_timestamps_by_instant(db_path, monkeypatch):
+    await init_db(db_path)
+
+    frozen = datetime(2026, 8, 21, 10, 0, tzinfo=timezone.utc)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return frozen.replace(tzinfo=None)
+            return frozen.astimezone(tz)
+
+    monkeypatch.setattr("src.privacy_ops.datetime", FrozenDateTime)
+
+    # 2026-07-22 09:00 UTC, encoded as +14:00 so a string compare against a
+    # space-separated UTC cutoff would keep the row.
+    old_at = "2026-07-22T23:00:00+14:00"
+    recent_at = "2026-08-20T10:00:00+00:00"
+    await save_play_session(
+        _session("synthetic-user", old_at, "old-offset"),
+        db_path=db_path,
+    )
+    await save_play_session(
+        _session("synthetic-user", recent_at, "recent"),
+        db_path=db_path,
+    )
+    await set_retention_days(30, db_path)
+
+    preview = await preview_retention_purge(db_path=db_path)
+    assert preview["records_to_delete"] == 1
+    result = await apply_retention_purge(db_path=db_path)
+    assert result["deleted"] == 1
+
+    export = await export_user_data("synthetic-user", db_path=db_path)
+    assert export["record_count"] == 1
+    assert export["records"][0]["track_id"] == "recent"
+
+
+@pytest.mark.asyncio
 async def test_export_v2_roundtrips_short_attempts(db_path):
     await init_db(db_path)
     played_at = "2025-01-01T00:00:00+00:00"

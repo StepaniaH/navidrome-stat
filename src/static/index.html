@@ -50,6 +50,24 @@
         }
         .chart-container { height: 280px; width: 100%; }
         @media (min-width: 768px) { .chart-container { height: 320px; } }
+        .panel-error {
+            color: var(--app-error);
+        }
+        .panel-inline-error {
+            margin-bottom: 0.75rem;
+            color: var(--app-error);
+            font-size: 0.8125rem;
+        }
+        #historyTableWrap[data-panel-state="empty"],
+        #historyTableWrap[data-panel-state="error"],
+        #historyTableWrap[data-panel-state="loading"] {
+            min-height: 12rem;
+        }
+        #historyTableWrap[data-panel-state="empty"] table,
+        #historyTableWrap[data-panel-state="error"] table,
+        #historyTableWrap[data-panel-state="loading"] table {
+            visibility: hidden;
+        }
         /* Ranking lists have ten variable-height rows; let their cards grow instead of clipping rows. */
         .chart-container.ranking-table { height: auto; min-height: 280px; }
         @media (min-width: 768px) { .chart-container.ranking-table { min-height: 320px; } }
@@ -661,7 +679,7 @@
 
         <!-- Now Playing -->
         <section class="mb-8" aria-label="正在播放" data-i18n-attr="aria-label:dashboard.nowPlaying">
-            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5 backdrop-blur-sm">
+            <div id="nowPlayingPanel" class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5 backdrop-blur-sm">
                 <div class="flex items-center gap-2 mb-4">
                     <span class="w-2.5 h-2.5 rounded-full bg-mint pulse-dot" aria-hidden="true"></span>
                     <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.nowPlaying">正在播放</h2>
@@ -671,16 +689,18 @@
                     <div class="h-14 skeleton"></div>
                     <div class="h-14 skeleton"></div>
                 </div>
+                <p id="nowPlayingError" class="hidden panel-inline-error" role="status"></p>
                 <ul id="nowPlayingList" class="space-y-2"></ul>
                 <div id="nowPlayingEmpty" class="hidden flex flex-col items-center text-slate-600 text-sm py-6">
                     <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
                     <p data-i18n="empty.nowPlaying">当前没有正在播放的曲目</p>
                 </div>
+                <p id="nowPlayingSummary" class="visually-hidden"></p>
             </div>
         </section>
 
         <!-- Summary cards -->
-        <section class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" aria-label="概览统计" data-i18n-attr="aria-label:dashboard.summary">
+        <section id="summarySection" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" aria-label="概览统计" data-i18n-attr="aria-label:dashboard.summary">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
                 <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1" data-i18n="dashboard.totalPlays">总播放次数</p>
                 <p id="statTotalPlays" class="stat-value text-3xl font-bold text-white">—</p>
@@ -696,6 +716,8 @@
                 <p id="statUniqueTracks" class="stat-value text-3xl font-bold text-accent-glow">—</p>
                 <p id="statActiveDays" class="text-xs text-slate-600 mt-1 stat-value"></p>
             </div>
+            <p id="summaryError" class="hidden sm:col-span-3 panel-inline-error" role="status"></p>
+            <p id="summaryAria" class="visually-hidden"></p>
         </section>
 
         <!-- Charts -->
@@ -705,11 +727,15 @@
                 <p class="text-xs text-slate-600 mb-4" data-i18n="subtitle.byPlays">按播放次数统计</p>
                 <div id="playerChartWrap" class="relative">
                     <div id="playerChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
-                    <div id="playerChart" class="chart-container" role="img" aria-label="客户端分布饼图" data-i18n-attr="aria-label:aria.clients"></div>
+                    <div id="playerChart" class="chart-container" role="img" aria-label="客户端分布饼图" data-i18n-attr="aria-label:aria.clients" aria-describedby="playerChartSummary"></div>
                     <div id="playerChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
                         <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
                         <span data-i18n="empty.clients">暂无客户端数据</span>
                     </div>
+                    <div id="playerChartError" class="hidden absolute inset-0 flex flex-col items-center justify-center text-sm panel-error" role="status">
+                        <span data-i18n="error.section">无法加载此分区。</span>
+                    </div>
+                    <p id="playerChartSummary" class="visually-hidden"></p>
                 </div>
                 <div id="playerChartLegend" class="mt-4 hidden text-xs" aria-live="polite"></div>
             </div>
@@ -718,11 +744,15 @@
                 <p class="text-xs text-slate-600 mb-4">Direct Play vs Transcoded</p>
                 <div id="transcodingChartWrap" class="relative">
                     <div id="transcodingChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
-                    <div id="transcodingChart" class="chart-container" role="img" aria-label="转码比例饼图" data-i18n-attr="aria-label:aria.transcoding"></div>
+                    <div id="transcodingChart" class="chart-container" role="img" aria-label="转码比例饼图" data-i18n-attr="aria-label:aria.transcoding" aria-describedby="transcodingChartSummary"></div>
                     <div id="transcodingChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
                         <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
                         <span data-i18n="empty.transcoding">暂无转码数据</span>
                     </div>
+                    <div id="transcodingChartError" class="hidden absolute inset-0 flex flex-col items-center justify-center text-sm panel-error" role="status">
+                        <span data-i18n="error.section">无法加载此分区。</span>
+                    </div>
+                    <p id="transcodingChartSummary" class="visually-hidden"></p>
                 </div>
             </div>
         </section>
@@ -734,11 +764,15 @@
                 <p class="text-xs text-slate-600 mb-4" data-i18n="subtitle.hourly">按一天内各时段播放次数统计</p>
                 <div id="hourlyChartWrap" class="relative">
                     <div id="hourlyChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
-                    <div id="hourlyChart" class="chart-container" role="img" aria-label="播放时段分布柱状图" data-i18n-attr="aria-label:aria.hourly"></div>
+                    <div id="hourlyChart" class="chart-container" role="img" aria-label="播放时段分布柱状图" data-i18n-attr="aria-label:aria.hourly" aria-describedby="hourlyChartSummary"></div>
                     <div id="hourlyChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
                         <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         <span data-i18n="empty.hourly">暂无时段数据</span>
                     </div>
+                    <div id="hourlyChartError" class="hidden absolute inset-0 flex flex-col items-center justify-center text-sm panel-error" role="status">
+                        <span data-i18n="error.section">无法加载此分区。</span>
+                    </div>
+                    <p id="hourlyChartSummary" class="visually-hidden"></p>
                 </div>
             </div>
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
@@ -746,11 +780,15 @@
                 <p id="dailyChartSubtitle" class="text-xs text-slate-600 mb-4">最近 30 天每日播放次数</p>
                 <div id="dailyChartWrap" class="relative">
                     <div id="dailyChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
-                    <div id="dailyChart" class="chart-container" role="img" aria-label="每日播放趋势折线图" data-i18n-attr="aria-label:aria.daily"></div>
+                    <div id="dailyChart" class="chart-container" role="img" aria-label="每日播放趋势折线图" data-i18n-attr="aria-label:aria.daily" aria-describedby="dailyChartSummary"></div>
                     <div id="dailyChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
                         <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg>
                         <span data-i18n="empty.daily">暂无每日数据</span>
                     </div>
+                    <div id="dailyChartError" class="hidden absolute inset-0 flex flex-col items-center justify-center text-sm panel-error" role="status">
+                        <span data-i18n="error.section">无法加载此分区。</span>
+                    </div>
+                    <p id="dailyChartSummary" class="visually-hidden"></p>
                 </div>
             </div>
         </section>
@@ -762,11 +800,15 @@
                 <p class="text-xs text-slate-600 mb-4" data-i18n="subtitle.heatmap">按星期 × 小时统计播放次数（0=周一 … 6=周日）</p>
                 <div id="weekdayHourChartWrap" class="relative">
                     <div id="weekdayHourChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
-                    <div id="weekdayHourChart" class="chart-container" role="img" aria-label="周时热力图" data-i18n-attr="aria-label:aria.heatmap"></div>
+                    <div id="weekdayHourChart" class="chart-container" role="img" aria-label="周时热力图" data-i18n-attr="aria-label:aria.heatmap" aria-describedby="weekdayHourChartSummary"></div>
                     <div id="weekdayHourChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
                         <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         <span data-i18n="empty.heatmap">暂无热力图数据</span>
                     </div>
+                    <div id="weekdayHourChartError" class="hidden absolute inset-0 flex flex-col items-center justify-center text-sm panel-error" role="status">
+                        <span data-i18n="error.section">无法加载此分区。</span>
+                    </div>
+                    <p id="weekdayHourChartSummary" class="visually-hidden"></p>
                 </div>
             </div>
         </section>
@@ -789,11 +831,15 @@
                     <p id="topArtistsSubtitle" class="text-xs text-slate-600 mb-4">按播放次数排名</p>
                     <div id="topArtistsChartWrap" class="relative">
                         <div id="topArtistsChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
-                        <div id="topArtistsChart" class="chart-container ranking-table" role="table" aria-label="热门艺人播放次数排行榜"></div>
+                        <div id="topArtistsChart" class="chart-container ranking-table" role="table" aria-label="热门艺人播放次数排行榜" aria-describedby="topArtistsChartSummary"></div>
                         <div id="topArtistsChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
                             <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
                             <span data-i18n="empty.artists">暂无艺人数据</span>
                         </div>
+                        <div id="topArtistsChartError" class="hidden absolute inset-0 flex flex-col items-center justify-center text-sm panel-error" role="status">
+                            <span data-i18n="error.section">无法加载此分区。</span>
+                        </div>
+                        <p id="topArtistsChartSummary" class="visually-hidden"></p>
                     </div>
                 </div>
                 <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
@@ -801,11 +847,15 @@
                     <p id="topAlbumsSubtitle" class="text-xs text-slate-600 mb-4">按播放次数排名</p>
                     <div id="topAlbumsChartWrap" class="relative">
                         <div id="topAlbumsChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
-                        <div id="topAlbumsChart" class="chart-container ranking-table" role="table" aria-label="热门专辑播放次数排行榜"></div>
+                        <div id="topAlbumsChart" class="chart-container ranking-table" role="table" aria-label="热门专辑播放次数排行榜" aria-describedby="topAlbumsChartSummary"></div>
                         <div id="topAlbumsChartEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm">
                             <svg class="w-10 h-10 mb-2 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"/></svg>
                             <span data-i18n="empty.albums">暂无专辑数据</span>
                         </div>
+                        <div id="topAlbumsChartError" class="hidden absolute inset-0 flex flex-col items-center justify-center text-sm panel-error" role="status">
+                            <span data-i18n="error.section">无法加载此分区。</span>
+                        </div>
+                        <p id="topAlbumsChartSummary" class="visually-hidden"></p>
                     </div>
                 </div>
             </div>
@@ -818,7 +868,16 @@
                 <span class="text-xs text-slate-600" data-i18n="subtitle.currentWindow">按当前统计窗口</span>
             </div>
             <p class="text-xs text-slate-600 mb-4" data-i18n="subtitle.serverBreakdown">不同 Navidrome 服务器的播放次数与收听时长</p>
-            <div id="serverSourceBreakdown" class="source-breakdown text-sm"></div>
+            <div id="serverSourcePanel" class="relative min-h-[3rem]">
+                <div id="serverSourceBreakdown" class="source-breakdown text-sm"></div>
+                <div id="serverSourceEmpty" class="hidden text-slate-600 text-sm">
+                    <span data-i18n="source.empty">暂无服务器来源数据</span>
+                </div>
+                <div id="serverSourceError" class="hidden panel-inline-error" role="status">
+                    <span data-i18n="error.section">无法加载此分区。</span>
+                </div>
+                <p id="serverSourceSummary" class="visually-hidden"></p>
+            </div>
         </section>
 
         <!-- History -->
@@ -827,7 +886,7 @@
                 <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.history">最近播放</h2>
                 <p class="text-xs text-slate-600 mt-0.5" data-i18n="subtitle.history">按最近播放时间排序，重复收听会累加 Plays</p>
             </div>
-            <div class="history-table-wrap">
+            <div id="historyTableWrap" class="history-table-wrap relative">
                 <table class="history-table text-sm">
                     <caption class="sr-only" data-i18n="history.caption">播放历史记录表</caption>
                     <colgroup>
@@ -851,6 +910,14 @@
                     <tbody id="historyTable">
                     </tbody>
                 </table>
+                <div id="historyEmpty" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm px-4">
+                    <p data-i18n="history.empty">暂无播放记录</p>
+                    <p class="text-xs text-slate-700 mt-1" data-i18n="history.emptyHint">开始播放音乐，满 30 秒后会计入</p>
+                </div>
+                <div id="historyError" class="hidden absolute inset-0 flex flex-col items-center justify-center text-sm panel-error px-4" role="status">
+                    <span data-i18n="error.section">无法加载此分区。</span>
+                </div>
+                <p id="historySummary" class="visually-hidden"></p>
             </div>
         </section>
 
@@ -904,6 +971,7 @@
         let refreshTimer = null;
         let nowPlayingRefreshTimer = null;
         let hasLoadedOnce = false;
+        let nowPlayingLoadedOnce = false;
         let authRequired = false;
         let statsDays = 30;
         let customStartDate = '';
@@ -984,13 +1052,14 @@
         const dashboardTranslations = {
             'zh-CN': {
                 'status.connecting': '连接中…', 'dashboard.manualRefresh': '手动刷新', 'window.7': '最近 7 天', 'window.30': '最近 30 天', 'window.90': '最近 90 天', 'window.all': '全部历史', 'window.custom': '自定义日期', 'window.start': '开始日期', 'window.end': '结束日期', 'window.cancel': '取消', 'window.apply': '应用',
-                'status.syncing': '同步中…', 'status.live': '实时监听中', 'status.connectionError': '连接异常', 'status.lastUpdated': '上次更新 {time}', 'error.stats': '无法获取统计数据，请检查服务是否运行。{stale}', 'error.stale': ' 显示的是上次成功加载的数据。', 'error.rankings': '无法获取热门榜单数据。', 'auth.required': '需要登录', 'auth.expired': '访问令牌无效或已过期，请重新登录。', 'auth.invalid': '令牌无效，请重试。',
+                'status.syncing': '同步中…', 'status.live': '实时监听中', 'status.connectionError': '连接异常', 'status.lastUpdated': '上次更新 {time}', 'error.stats': '无法获取统计数据，请检查服务是否运行。{stale}', 'error.stale': ' 显示的是上次成功加载的数据。', 'error.rankings': '无法获取热门榜单数据。', 'error.section': '无法加载此分区。', 'error.nowPlaying': '无法获取正在播放。', 'auth.required': '需要登录', 'auth.expired': '访问令牌无效或已过期，请重新登录。', 'auth.invalid': '令牌无效，请重试。',
                 'unit.plays': '{count} 次', 'duration.hours': '{hours}小时{minutes}分钟', 'duration.minutes': '{minutes}分钟', 'duration.seconds': '{seconds}秒', 'summary.activeDays': '活跃 {count} 天', 'summary.playsPerDay': '日均 {count} 次', 'summary.uniqueDetails': '活跃 {days} 天 · 转码占比 {ratio}% · {clients} 个客户端', 'compare.previous': 'vs 上周期',
                 'client.detailTitle': '客户端收听详情', 'client.name': '客户端', 'client.plays': '播放', 'client.listeningTime': '收听时长', 'client.averagePlay': '平均单次', 'client.transcodingRate': '转码率', 'label.play': '播放', 'label.listening': '收听', 'label.hour': '时',
                 'source.empty': '暂无服务器来源数据', 'source.unknown': '未知服务器', 'source.all': '全部服务器', 'history.empty': '暂无播放记录', 'history.emptyHint': '开始播放音乐，满 30 秒后会计入',
                 'ranking.byListening': '按收听时长排名', 'ranking.byPlays': '按播放次数排名', 'window.allLabel': '全部历史', 'window.daysLabel': '最近 {days} 天', 'daily.subtitle': '{window}每日播放次数', 'range.missing': '请选择开始和结束日期。', 'range.order': '开始日期不能晚于结束日期。', 'range.tooLong': '自定义范围不能超过 366 天。',
                 'dashboard.summary': '概览统计', 'dashboard.charts': '图表', 'dashboard.nowPlaying': '正在播放', 'subtitle.byPlays': '按播放次数统计', 'subtitle.hourly': '按一天内各时段播放次数统计', 'subtitle.heatmap': '按星期 × 小时统计播放次数（0=周一 … 6=周日）',
                 'dashboard.hourlyDaily': '时段与每日趋势', 'aria.clients': '客户端分布饼图', 'aria.transcoding': '转码比例饼图', 'aria.hourly': '播放时段分布柱状图', 'aria.daily': '每日播放趋势折线图', 'aria.heatmap': '周时热力图',
+                'aria.loading': '正在加载。', 'aria.empty': '暂无数据。', 'aria.summaryPlays': '总播放 {plays} 次，{tracks} 首曲目。', 'aria.clientsSummary': '{count} 个客户端。最多：{top}，{plays} 次。', 'aria.transcodingSummary': '直出 {direct} 次，转码 {transcoded} 次。', 'aria.hourlySummary': '播放最多的时段是 {hour} 时，{plays} 次。', 'aria.dailySummary': '{days} 天有播放，最多一天 {plays} 次。', 'aria.heatmapSummary': '播放最多的是 {weekday} {hour} 时，{plays} 次。', 'aria.rankingSummary': '{count} 项。第一：{top}。', 'aria.sourcesSummary': '{count} 台服务器。', 'aria.historySummary': '{count} 条最近播放。', 'aria.nowPlayingSummary': '{count} 首正在播放。', 'aria.artistsByPlays': '热门艺人播放次数排行榜', 'aria.artistsByTime': '热门艺人收听时长排行榜', 'aria.albumsByPlays': '热门专辑播放次数排行榜', 'aria.albumsByTime': '热门专辑收听时长排行榜',
                 'empty.nowPlaying': '当前没有正在播放的曲目', 'empty.clients': '暂无客户端数据', 'empty.transcoding': '暂无转码数据', 'empty.hourly': '暂无时段数据', 'empty.daily': '暂无每日数据', 'empty.heatmap': '暂无热力图数据', 'empty.artists': '暂无艺人数据', 'empty.albums': '暂无专辑数据',
                 'dashboard.title': '播放统计', 'dashboard.subtitle': '实时监听与收听习惯分析', 'dashboard.settings': '设置', 'dashboard.refresh': '刷新',
                 'dashboard.nowPlaying': '正在播放', 'dashboard.summary': '概览统计', 'dashboard.totalPlays': '总播放次数', 'dashboard.listen': '累计收听', 'dashboard.tracks': '曲目数',
@@ -1001,13 +1070,14 @@
             },
             en: {
                 'status.connecting': 'Connecting…', 'dashboard.manualRefresh': 'Refresh now', 'window.7': 'Last 7 days', 'window.30': 'Last 30 days', 'window.90': 'Last 90 days', 'window.all': 'All history', 'window.custom': 'Custom dates', 'window.start': 'Start date', 'window.end': 'End date', 'window.cancel': 'Cancel', 'window.apply': 'Apply',
-                'status.syncing': 'Syncing…', 'status.live': 'Listening in real time', 'status.connectionError': 'Connection error', 'status.lastUpdated': 'Last updated {time}', 'error.stats': 'Unable to load statistics. Check that the service is running.{stale}', 'error.stale': ' Showing the last successful data.', 'error.rankings': 'Unable to load ranking data.', 'auth.required': 'Login required', 'auth.expired': 'The access token is invalid or expired. Log in again.', 'auth.invalid': 'Invalid token. Try again.',
+                'status.syncing': 'Syncing…', 'status.live': 'Listening in real time', 'status.connectionError': 'Connection error', 'status.lastUpdated': 'Last updated {time}', 'error.stats': 'Unable to load statistics. Check that the service is running.{stale}', 'error.stale': ' Showing the last successful data.', 'error.rankings': 'Unable to load ranking data.', 'error.section': 'This section could not be loaded.', 'error.nowPlaying': 'Unable to load now playing.', 'auth.required': 'Login required', 'auth.expired': 'The access token is invalid or expired. Log in again.', 'auth.invalid': 'Invalid token. Try again.',
                 'unit.plays': '{count} plays', 'duration.hours': '{hours}h {minutes}m', 'duration.minutes': '{minutes}m', 'duration.seconds': '{seconds}s', 'summary.activeDays': '{count} active days', 'summary.playsPerDay': '{count} plays/day', 'summary.uniqueDetails': '{days} active days · {ratio}% transcoded · {clients} clients', 'compare.previous': 'vs previous period',
                 'client.detailTitle': 'Client listening details', 'client.name': 'Client', 'client.plays': 'Plays', 'client.listeningTime': 'Listening time', 'client.averagePlay': 'Average play', 'client.transcodingRate': 'Transcoding rate', 'label.play': 'Plays', 'label.listening': 'Listening', 'label.hour': 'o’clock',
                 'source.empty': 'No server source data', 'source.unknown': 'Unknown server', 'source.all': 'All servers', 'history.empty': 'No playback records', 'history.emptyHint': 'Start playing music; plays count after 30 seconds',
                 'ranking.byListening': 'Ranked by listening time', 'ranking.byPlays': 'Ranked by plays', 'window.allLabel': 'All history', 'window.daysLabel': 'Last {days} days', 'daily.subtitle': '{window} plays per day', 'range.missing': 'Choose both a start and end date.', 'range.order': 'Start date cannot be after end date.', 'range.tooLong': 'Custom ranges cannot exceed 366 days.',
                 'dashboard.summary': 'Overview', 'dashboard.charts': 'Charts', 'dashboard.nowPlaying': 'Now Playing', 'subtitle.byPlays': 'By play count', 'subtitle.hourly': 'Play count by hour of day', 'subtitle.heatmap': 'Play count by weekday × hour (0=Mon … 6=Sun)',
                 'dashboard.hourlyDaily': 'Hourly and daily trends', 'aria.clients': 'Client distribution pie chart', 'aria.transcoding': 'Transcoding ratio pie chart', 'aria.hourly': 'Playback by hour bar chart', 'aria.daily': 'Daily playback trend line chart', 'aria.heatmap': 'Weekday and hour heatmap',
+                'aria.loading': 'Loading.', 'aria.empty': 'No data.', 'aria.summaryPlays': '{plays} total plays, {tracks} tracks.', 'aria.clientsSummary': '{count} clients. Top: {top}, {plays} plays.', 'aria.transcodingSummary': 'Direct Play {direct}, Transcoded {transcoded}.', 'aria.hourlySummary': 'Busiest hour is {hour} o’clock with {plays} plays.', 'aria.dailySummary': '{days} days with plays; busiest day has {plays} plays.', 'aria.heatmapSummary': 'Busiest slot is {weekday} at {hour} o’clock with {plays} plays.', 'aria.rankingSummary': '{count} items. First: {top}.', 'aria.sourcesSummary': '{count} servers.', 'aria.historySummary': '{count} recent plays.', 'aria.nowPlayingSummary': '{count} tracks playing.', 'aria.artistsByPlays': 'Top artists by play count', 'aria.artistsByTime': 'Top artists by listening time', 'aria.albumsByPlays': 'Top albums by play count', 'aria.albumsByTime': 'Top albums by listening time',
                 'empty.nowPlaying': 'Nothing is playing right now', 'empty.clients': 'No client data', 'empty.transcoding': 'No transcoding data', 'empty.hourly': 'No hourly data', 'empty.daily': 'No daily data', 'empty.heatmap': 'No heatmap data', 'empty.artists': 'No artist data', 'empty.albums': 'No album data',
                 'dashboard.title': 'Playback Statistics', 'dashboard.subtitle': 'Live listening and playback habits', 'dashboard.settings': 'Settings', 'dashboard.refresh': 'Refresh',
                 'dashboard.nowPlaying': 'Now Playing', 'dashboard.summary': 'Overview', 'dashboard.totalPlays': 'Total Plays', 'dashboard.listen': 'Listening Time', 'dashboard.tracks': 'Unique Tracks',
@@ -1072,31 +1142,178 @@
             document.getElementById('errorBanner').classList.add('hidden');
         }
 
-        function setLoading(loading) {
-            ['playerChartSkeleton', 'transcodingChartSkeleton', 'hourlyChartSkeleton', 'dailyChartSkeleton', 'weekdayHourChartSkeleton', 'topArtistsChartSkeleton', 'topAlbumsChartSkeleton'].forEach(id => {
-                document.getElementById(id).classList.toggle('hidden', !loading || hasLoadedOnce);
-            });
-            document.getElementById('nowPlayingSkeleton').classList.toggle('hidden', !loading || hasLoadedOnce);
-            if (loading && !hasLoadedOnce) {
-                document.getElementById('nowPlayingList').classList.add('hidden');
-                document.getElementById('nowPlayingEmpty').classList.add('hidden');
+        const STATS_PANEL_NAMES = [
+            'summary', 'players', 'transcoding', 'hourly', 'daily',
+            'heatmap', 'artists', 'albums', 'sources', 'history',
+        ];
+        const PANEL_CONFIG = {
+            nowPlaying: {
+                wrap: 'nowPlayingPanel',
+                skeleton: 'nowPlayingSkeleton',
+                contents: [{ id: 'nowPlayingList', hide: 'hidden' }],
+                empty: 'nowPlayingEmpty',
+                error: 'nowPlayingError',
+                summary: 'nowPlayingSummary',
+                keepContentOnError: true,
+            },
+            summary: {
+                wrap: 'summarySection',
+                error: 'summaryError',
+                summary: 'summaryAria',
+            },
+            players: {
+                wrap: 'playerChartWrap',
+                skeleton: 'playerChartSkeleton',
+                contents: [{ id: 'playerChart', hide: 'visibility' }],
+                empty: 'playerChartEmpty',
+                error: 'playerChartError',
+                summary: 'playerChartSummary',
+            },
+            transcoding: {
+                wrap: 'transcodingChartWrap',
+                skeleton: 'transcodingChartSkeleton',
+                contents: [{ id: 'transcodingChart', hide: 'visibility' }],
+                empty: 'transcodingChartEmpty',
+                error: 'transcodingChartError',
+                summary: 'transcodingChartSummary',
+            },
+            hourly: {
+                wrap: 'hourlyChartWrap',
+                skeleton: 'hourlyChartSkeleton',
+                contents: [{ id: 'hourlyChart', hide: 'visibility' }],
+                empty: 'hourlyChartEmpty',
+                error: 'hourlyChartError',
+                summary: 'hourlyChartSummary',
+            },
+            daily: {
+                wrap: 'dailyChartWrap',
+                skeleton: 'dailyChartSkeleton',
+                contents: [{ id: 'dailyChart', hide: 'visibility' }],
+                empty: 'dailyChartEmpty',
+                error: 'dailyChartError',
+                summary: 'dailyChartSummary',
+            },
+            heatmap: {
+                wrap: 'weekdayHourChartWrap',
+                skeleton: 'weekdayHourChartSkeleton',
+                contents: [{ id: 'weekdayHourChart', hide: 'visibility' }],
+                empty: 'weekdayHourChartEmpty',
+                error: 'weekdayHourChartError',
+                summary: 'weekdayHourChartSummary',
+            },
+            artists: {
+                wrap: 'topArtistsChartWrap',
+                skeleton: 'topArtistsChartSkeleton',
+                contents: [{ id: 'topArtistsChart', hide: 'invisible' }],
+                empty: 'topArtistsChartEmpty',
+                error: 'topArtistsChartError',
+                summary: 'topArtistsChartSummary',
+            },
+            albums: {
+                wrap: 'topAlbumsChartWrap',
+                skeleton: 'topAlbumsChartSkeleton',
+                contents: [{ id: 'topAlbumsChart', hide: 'invisible' }],
+                empty: 'topAlbumsChartEmpty',
+                error: 'topAlbumsChartError',
+                summary: 'topAlbumsChartSummary',
+            },
+            sources: {
+                wrap: 'serverSourcePanel',
+                contents: [{ id: 'serverSourceBreakdown', hide: 'hidden' }],
+                empty: 'serverSourceEmpty',
+                error: 'serverSourceError',
+                summary: 'serverSourceSummary',
+            },
+            history: {
+                wrap: 'historyTableWrap',
+                empty: 'historyEmpty',
+                error: 'historyError',
+                summary: 'historySummary',
+            },
+        };
+
+        function setPanelSummary(name, text) {
+            const cfg = PANEL_CONFIG[name];
+            if (!cfg || !cfg.summary) return;
+            const el = document.getElementById(cfg.summary);
+            if (el) el.textContent = text;
+        }
+
+        function setPanelState(name, state, message) {
+            const cfg = PANEL_CONFIG[name];
+            if (!cfg) return;
+            const wrap = document.getElementById(cfg.wrap);
+            if (wrap) {
+                wrap.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+                wrap.dataset.panelState = state;
             }
+            const skeleton = cfg.skeleton && document.getElementById(cfg.skeleton);
+            if (skeleton) {
+                skeleton.classList.toggle('hidden', state !== 'loading');
+                skeleton.setAttribute('aria-hidden', state === 'loading' ? 'false' : 'true');
+            }
+            const empty = cfg.empty && document.getElementById(cfg.empty);
+            if (empty) empty.classList.toggle('hidden', state !== 'empty');
+            const error = cfg.error && document.getElementById(cfg.error);
+            if (error) {
+                error.classList.toggle('hidden', state !== 'error');
+                if (state === 'error') {
+                    const target = error.querySelector('span') || error;
+                    target.textContent = message || dashboardMessage('error.section');
+                }
+            }
+            const hideContents = state === 'loading'
+                || state === 'empty'
+                || (state === 'error' && !cfg.keepContentOnError);
+            (cfg.contents || []).forEach((item) => {
+                const el = document.getElementById(item.id);
+                if (!el) return;
+                if (item.hide === 'hidden') {
+                    el.classList.toggle('hidden', hideContents);
+                } else if (item.hide === 'invisible') {
+                    el.classList.toggle('invisible', hideContents);
+                } else if (item.hide === 'visibility') {
+                    el.style.visibility = hideContents ? 'hidden' : 'visible';
+                    el.classList.toggle('invisible', hideContents);
+                }
+            });
+            if (state === 'loading') setPanelSummary(name, dashboardMessage('aria.loading'));
+            else if (state === 'empty') setPanelSummary(name, message || dashboardMessage('aria.empty'));
+            else if (state === 'error') setPanelSummary(name, message || dashboardMessage('error.section'));
+        }
+
+        function snapshotArray(data) {
+            if (data === undefined || data === null) return { kind: 'missing' };
+            if (!Array.isArray(data)) return { kind: 'invalid' };
+            return { kind: 'ok', value: data };
+        }
+
+        function beginArrayPanel(name, data, hasValues, emptyMessage) {
+            const parsed = snapshotArray(data);
+            if (parsed.kind !== 'ok') {
+                setPanelState(name, 'error', dashboardMessage('error.section'));
+                return null;
+            }
+            if (!hasValues(parsed.value)) {
+                setPanelState(name, 'empty', emptyMessage);
+                return null;
+            }
+            setPanelState(name, 'ready');
+            return parsed.value;
+        }
+
+        function renderPanelSafely(name, fn) {
+            try {
+                fn();
+            } catch (error) {
+                console.error('Error rendering panel', name, error);
+                setPanelState(name, 'error', dashboardMessage('error.section'));
+            }
+        }
+
+        function setLoading(loading) {
             if (loading && !hasLoadedOnce) {
-                document.getElementById('playerChart').style.visibility = 'hidden';
-                document.getElementById('transcodingChart').style.visibility = 'hidden';
-                document.getElementById('hourlyChart').style.visibility = 'hidden';
-                document.getElementById('dailyChart').style.visibility = 'hidden';
-                document.getElementById('weekdayHourChart').style.visibility = 'hidden';
-                document.getElementById('topArtistsChart').style.visibility = 'hidden';
-                document.getElementById('topAlbumsChart').style.visibility = 'hidden';
-            } else {
-                document.getElementById('playerChart').style.visibility = 'visible';
-                document.getElementById('transcodingChart').style.visibility = 'visible';
-                document.getElementById('hourlyChart').style.visibility = 'visible';
-                document.getElementById('dailyChart').style.visibility = 'visible';
-                document.getElementById('weekdayHourChart').style.visibility = 'visible';
-                document.getElementById('topArtistsChart').style.visibility = 'visible';
-                document.getElementById('topAlbumsChart').style.visibility = 'visible';
+                STATS_PANEL_NAMES.forEach((name) => setPanelState(name, 'loading'));
             }
         }
 
@@ -1149,21 +1366,27 @@
 
         function renderNowPlaying(items) {
             const list = document.getElementById('nowPlayingList');
-            const empty = document.getElementById('nowPlayingEmpty');
             const countEl = document.getElementById('nowPlayingCount');
             list.replaceChildren();
-            list.classList.remove('hidden');
-            empty.classList.add('hidden');
             nowPlayingEntries = [];
 
-            if (!Array.isArray(items) || items.length === 0) {
-                list.classList.add('hidden');
-                empty.classList.remove('hidden');
+            if (!Array.isArray(items)) {
+                setPanelState('nowPlaying', 'error', dashboardMessage('error.nowPlaying'));
+                countEl.textContent = '';
+                stopNowPlayingTicker();
+                return;
+            }
+            if (items.length === 0) {
+                setPanelState('nowPlaying', 'empty', dashboardMessage('empty.nowPlaying'));
                 countEl.textContent = '';
                 stopNowPlayingTicker();
                 return;
             }
 
+            setPanelState('nowPlaying', 'ready');
+            setPanelSummary('nowPlaying', dashboardMessage('aria.nowPlayingSummary', {
+                count: dashboardNumber(items.length),
+            }));
             countEl.textContent = `· ${items.length}`;
 
             items.forEach((item) => {
@@ -1237,6 +1460,11 @@
         }
 
         function updateSummary(summary, transcoding) {
+            if (!summary || typeof summary !== 'object') {
+                setPanelState('summary', 'error', dashboardMessage('error.section'));
+                return;
+            }
+            const transcodingRows = Array.isArray(transcoding) ? transcoding : [];
             document.getElementById('statTotalPlays').textContent =
                 dashboardNumber(summary.total_plays);
             document.getElementById('statListenTime').textContent =
@@ -1263,8 +1491,8 @@
             }
             activeDaysEl.textContent = avgParts.join(' · ');
 
-            const direct = transcoding.find(t => !t.is_transcoding)?.count || 0;
-            const trans = transcoding.find(t => t.is_transcoding)?.count || 0;
+            const direct = transcodingRows.find(t => !t.is_transcoding)?.count || 0;
+            const trans = transcodingRows.find(t => t.is_transcoding)?.count || 0;
             const total = direct + trans;
             const uniqueEl = document.getElementById('statUniqueTracks');
             if (total > 0) {
@@ -1279,6 +1507,11 @@
                     ? dashboardMessage('summary.activeDays', { count: activeDays })
                     : '';
             }
+            setPanelState('summary', 'ready');
+            setPanelSummary('summary', dashboardMessage('aria.summaryPlays', {
+                plays: dashboardNumber(summary.total_plays),
+                tracks: dashboardNumber(summary.unique_tracks),
+            }));
         }
 
         function formatChangeText(pct) {
@@ -1290,18 +1523,26 @@
             return `${sign} ${absVal}% ${dashboardMessage('compare.previous')}`;
         }
 
-        function toggleChartEmpty(chartId, emptyId, hasData) {
-            document.getElementById(chartId).classList.toggle('invisible', !hasData);
-            document.getElementById(emptyId).classList.toggle('hidden', hasData);
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         function renderPlayerChart(data) {
             const legend = document.getElementById('playerChartLegend');
             legend.replaceChildren();
             legend.classList.add('hidden');
-            const hasData = Array.isArray(data) && data.length > 0 && data.some(d => Number(d.count) > 0);
-            toggleChartEmpty('playerChart', 'playerChartEmpty', hasData);
-            if (!hasData) return;
+            const rows = beginArrayPanel(
+                'players',
+                data,
+                (items) => items.length > 0 && items.some(d => Number(d.count) > 0),
+                dashboardMessage('empty.clients'),
+            );
+            if (!rows) return;
 
             const table = document.createElement('table');
             table.className = 'player-legend-table';
@@ -1359,6 +1600,13 @@
                 ...chartBase,
                 color: colorPalette,
                 legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+                tooltip: {
+                    ...chartBase.tooltip,
+                    formatter: (params) => {
+                        const name = escapeHtml(params.name || '');
+                        return `${name}<br/>${dashboardMessage('label.play')} ${dashboardPlays(params.value)}`;
+                    },
+                },
                 series: [{
                     name: 'Clients',
                     type: 'pie',
@@ -1372,14 +1620,23 @@
                     })),
                 }],
             }, true);
+            setPanelSummary('players', dashboardMessage('aria.clientsSummary', {
+                count: dashboardNumber(rows.length),
+                top: rows[0].client_name || dashboardMessage('source.unknown'),
+                plays: dashboardNumber(rows[0].count),
+            }));
         }
 
         function renderTranscodingChart(data) {
-            const hasData = Array.isArray(data) && data.length > 0 && data.some(d => Number(d.count) > 0);
-            toggleChartEmpty('transcodingChart', 'transcodingChartEmpty', hasData);
-            if (!hasData) return;
+            const rows = beginArrayPanel(
+                'transcoding',
+                data,
+                (items) => items.length > 0 && items.some(d => Number(d.count) > 0),
+                dashboardMessage('empty.transcoding'),
+            );
+            if (!rows) return;
 
-            const transformed = data.map(item => ({
+            const transformed = rows.map(item => ({
                 name: item.is_transcoding ? 'Transcoded' : 'Direct Play',
                 value: item.count,
                 playsPct: Number(item.plays_pct) || 0,
@@ -1408,15 +1665,25 @@
                     data: transformed,
                 }],
             }, true);
+            const directCount = rows.find(t => !t.is_transcoding)?.count || 0;
+            const transcodedCount = rows.find(t => t.is_transcoding)?.count || 0;
+            setPanelSummary('transcoding', dashboardMessage('aria.transcodingSummary', {
+                direct: dashboardNumber(directCount),
+                transcoded: dashboardNumber(transcodedCount),
+            }));
         }
 
         function renderHourlyChart(data) {
-            const hasData = data.length > 0 && data.some(d => d.count > 0);
-            toggleChartEmpty('hourlyChart', 'hourlyChartEmpty', hasData);
-            if (!hasData) return;
+            const rows = beginArrayPanel(
+                'hourly',
+                data,
+                (items) => items.length > 0 && items.some(d => Number(d.count) > 0),
+                dashboardMessage('empty.hourly'),
+            );
+            if (!rows) return;
 
             const buckets = Array.from({ length: 24 }, (_, h) => {
-                const found = data.find(d => Number(d.hour) === h);
+                const found = rows.find(d => Number(d.hour) === h);
                 return { hour: h, count: found ? Number(found.count) : 0 };
             });
 
@@ -1462,14 +1729,23 @@
                     },
                 }],
             }, true);
+            const peakHour = buckets.reduce((best, b) => b.count > best.count ? b : best, buckets[0]);
+            setPanelSummary('hourly', dashboardMessage('aria.hourlySummary', {
+                hour: dashboardNumber(peakHour.hour),
+                plays: dashboardNumber(peakHour.count),
+            }));
         }
 
         function renderDailyChart(data) {
-            const hasData = data.length > 0 && data.some(d => d.count > 0);
-            toggleChartEmpty('dailyChart', 'dailyChartEmpty', hasData);
-            if (!hasData) return;
+            const rows = beginArrayPanel(
+                'daily',
+                data,
+                (items) => items.length > 0 && items.some(d => Number(d.count) > 0),
+                dashboardMessage('empty.daily'),
+            );
+            if (!rows) return;
 
-            const sorted = [...data].sort((a, b) => a.date.localeCompare(b.date));
+            const sorted = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
             const dates = sorted.map(d => d.date);
             const counts = sorted.map(d => Number(d.count));
 
@@ -1518,14 +1794,23 @@
                     },
                 }],
             }, true);
+            const activeDays = sorted.filter(d => Number(d.count) > 0).length;
+            setPanelSummary('daily', dashboardMessage('aria.dailySummary', {
+                days: dashboardNumber(activeDays),
+                plays: dashboardNumber(Math.max(0, ...counts)),
+            }));
         }
 
         function renderWeekdayHourChart(data) {
-            const hasData = Array.isArray(data) && data.some(d => Number(d.count) > 0);
-            toggleChartEmpty('weekdayHourChart', 'weekdayHourChartEmpty', hasData);
-            if (!hasData) return;
+            const rows = beginArrayPanel(
+                'heatmap',
+                data,
+                (items) => items.some(d => Number(d.count) > 0),
+                dashboardMessage('empty.heatmap'),
+            );
+            if (!rows) return;
 
-            const points = data.map(item => [
+            const points = rows.map(item => [
                 Number(item.hour),
                 Number(item.weekday),
                 Number(item.count) || 0,
@@ -1576,11 +1861,18 @@
                     emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } },
                 }],
             }, true);
+            const peak = rows.reduce((best, item) => (
+                Number(item.count) > Number(best.count) ? item : best
+            ), rows[0]);
+            setPanelSummary('heatmap', dashboardMessage('aria.heatmapSummary', {
+                weekday: WEEKDAY_LABELS[Number(peak.weekday)] || String(peak.weekday),
+                hour: dashboardNumber(peak.hour),
+                plays: dashboardNumber(peak.count),
+            }));
         }
 
-        function renderRankingList({ containerId, emptyId, data, labelKey, barClass, ariaLabel, metric }) {
+        function renderRankingList({ containerId, panel, data, labelKey, barClass, ariaLabel, metric }) {
             const container = document.getElementById(containerId);
-            const empty = document.getElementById(emptyId);
             container.replaceChildren();
             container.setAttribute('role', 'table');
             container.setAttribute('aria-label', ariaLabel);
@@ -1588,14 +1880,13 @@
             // HasData uses value so listen_time rankings with zero plays still
             // render when there is real data; counts of zero with non-zero
             // seconds are unlikely but supported.
-            const hasData = Array.isArray(data) && data.length > 0 && data.some(d => Number(d.value) > 0 || Number(d.count) > 0 || Number(d.total_listen_sec) > 0);
-            if (!hasData) {
-                empty.classList.remove('hidden');
-                container.classList.add('invisible');
-                return;
-            }
-            empty.classList.add('hidden');
-            container.classList.remove('invisible');
+            const rows = beginArrayPanel(
+                panel,
+                data,
+                (items) => items.length > 0 && items.some(d => Number(d.value) > 0 || Number(d.count) > 0 || Number(d.total_listen_sec) > 0),
+                dashboardMessage(panel === 'artists' ? 'empty.artists' : 'empty.albums'),
+            );
+            if (!rows) return;
 
             // Backend already returns deterministic value DESC, name ASC.
             // Bar widths use the active ranking key (``value``) so the same
@@ -1661,43 +1952,49 @@
                 row.appendChild(countCell);
                 container.appendChild(row);
             });
+            setPanelSummary(panel, dashboardMessage('aria.rankingSummary', {
+                count: dashboardNumber(rows.length),
+                top: String(rows[0][labelKey] || ''),
+            }));
         }
 
         function renderTopArtistsChart(data, metric) {
+            const activeMetric = metric || rankingMetric;
             renderRankingList({
                 containerId: 'topArtistsChart',
-                emptyId: 'topArtistsChartEmpty',
+                panel: 'artists',
                 data: data,
                 labelKey: 'artist',
                 barClass: 'ranking-bar-artists',
-                ariaLabel: '热门艺人播放次数排行榜',
-                metric: metric || rankingMetric,
+                ariaLabel: dashboardMessage(activeMetric === 'listen_time' ? 'aria.artistsByTime' : 'aria.artistsByPlays'),
+                metric: activeMetric,
             });
         }
 
         function renderTopAlbumsChart(data, metric) {
+            const activeMetric = metric || rankingMetric;
             renderRankingList({
                 containerId: 'topAlbumsChart',
-                emptyId: 'topAlbumsChartEmpty',
+                panel: 'albums',
                 data: data,
                 labelKey: 'album',
                 barClass: 'ranking-bar-albums',
-                ariaLabel: '热门专辑播放次数排行榜',
-                metric: metric || rankingMetric,
+                ariaLabel: dashboardMessage(activeMetric === 'listen_time' ? 'aria.albumsByTime' : 'aria.albumsByPlays'),
+                metric: activeMetric,
             });
         }
 
         function renderServerSourceBreakdown(data) {
             const container = document.getElementById('serverSourceBreakdown');
             container.replaceChildren();
-            if (!Array.isArray(data) || data.length === 0) {
-                const empty = document.createElement('p');
-                empty.className = 'text-slate-600';
-                empty.textContent = dashboardMessage('source.empty');
-                container.appendChild(empty);
-                return;
-            }
-            data.forEach((item) => {
+            const rows = beginArrayPanel(
+                'sources',
+                data,
+                (items) => items.length > 0,
+                dashboardMessage('source.empty'),
+            );
+            if (!rows) return;
+            rows.forEach((item) => {
                 const row = document.createElement('div');
                 row.className = 'source-breakdown-row';
                 const name = document.createElement('span');
@@ -1713,6 +2010,9 @@
                 row.append(name, count, duration);
                 container.appendChild(row);
             });
+            setPanelSummary('sources', dashboardMessage('aria.sourcesSummary', {
+                count: dashboardNumber(rows.length),
+            }));
         }
 
         function updateSourceOptions(data) {
@@ -1769,30 +2069,15 @@
         function renderHistoryTable(data) {
             const tbody = document.getElementById('historyTable');
             tbody.replaceChildren();
+            const rows = beginArrayPanel(
+                'history',
+                data,
+                (items) => items.length > 0,
+                dashboardMessage('history.empty'),
+            );
+            if (!rows) return;
 
-            if (data.length === 0) {
-                const tr = document.createElement('tr');
-                tr.className = 'history-empty-row';
-                const td = document.createElement('td');
-                td.colSpan = 6;
-                td.className = 'history-empty-cell';
-                const wrap = document.createElement('div');
-                wrap.className = 'flex flex-col items-center text-slate-600';
-                wrap.innerHTML = '<svg class="w-10 h-10 mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>';
-                const p = document.createElement('p');
-                p.textContent = dashboardMessage('history.empty');
-                const hint = document.createElement('p');
-                hint.className = 'text-xs text-slate-700 mt-1';
-                hint.textContent = dashboardMessage('history.emptyHint');
-                wrap.appendChild(p);
-                wrap.appendChild(hint);
-                td.appendChild(wrap);
-                tr.appendChild(td);
-                tbody.appendChild(tr);
-                return;
-            }
-
-            data.forEach((item) => {
+            rows.forEach((item) => {
                 const tr = document.createElement('tr');
                 tr.className = 'history-row';
 
@@ -1848,6 +2133,9 @@
                 tr.appendChild(countTd);
                 tbody.appendChild(tr);
             });
+            setPanelSummary('history', dashboardMessage('aria.historySummary', {
+                count: dashboardNumber(rows.length),
+            }));
         }
 
         async function fetchStats() {
@@ -1874,16 +2162,16 @@
                     throw new Error('statistics request failed (' + snapshotRes.status + ')');
                 }
                 const snapshot = await snapshotRes.json();
-                updateSummary(snapshot.summary, snapshot.transcoding);
-                renderPlayerChart(snapshot.players);
-                renderTranscodingChart(snapshot.transcoding);
-                renderHourlyChart(snapshot.hourly);
-                renderDailyChart(snapshot.daily);
-                renderWeekdayHourChart(snapshot.heatmap);
-                renderTopArtistsChart(snapshot.top_artists, rankingMetric);
-                renderTopAlbumsChart(snapshot.top_albums, rankingMetric);
-                renderHistoryTable(snapshot.history);
-                renderServerSourceBreakdown(snapshot.servers);
+                renderPanelSafely('summary', () => updateSummary(snapshot.summary, snapshot.transcoding));
+                renderPanelSafely('players', () => renderPlayerChart(snapshot.players));
+                renderPanelSafely('transcoding', () => renderTranscodingChart(snapshot.transcoding));
+                renderPanelSafely('hourly', () => renderHourlyChart(snapshot.hourly));
+                renderPanelSafely('daily', () => renderDailyChart(snapshot.daily));
+                renderPanelSafely('heatmap', () => renderWeekdayHourChart(snapshot.heatmap));
+                renderPanelSafely('artists', () => renderTopArtistsChart(snapshot.top_artists, rankingMetric));
+                renderPanelSafely('albums', () => renderTopAlbumsChart(snapshot.top_albums, rankingMetric));
+                renderPanelSafely('history', () => renderHistoryTable(snapshot.history));
+                renderPanelSafely('sources', () => renderServerSourceBreakdown(snapshot.servers));
                 updateSourceOptions(
                     snapshot.available_servers && snapshot.available_servers.length
                         ? snapshot.available_servers
@@ -1906,6 +2194,11 @@
                 showError(dashboardMessage('error.stats', {
                     stale: hasLoadedOnce ? dashboardMessage('error.stale') : '',
                 }));
+                if (!hasLoadedOnce) {
+                    STATS_PANEL_NAMES.forEach((name) => (
+                        setPanelState(name, 'error', dashboardMessage('error.section'))
+                    ));
+                }
                 console.error('Error fetching data:', error);
             } finally {
                 setLoading(false);
@@ -1916,6 +2209,7 @@
         async function fetchNowPlaying() {
             if (nowPlayingFetchInFlight) return;
             nowPlayingFetchInFlight = true;
+            if (!nowPlayingLoadedOnce) setPanelState('nowPlaying', 'loading');
             try {
                 const sourceParam = selectedSourceId
                     ? `?source_id=${encodeURIComponent(selectedSourceId)}`
@@ -1926,9 +2220,12 @@
                     return;
                 }
                 if (!response.ok) throw new Error('now-playing request failed');
-                renderNowPlaying(await response.json());
+                const payload = await response.json();
+                renderNowPlaying(payload);
+                if (Array.isArray(payload)) nowPlayingLoadedOnce = true;
             } catch (error) {
                 console.error('Error fetching now playing:', error);
+                setPanelState('nowPlaying', 'error', dashboardMessage('error.nowPlaying'));
             } finally {
                 nowPlayingFetchInFlight = false;
             }

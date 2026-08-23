@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/StepaniaH/navidrome-stat/security/advisories/new
+    about: Private vulnerability reports. Never attach real passwords, tokens, or play history.
+  - name: Documentation
+    url: https://github.com/StepaniaH/navidrome-stat/blob/main/docs/README.md
+    about: Start here before filing a bug.

@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 import aiosqlite
 
-from src.database import DB_PATH
+from src.database import DB_PATH, _format_utc
 from src.sqlite import connect_db
 
 
@@ -100,9 +100,12 @@ async def set_retention_days(days: Optional[int], db_path: str | None = None) ->
         await db.commit()
 
 
-def _retention_cutoff_iso(days: int) -> str:
+_RETENTION_BEFORE_SQL = "datetime(played_at) < datetime(?)"
+
+
+def _retention_cutoff_sql(days: int) -> str:
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    return cutoff.isoformat()
+    return _format_utc(cutoff)
 
 
 def _estimate_database_bytes_after_purge(
@@ -124,7 +127,7 @@ async def _play_history_storage_metrics(
     where_clause = ""
     params: tuple[Any, ...] = ()
     if played_before is not None:
-        where_clause = " WHERE played_at < ?"
+        where_clause = f" WHERE {_RETENTION_BEFORE_SQL}"
         params = (played_before,)
 
     async with db.execute(
@@ -144,7 +147,7 @@ async def _play_attempt_storage_metrics(
     where_clause = ""
     params: tuple[Any, ...] = ()
     if played_before is not None:
-        where_clause = " WHERE played_at < ?"
+        where_clause = f" WHERE {_RETENTION_BEFORE_SQL}"
         params = (played_before,)
     async with db.execute(
         f"""
@@ -199,7 +202,7 @@ async def preview_retention_purge(
             **storage,
         }
 
-    cutoff = _retention_cutoff_iso(days)
+    cutoff = _retention_cutoff_sql(days)
     async with connect_db(path) as db:
         history_to_delete, history_bytes = await _play_history_storage_metrics(
             db,
@@ -239,14 +242,14 @@ async def apply_retention_purge(db_path: str | None = None) -> dict[str, int]:
             "retention_days": days,
         }
 
-    cutoff = _retention_cutoff_iso(days)
+    cutoff = _retention_cutoff_sql(days)
     async with connect_db(path) as db:
         history_cursor = await db.execute(
-            "DELETE FROM play_history WHERE played_at < ?",
+            f"DELETE FROM play_history WHERE {_RETENTION_BEFORE_SQL}",
             (cutoff,),
         )
         attempt_cursor = await db.execute(
-            "DELETE FROM play_attempts WHERE played_at < ?",
+            f"DELETE FROM play_attempts WHERE {_RETENTION_BEFORE_SQL}",
             (cutoff,),
         )
         await db.commit()

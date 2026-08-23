@@ -15,17 +15,23 @@
 
 | 文档 | 用途 | 何时更新 |
 | --- | --- | --- |
-| [`README.md`](README.md) | 面向使用者的项目概览和快速启动 | 用户可见安装、启动方式变化时 |
+| [`README.md`](README.md) / [`README.zh-CN.md`](README.zh-CN.md) | 面向使用者的项目概览和快速启动 | 用户可见安装、启动方式变化时 |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | 外部贡献约定与隐私约束 | 贡献流程变化时 |
+| [`SECURITY.md`](SECURITY.md) | 漏洞报告入口（不含真实联系邮箱，除非仓库所有者写入） | 报告渠道变化时 |
+| [`CHANGELOG.md`](CHANGELOG.md) | 面向使用者的版本记录 | 每次打标签或合并用户可见变更时 |
 | [`docs/README.md`](docs/README.md) | 文档地图、阅读顺序、维护规则 | 新增、移动或废弃文档时 |
 | [`docs/current-state.md`](docs/current-state.md) | 从代码、配置、测试提取的当前事实与差异 | 事实变化或重新核验后 |
 | [`docs/interfaces.md`](docs/interfaces.md) | API、Subsonic、环境变量、数据库 schema 的接口登记 | 任何接口或兼容性变化时，与代码同一变更提交 |
-| [`docs/privacy.md`](docs/privacy.md) | 隐私边界、敏感信息规则和人工确认项 | 新增数据源、字段、日志或部署环境时 |
+| [`docs/privacy.md`](docs/privacy.md) | 数据类别、处理路径、风险和人工确认项 | 新增数据源、字段、日志或部署环境时 |
+| [`docs/security.md`](docs/security.md) | 威胁模型、访问控制与前端安全策略 | 认证、CSP 或探针策略变化时 |
+| [`docs/roadmap.md`](docs/roadmap.md) | 开源版本阶段与产品边界（引用任务 ID，不维护平行待办） | 阶段出口或刻意不做的范围变化时 |
 | [`docs/tasks.md`](docs/tasks.md) | AI Agent 可逐项执行的唯一后续任务清单 | 每次领取、推进、阻塞、完成任务时 |
+| [`docs/tasks-completed.md`](docs/tasks-completed.md) | 已完成任务全文档案 | 有任务从执行清单转为已完成时 |
 
 ## 3. 每次工作前
 
 1. 运行 `git status --short --branch`，识别用户已有修改。不得覆盖、回滚或格式化无关修改。
-2. 阅读本文件、`docs/README.md`、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md` 和 `docs/tasks.md`。
+2. 阅读本文件、`docs/README.md`、`docs/current-state.md`、`docs/interfaces.md`、`docs/privacy.md`、`docs/security.md`、`docs/roadmap.md` 和 `docs/tasks.md`。
 3. 阅读目标任务涉及的源码、配置和测试；不得仅根据 README 或任务描述推断实现事实。
 4. 在 `docs/tasks.md` 通过唯一 ID 领取一个可执行任务，检查其 `状态`、`依赖`、`涉及文件`、隐私确认和验收标准。
 5. 涉及个人信息、服务器地址、用户名、密码、token、数据库真实内容或日志样本时，先执行隐私检查。标为“需用户人工确认/编辑”的内容必须暂停并请求用户处理，AI 不得猜测或代填。

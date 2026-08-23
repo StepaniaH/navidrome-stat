@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -120,36 +123,47 @@ class CollectorManager:
                 "Failed to finalize collector sessions (1 error)"
             )
 
+    async def _stop_for_replace(self, server_id: str) -> None:
+        """Tear down a collector without aborting the replacement that follows."""
+        try:
+            await self._stop_unlocked(server_id)
+        except CollectorCleanupError:
+            logger.error("Collector session finalization failed during replace")
+
     async def start(self, server: dict) -> None:
         async with self._lock:
             if not server.get("enabled", True):
                 return
             client, tracker = self._build(server)
-            await self._stop_unlocked(server["id"])
-            await self._activate_unlocked(
-                server["id"],
-                client,
-                tracker,
-                self._config_key(server),
-            )
+            try:
+                await self._stop_for_replace(server["id"])
+                await self._activate_unlocked(
+                    server["id"],
+                    client,
+                    tracker,
+                    self._config_key(server),
+                )
+            except Exception:
+                await client.close()
+                raise
 
     async def replace(self, server: dict) -> None:
         async with self._lock:
             if not server.get("enabled", True):
-                await self._stop_unlocked(server["id"])
+                await self._stop_for_replace(server["id"])
                 return
             client, tracker = self._build(server)
             try:
-                await self._stop_unlocked(server["id"])
+                await self._stop_for_replace(server["id"])
+                await self._activate_unlocked(
+                    server["id"],
+                    client,
+                    tracker,
+                    self._config_key(server),
+                )
             except Exception:
                 await client.close()
                 raise
-            await self._activate_unlocked(
-                server["id"],
-                client,
-                tracker,
-                self._config_key(server),
-            )
 
     async def reconcile(self, servers: list[dict]) -> None:
         desired = {
@@ -175,13 +189,8 @@ class CollectorManager:
             remove_ids = set(self.collectors) - set(desired)
             change_ids = set(replacements) & set(self.collectors)
             try:
-                stop_errors = []
                 for source_id in sorted(remove_ids | change_ids):
-                    try:
-                        await self._stop_unlocked(source_id)
-                    except Exception as exc:
-                        stop_errors.append(exc)
-                self._raise_errors(stop_errors, "stop collectors")
+                    await self._stop_for_replace(source_id)
                 for source_id, (client, tracker, config_key) in replacements.items():
                     await self._activate_unlocked(
                         source_id,
