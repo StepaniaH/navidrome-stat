@@ -4,8 +4,10 @@ import logging
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 
 from src.collectors import active_now_playing
+from src.coverart import cover_art_service
 from src.database import (
     get_daily_stats,
     get_hourly_stats,
@@ -99,6 +101,24 @@ def _validate_ranking_metric(metric: str) -> str:
 
 def _source_kwargs(source_id: str | None) -> dict:
     return {"source_id": source_id} if source_id else {}
+
+
+@router.get("/api/coverart")
+async def api_cover_art(
+    source_id: str = Query(min_length=1, max_length=128),
+    id: str = Query(min_length=1, max_length=128),
+    size: int = Query(default=300, ge=32, le=600),
+):
+    """Proxy one cover art image from the owning Navidrome server."""
+    result = await cover_art_service.load(source_id, id, size)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Cover art not available")
+    data, content_type = result
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=2592000, immutable"},
+    )
 
 
 @router.get("/api/stats/dashboard", response_model=DashboardSnapshot)
@@ -365,6 +385,7 @@ async def api_now_playing(
                     client_name=session.get("client_name"),
                     seconds_elapsed=seconds_elapsed,
                     source_name=session.get("source_name"),
+                    track_id=session.get("track_id"),
                 )
             )
         return items

@@ -11,7 +11,7 @@ from typing import Any, Optional
 from urllib.parse import urlparse
 
 from src import config
-from src.schema import set_meta_value
+from src.schema import LEGACY_SOURCE_ID, set_meta_value
 from src.sqlite import connect_db
 
 SOURCE_URL_KEY = "source_url"
@@ -92,6 +92,28 @@ async def replace_saved_source_config(
         except BaseException:
             await db.rollback()
             raise
+
+
+async def credentials_for_source(source_id: str) -> Optional[dict[str, str]]:
+    """Resolve upstream credentials for a saved server or the legacy fallback."""
+    from src.server_registry import get_server
+
+    server = await get_server(source_id)
+    if server is not None:
+        return {
+            "url": server["url"],
+            "user": server["username"],
+            "password": server["password"],
+        }
+    if source_id == LEGACY_SOURCE_ID:
+        config = await resolve_effective_source_config()
+        if has_full_config(config):
+            return {
+                "url": config["url"] or "",
+                "user": config["user"] or "",
+                "password": config["password"] or "",
+            }
+    return None
 
 
 def validate_source_url(url: Optional[str]) -> str:

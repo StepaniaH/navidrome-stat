@@ -12,6 +12,7 @@ from datetime import date
 from weakref import WeakKeyDictionary
 
 from src.config import env_int
+from src.coverart import cover_art_service
 from src.dashboard_cache import DashboardSnapshotCache, dashboard_snapshot_cache
 from src.database import (
     delete_server,
@@ -187,6 +188,17 @@ class StatsService:
 
         return await self._cache.get_or_create(key, build)
 
+    async def _attach_album_ids(self, source_id: str | None, albums: list) -> list:
+        if not albums:
+            return albums
+        attached = []
+        for entry in albums:
+            album_id = await cover_art_service.resolve_album_id(
+                source_id, entry.get("album"), None
+            )
+            attached.append({**entry, "album_id": album_id})
+        return attached
+
     async def _build_snapshot(
         self,
         *,
@@ -264,6 +276,7 @@ class StatsService:
                 **window_kwargs,
             ),
         )
+        top_albums = await self._attach_album_ids(source_id, top_albums)
         return {
             "summary": summary,
             "players": players,

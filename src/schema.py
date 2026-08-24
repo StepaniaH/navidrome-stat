@@ -5,7 +5,7 @@ import aiosqlite
 from src.config import DATABASE_PATH
 from src.sqlite import connect_db
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 LEGACY_SOURCE_ID = "legacy"
 LEGACY_SOURCE_NAME = "Legacy environment source"
 
@@ -205,6 +205,18 @@ async def _apply_migrations(db: aiosqlite.Connection) -> None:
         if "checkpointed_at" not in history_columns:
             await db.execute("ALTER TABLE play_history ADD COLUMN checkpointed_at TEXT")
         await _set_schema_version(db, 7)
+
+    if version < 8:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS album_art_map (
+                source_id TEXT NOT NULL,
+                album_key TEXT NOT NULL,
+                album_id TEXT NOT NULL,
+                attempted_at TEXT NOT NULL,
+                PRIMARY KEY (source_id, album_key)
+            )
+        """)
+        await _set_schema_version(db, 8)
 
 
 async def init_db(db_path: str | None = None):

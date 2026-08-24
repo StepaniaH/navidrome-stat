@@ -111,6 +111,7 @@ class TopAlbumItem(BaseModel):
     count: int
     total_listen_sec: Optional[int] = None
     value: Optional[int] = None
+    album_id: Optional[str] = None
 
 
 class HistoryItem(BaseModel):
@@ -238,6 +239,7 @@ class NowPlayingItem(BaseModel):
     client_name: Optional[str] = None
     seconds_elapsed: int
     source_name: Optional[str] = None
+    track_id: Optional[str] = None
 
 
 class SourceConfigResponse(BaseModel):

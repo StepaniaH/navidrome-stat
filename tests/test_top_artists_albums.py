@@ -124,7 +124,9 @@ async def test_api_top_albums(mock_get):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/top-albums")
     assert response.status_code == 200
-    assert response.json() == [{"album": "Record A", "count": 3, "total_listen_sec": 90, "value": 3}]
+    assert response.json() == [
+        {"album": "Record A", "count": 3, "total_listen_sec": 90, "value": 3, "album_id": None}
+    ]
     mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="plays")
 
 
