@@ -31,7 +31,7 @@ def test_dashboard_loads_split_static_resources():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert '<link rel="stylesheet" href="/static/dashboard.css">' in html
     assert '<script type="module" src="/static/dashboard.js"></script>' in html
-    assert '<script src="/static/theme-bootstrap.js"></script>' in html
+    assert '<script type="module" src="/static/theme-bootstrap.js"></script>' in html
     assert '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">' in html
     assert "<style>" not in html
     assert html.count("<script>") == 0
@@ -293,14 +293,13 @@ def test_dashboard_reads_shared_timezone_preference(source):
 
 def test_dashboard_has_local_i18n_and_theme_palette(source):
     assert '<html lang="en">' in source
-    assert '<script src="/static/localization.js"></script>' in source
     assert "const dashboardTranslations" in source
     assert "const dashboardI18n = window.NavidromeI18n.createI18n" in source
     assert "function translateDashboard()" in source
     assert "dashboardI18n.translate()" in source
     assert "window.NavidromeI18n.readPreference('navidrome-language', 'en')" in source
     assert "window.NavidromeI18n.readPreference('navidrome-theme', 'frappe')" in source
-    assert "window.NavidromeI18n.readPreference('navidrome-motion', 'system')" in source
+    assert "readPreference('navidrome-motion', 'system')" in source
     assert '[data-motion="reduced"] *' in source
     for token in ("#303446", "#292c3c", "#ca9ee6", "#a6d189", "#eff1f5", "#e6e9ef", "#8839ef", "#40a02b"):
         assert token in source

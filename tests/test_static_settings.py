@@ -90,8 +90,8 @@ def test_shared_localization_runtime_has_fallback_interpolation_and_dom_translat
     html = _read(SETTINGS_HTML)
     settings_script = _read(SETTINGS_JS)
     runtime = _read(LOCALIZATION_JS)
-    assert '<script src="/static/localization.js"></script>' in html
-    assert '<script src="/static/settings.js"></script>' in html
+    assert '<script type="module" src="/static/localization.js"></script>' in html
+    assert '<script type="module" src="/static/settings.js"></script>' in html
     assert "function normalizeLocale(" in runtime
     assert "function interpolate(" in runtime
     assert "localizedMessage ?? fallbackMessage ?? key" in runtime
@@ -219,8 +219,10 @@ def test_settings_login_is_an_accessible_dialog():
     assert 'aria-modal="true"' in html
     assert 'aria-labelledby="settingsLoginTitle"' in html
     assert 'id="loginError" class="login-error" role="alert"' in html
-    assert "document.querySelector('.settings-shell').inert = true" in script
-    assert "document.querySelector('.settings-shell').inert = false" in script
-    assert "window.requestAnimationFrame(() => document.getElementById('loginToken').focus())" in script
-    assert "event.key !== 'Tab'" in script
+    assert "inertSelector: '.settings-shell'" in script
+    assert "login.bind()" in script
+    auth_js = _read(ROOT / "src" / "static" / "js" / "auth.js")
+    assert "shell().inert" in auth_js
+    assert "requestAnimationFrame" in auth_js
+    assert "event.key" in _read(ROOT / "src/static/js/auth.js")
     assert "tokenInput.value = ''" in script

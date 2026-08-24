@@ -1,8 +1,9 @@
-(function initSettingsPage() {
-    'use strict';
+import { apiFetch, isAbortError, UnauthorizedError } from './js/http.js';
+import { createLoginController } from './js/auth.js';
+import { UNAUTHORIZED_EVENT } from './js/http.js';
+import { readPreference, removePreference, writePreference } from './js/prefs.js';
+import { createI18n } from './localization.js';
 
-    const { createI18n, readPreference, removePreference, writePreference } = window.NavidromeI18n;
-    const fetchOptions = { credentials: 'same-origin' };
     const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
     const preferenceKeys = Object.freeze({
         language: 'navidrome-language',
@@ -360,39 +361,28 @@
     let previewTimer = null;
     let retentionPreviewController = null;
     let userPreviewController = null;
-    let lastFocusBeforeLogin = null;
 
     function isResponseOk(response) {
         return response && response.ok;
     }
 
-    async function apiFetch(url, options = {}) {
-        const response = await fetch(url, { ...fetchOptions, ...options });
-        if (response.status === 401) {
-            showLogin();
-            throw new Error('unauthorized');
-        }
-        return response;
+    let lastUnauthorizedHandler = null;
+
+    function onUnauthorized() {
+        if (lastUnauthorizedHandler) lastUnauthorizedHandler();
     }
 
-    function isAbortError(error) {
-        return error && error.name === 'AbortError';
-    }
+    const login = createLoginController({
+        overlayId: 'loginOverlay',
+        tokenId: 'loginToken',
+        inertSelector: '.settings-shell',
+        onAuthenticated: () => bootstrapData(),
+    });
+
+    window.addEventListener(UNAUTHORIZED_EVENT, () => showLogin());
 
     function showLogin() {
-        const overlay = document.getElementById('loginOverlay');
-        if (overlay.hidden) lastFocusBeforeLogin = document.activeElement;
-        overlay.hidden = false;
-        document.querySelector('.settings-shell').inert = true;
-        window.requestAnimationFrame(() => document.getElementById('loginToken').focus());
-    }
-
-    function hideLogin() {
-        document.getElementById('loginOverlay').hidden = true;
-        document.getElementById('loginError').hidden = true;
-        document.querySelector('.settings-shell').inert = false;
-        if (lastFocusBeforeLogin instanceof HTMLElement) lastFocusBeforeLogin.focus();
-        lastFocusBeforeLogin = null;
+        login.show();
     }
 
     function showBanner(kind, message) {
@@ -1044,15 +1034,12 @@
     }
 
     async function submitLogin(token) {
-        const response = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ token }),
-        });
-        if (!response.ok) throw new Error('invalid token');
-        hideLogin();
-        await bootstrapData();
+        try {
+            await login.submit(token);
+        } catch (error) {
+            if (!(error instanceof UnauthorizedError)) throw error;
+            throw new Error('invalid token');
+        }
     }
 
     function switchSettingsTab(name, { focus = true, updateHash = true } = {}) {
@@ -1443,21 +1430,7 @@
     }
 
     function bindAuthentication() {
-        document.getElementById('loginOverlay').addEventListener('keydown', (event) => {
-            if (event.key !== 'Tab') return;
-            const focusable = [...event.currentTarget.querySelectorAll('input, button')]
-                .filter((element) => !element.disabled && !element.hidden);
-            if (!focusable.length) return;
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-            if (event.shiftKey && document.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-                event.preventDefault();
-                first.focus();
-            }
-        });
+        login.bind();
         document.getElementById('loginForm').addEventListener('submit', async (event) => {
             event.preventDefault();
             const tokenInput = document.getElementById('loginToken');
@@ -1475,14 +1448,18 @@
     async function bootstrapData() {
         hideBanner();
         try {
-            const statusResponse = await fetch('/api/auth/status', fetchOptions);
+            const statusResponse = await apiFetch('/api/auth/status');
             if (statusResponse.ok) {
                 const status = await statusResponse.json();
                 if (status.auth_required) {
-                    const probe = await fetch('/api/privacy/settings', fetchOptions);
-                    if (probe.status === 401) {
-                        showLogin();
-                        return;
+                    try {
+                        await apiFetch('/api/privacy/settings');
+                    } catch (error) {
+                        if (error instanceof UnauthorizedError) {
+                            showLogin();
+                            return;
+                        }
+                        throw error;
                     }
                 }
             }
@@ -1516,4 +1493,3 @@
     }
 
     initialize();
-}());

@@ -1,6 +1,8 @@
-        document.documentElement.dataset.theme =
-            window.NavidromeI18n.readPreference('navidrome-theme', 'frappe');
-        document.documentElement.dataset.motion =
-            window.NavidromeI18n.readPreference('navidrome-motion', 'system') === 'reduced'
-                ? 'reduced'
-                : 'system';
+import { readPreference } from './js/prefs.js';
+
+document.documentElement.dataset.theme =
+    readPreference('navidrome-theme', 'frappe');
+document.documentElement.dataset.motion =
+    readPreference('navidrome-motion', 'system') === 'reduced'
+        ? 'reduced'
+        : 'system';
