@@ -10,6 +10,5 @@ def db_path(tmp_path):
 
 @pytest.fixture
 def isolated_db(db_path, monkeypatch):
-    monkeypatch.setattr("src.database.DB_PATH", db_path)
-    monkeypatch.setattr("src.privacy_ops.DB_PATH", db_path)
+    monkeypatch.setattr("src.config.DATABASE_PATH", db_path)
     return db_path

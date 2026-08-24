@@ -115,7 +115,7 @@ async def test_source_config_reads_and_concurrent_writes_are_atomic(
     )
     first_field_written = asyncio.Event()
     release_first_writer = asyncio.Event()
-    original_set_meta = source_config._set_meta
+    original_set_meta = source_config.set_meta_value
 
     async def pause_first_writer(db, key, value):
         await original_set_meta(db, key, value)
@@ -123,7 +123,7 @@ async def test_source_config_reads_and_concurrent_writes_are_atomic(
             first_field_written.set()
             await release_first_writer.wait()
 
-    monkeypatch.setattr(source_config, "_set_meta", pause_first_writer)
+    monkeypatch.setattr(source_config, "set_meta_value", pause_first_writer)
     first = asyncio.create_task(
         set_saved_source_config(
             url="http://first.example.invalid",

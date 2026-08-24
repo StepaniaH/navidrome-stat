@@ -5,6 +5,10 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+# Single source of truth for the SQLite file location. Modules resolve this
+# attribute at call time so tests can patch it in one place.
+DATABASE_PATH = os.getenv("DATABASE_URL", "navidrome_stats.db")
+
 
 def parse_clamped_int(
     raw: Optional[str],

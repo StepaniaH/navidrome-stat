@@ -9,24 +9,15 @@ from typing import Any, Optional
 
 import aiosqlite
 
-from src.database import DB_PATH, _format_utc
+from src import config
+from src.database import _format_utc
+from src.schema import PAYLOAD_BYTES_SQL, get_meta_value, set_meta_value
 from src.sqlite import connect_db
 
 
 def _path(db_path: str | None = None) -> str:
-    return DB_PATH if db_path is None else db_path
+    return config.DATABASE_PATH if db_path is None else db_path
 
-
-_ROW_PAYLOAD_BYTES_SQL = """
-    COALESCE(LENGTH(played_at), 0) +
-    COALESCE(LENGTH(username), 0) +
-    COALESCE(LENGTH(client_name), 0) +
-    COALESCE(LENGTH(track_id), 0) +
-    COALESCE(LENGTH(title), 0) +
-    COALESCE(LENGTH(artist), 0) +
-    COALESCE(LENGTH(album), 0) +
-    16
-"""
 
 EXPORT_FORMAT_VERSION = 2
 SUPPORTED_IMPORT_FORMAT_VERSIONS = (1, 2)
@@ -52,38 +43,11 @@ def validate_retention_days(days: Optional[int]) -> Optional[int]:
     return days
 
 
-async def _ensure_meta_table(db: aiosqlite.Connection) -> None:
-    await db.execute("""
-        CREATE TABLE IF NOT EXISTS schema_meta (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )
-    """)
-
-
-async def _get_meta(db: aiosqlite.Connection, key: str) -> Optional[str]:
-    await _ensure_meta_table(db)
-    async with db.execute("SELECT value FROM schema_meta WHERE key = ?", (key,)) as cursor:
-        row = await cursor.fetchone()
-    return row[0] if row else None
-
-
-async def _set_meta(db: aiosqlite.Connection, key: str, value: str) -> None:
-    await _ensure_meta_table(db)
-    await db.execute(
-        """
-        INSERT INTO schema_meta (key, value) VALUES (?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        """,
-        (key, value),
-    )
-
-
 async def get_retention_days(db_path: str | None = None) -> Optional[int]:
     """Returns retention days, or None for permanent retention."""
     path = _path(db_path)
     async with connect_db(path) as db:
-        raw = await _get_meta(db, META_RETENTION_DAYS)
+        raw = await get_meta_value(db, META_RETENTION_DAYS)
     if raw is None or raw == META_RETENTION_PERMANENT:
         return None
     return int(raw)
@@ -94,9 +58,9 @@ async def set_retention_days(days: Optional[int], db_path: str | None = None) ->
     path = _path(db_path)
     async with connect_db(path) as db:
         if days is None:
-            await _set_meta(db, META_RETENTION_DAYS, META_RETENTION_PERMANENT)
+            await set_meta_value(db, META_RETENTION_DAYS, META_RETENTION_PERMANENT)
         else:
-            await _set_meta(db, META_RETENTION_DAYS, str(days))
+            await set_meta_value(db, META_RETENTION_DAYS, str(days))
         await db.commit()
 
 
@@ -131,7 +95,7 @@ async def _play_history_storage_metrics(
         params = (played_before,)
 
     async with db.execute(
-        f"SELECT COUNT(*), COALESCE(SUM({_ROW_PAYLOAD_BYTES_SQL}), 0) "
+        f"SELECT COUNT(*), COALESCE(SUM({PAYLOAD_BYTES_SQL}), 0) "
         f"FROM play_history{where_clause}",
         params,
     ) as cursor:
@@ -150,18 +114,8 @@ async def _play_attempt_storage_metrics(
         where_clause = f" WHERE {_RETENTION_BEFORE_SQL}"
         params = (played_before,)
     async with db.execute(
-        f"""
-        SELECT COUNT(*), COALESCE(SUM(
-            COALESCE(LENGTH(played_at), 0) +
-            COALESCE(LENGTH(username), 0) +
-            COALESCE(LENGTH(client_name), 0) +
-            COALESCE(LENGTH(track_id), 0) +
-            COALESCE(LENGTH(title), 0) +
-            COALESCE(LENGTH(artist), 0) +
-            COALESCE(LENGTH(album), 0) + 16
-        ), 0)
-        FROM play_attempts{where_clause}
-        """,
+        f"SELECT COUNT(*), COALESCE(SUM({PAYLOAD_BYTES_SQL}), 0) "
+        f"FROM play_attempts{where_clause}",
         params,
     ) as cursor:
         row = await cursor.fetchone()
