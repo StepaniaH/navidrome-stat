@@ -2,6 +2,7 @@ import { catalog, dashboardMessages } from './js/messages-dashboard.js';
 import { buildStatsQuery, escapeHtml, formatChangeText, validateCustomRange } from './js/format.js';
 import { chartPalette, createThemeTokens } from './js/charts.js';
 import { onPreferenceChange } from './js/prefs.js';
+import { getFilters, setFilters } from './js/filters.js';
 
 
     const REFRESH_MS = 60000;
@@ -39,13 +40,26 @@ import { onPreferenceChange } from './js/prefs.js';
     let hasLoadedOnce = false;
     let nowPlayingLoadedOnce = false;
     let authRequired = false;
-    let statsDays = 30;
-    let customStartDate = '';
-    let customEndDate = '';
-    let selectedSourceId = '';
+    const initialFilters = getFilters();
+    let statsDays = initialFilters.days;
+    let customStartDate = initialFilters.startDate;
+    let customEndDate = initialFilters.endDate;
+    let selectedSourceId = initialFilters.sourceId;
     const knownSources = new Map();
     // Shared by the artist and album rankings; changing it refreshes both.
-    let rankingMetric = 'plays';
+    let rankingMetric = initialFilters.metric;
+
+    // Keep the shareable URL in sync whenever a filter changes.
+    function persistFilters() {
+        setFilters({
+            days: statsDays,
+            timezone: statsTimezone,
+            metric: rankingMetric,
+            sourceId: selectedSourceId,
+            startDate: customStartDate,
+            endDate: customEndDate,
+        });
+    }
     let lastFocusBeforeLogin = null;
 
     // `browser` resolves to an IANA zone before requests; the API does not accept the token.
@@ -1114,6 +1128,7 @@ import { onPreferenceChange } from './js/prefs.js';
             option.addEventListener('click', () => {
                 if (selectedSourceId !== id) {
                     selectedSourceId = id;
+                    persistFilters();
                     renderSourceOptions();
                     fetchStats();
                     fetchNowPlaying();
@@ -1147,7 +1162,10 @@ import { onPreferenceChange } from './js/prefs.js';
         knownSources.clear();
         nextSources.forEach((name, id) => knownSources.set(id, name));
         const selectionReset = Boolean(selectedSourceId && !knownSources.has(selectedSourceId));
-        if (selectionReset) selectedSourceId = '';
+        if (selectionReset) {
+            selectedSourceId = '';
+            persistFilters();
+        }
         renderSourceOptions();
         return selectionReset;
     }
@@ -1532,6 +1550,7 @@ import { onPreferenceChange } from './js/prefs.js';
             statsDays = days;
             customStartDate = '';
             customEndDate = '';
+            persistFilters();
             setActiveStatsWindowButton(days);
             closeFilterMenus();
             document.getElementById('statsWindowButton').focus();
@@ -1558,6 +1577,7 @@ import { onPreferenceChange } from './js/prefs.js';
         error.classList.add('hidden');
         customStartDate = start;
         customEndDate = end;
+        persistFilters();
         setActiveStatsWindowButton(statsDays);
         closeFilterMenus();
         document.getElementById('statsWindowButton').focus();
@@ -1588,6 +1608,7 @@ import { onPreferenceChange } from './js/prefs.js';
             if (metric !== 'plays' && metric !== 'listen_time') return;
             if (metric === rankingMetric) return;
             rankingMetric = metric;
+            persistFilters();
             setActiveRankingMetric(metric);
             fetchRankings();
         });

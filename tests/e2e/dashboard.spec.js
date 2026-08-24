@@ -623,3 +623,21 @@ test("changing the theme preference recolors charts without a reload", async ({ 
     )
     .not.toBe(before);
 });
+
+test("dashboard filters persist across a reload and are shareable", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => {
+    const chart = echarts.getInstanceByDom(document.getElementById("hourlyChart"));
+    return Boolean(chart && chart.getOption().series[0]?.data?.length);
+  });
+  await page.locator("#statsWindowButton").click();
+  await page.locator('.stats-window-option[data-days="7"]').click();
+  await expect(page).toHaveURL(/days=7/);
+
+  await page.reload();
+  await page.waitForFunction(() => {
+    const chart = echarts.getInstanceByDom(document.getElementById("hourlyChart"));
+    return Boolean(chart && chart.getOption().series[0]?.data?.length);
+  });
+  await expect(page.locator("#statsWindowButton")).toContainText("Last 7 days");
+});

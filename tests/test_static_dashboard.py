@@ -432,7 +432,7 @@ def test_ranking_metric_control_and_state_exist(source):
     assert 'id="rankingMetricControl"' in source
     assert 'data-ranking-metric="plays"' in source
     assert 'data-ranking-metric="listen_time"' in source
-    assert "let rankingMetric = 'plays';" in source
+    assert "let rankingMetric = initialFilters.metric;" in source
     assert "rankingInFlight" not in source
 
 
@@ -492,7 +492,7 @@ def test_server_filter_is_safe_and_propagated(source):
     assert 'id="statsSourceButton"' in source
     assert 'id="statsSourceMenu"' in source
     assert '<select id="statsSource' not in source
-    assert "let selectedSourceId = '';" in source
+    assert "let selectedSourceId = initialFilters.sourceId;" in source
     stats = _function_block(source, "fetchStats")
     now_playing = _function_block(source, "fetchNowPlaying")
     assert "sourceId: requestState.sourceId" in stats
