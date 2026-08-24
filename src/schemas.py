@@ -276,6 +276,7 @@ class ServerResponse(BaseModel):
     runtime_status: Optional[str] = None
     last_poll_ok: Optional[bool] = None
     seconds_since_last_poll: Optional[int] = None
+    song_history_ready: Optional[bool] = None
 
 
 class ServerRequest(BaseModel):

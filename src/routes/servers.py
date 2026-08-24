@@ -150,6 +150,7 @@ def _server_view(server: dict) -> ServerResponse:
         runtime_status=snapshot["status"],
         last_poll_ok=snapshot["last_poll_ok"],
         seconds_since_last_poll=seconds_since_last_poll,
+        song_history_ready=snapshot.get("song_history"),
     )
 
 

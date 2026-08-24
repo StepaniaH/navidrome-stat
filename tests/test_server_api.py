@@ -249,3 +249,27 @@ async def test_server_connection_test_uses_submitted_fields_and_checks_status():
         user="edited-user",
         password="edited-password",
     )
+
+
+@pytest.mark.asyncio
+async def test_server_view_reports_song_history_capability(isolated_db):
+    await init_db(isolated_db)
+    existing = {"id": "server-1", **payload()}
+    await save_server(existing, isolated_db)
+
+    from src.runtime_state import runtime_state
+
+    runtime_state.reset()
+    runtime_state.client_initialized = True
+    state = runtime_state._collector("server-1")
+    state.song_history = True
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.get("/api/servers")
+        body = response.json()
+        assert response.status_code == 200
+        entry = next(item for item in body if item["id"] == "server-1")
+        assert entry["song_history_ready"] is True
+    finally:
+        runtime_state.reset()

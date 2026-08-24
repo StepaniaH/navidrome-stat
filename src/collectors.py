@@ -86,6 +86,13 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
         "OpenSubsonic playback report capability: %s",
         "available" if playback_report else "legacy_fallback",
     )
+    try:
+        song_history = await client.supports_song_history()
+    except Exception:
+        song_history = False
+    runtime_state.set_song_history(tracker.source_id, song_history)
+    if song_history:
+        logger.info("OpenSubsonic getSongHistory endpoint: available")
 
     while True:
         current_time = datetime.now(timezone.utc)

@@ -12,6 +12,7 @@ class CollectorRuntimeState:
     last_poll_at: Optional[datetime] = None
     last_poll_ok: Optional[bool] = None
     last_upstream_error_code: Optional[int] = None
+    song_history: Optional[bool] = None
 
     def task_alive(self) -> bool:
         return self.task is not None and not self.task.done()
@@ -92,6 +93,9 @@ class RuntimeState:
         collector.last_poll_at = at
         collector.last_poll_ok = False
 
+    def set_song_history(self, source_id: str, supported: bool) -> None:
+        self._collector(source_id).song_history = bool(supported)
+
     def record_save_success(self) -> None:
         self.save_success_count += 1
 
@@ -110,6 +114,7 @@ class RuntimeState:
                 "status": "not_running",
                 "last_poll_ok": None,
                 "last_poll_at": None,
+                "song_history": None,
             }
         if not collector.task_alive():
             status = "stopped"
@@ -123,6 +128,7 @@ class RuntimeState:
             "status": status,
             "last_poll_ok": collector.last_poll_ok,
             "last_poll_at": collector.last_poll_at,
+            "song_history": collector.song_history,
         }
 
 

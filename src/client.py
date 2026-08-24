@@ -96,6 +96,14 @@ class NavidromeClient:
             for extension in extensions
         )
 
+    async def supports_song_history(self) -> bool:
+        """Probe the proposed OpenSubsonic getSongHistory endpoint."""
+        try:
+            data = await self._get_json("getSongHistory", size="1")
+        except (httpx.HTTPError, ValueError, TypeError, RuntimeError):
+            return False
+        return self.response_is_ok(data)
+
     @staticmethod
     def response_is_ok(data) -> bool:
         return (

@@ -122,3 +122,37 @@ def test_now_playing_entries_treat_null_as_idle():
             "nowPlaying": {"entry": [{"id": "synthetic-track"}]},
         }
     }) == [{"id": "synthetic-track"}]
+
+
+@pytest.mark.asyncio
+async def test_song_history_probe_detects_available_endpoint():
+    client = NavidromeClient(
+        url="http://navidrome.example.invalid",
+        user="synthetic-user",
+        password="synthetic-password",
+    )
+    client._get_json = AsyncMock(return_value={
+        "subsonic-response": {"status": "ok", "songHistory": {"entry": []}},
+    })
+    assert await client.supports_song_history() is True
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_song_history_probe_survives_unknown_endpoint():
+    client = NavidromeClient(
+        url="http://navidrome.example.invalid",
+        user="synthetic-user",
+        password="synthetic-password",
+    )
+    client._get_json = AsyncMock(return_value={
+        "subsonic-response": {
+            "status": "failed",
+            "error": {"code": 0, "message": "Not found"},
+        },
+    })
+    assert await client.supports_song_history() is False
+
+    client._get_json = AsyncMock(side_effect=RuntimeError("connection refused"))
+    assert await client.supports_song_history() is False
+    await client.close()
