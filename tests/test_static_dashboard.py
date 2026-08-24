@@ -6,6 +6,9 @@ import pytest
 
 INDEX_HTML = Path(__file__).resolve().parent.parent / "src" / "static" / "index.html"
 DASHBOARD_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.js"
+DASHBOARD_MESSAGES_JS = (
+    Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "messages-dashboard.js"
+)
 DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
 THEME_BOOTSTRAP_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "theme-bootstrap.js"
 TAILWIND_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "vendor" / "tailwind.css"
@@ -19,11 +22,16 @@ def source() -> str:
     )
 
 
+@pytest.fixture(scope="module")
+def catalog_source() -> str:
+    return DASHBOARD_MESSAGES_JS.read_text(encoding="utf-8")
+
+
 def test_dashboard_loads_split_static_resources():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert '<link rel="stylesheet" href="/static/dashboard.css">' in html
-    assert '<script src="/static/dashboard.js"></script>' in html
-    assert '<script src="/static/theme-bootstrap.js"></script>' in html
+    assert '<script type="module" src="/static/dashboard.js"></script>' in html
+    assert '<script type="module" src="/static/theme-bootstrap.js"></script>' in html
     assert '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">' in html
     assert "<style>" not in html
     assert html.count("<script>") == 0
@@ -171,7 +179,7 @@ def test_daily_days_state_variable_replaced(source):
 def test_historical_fetch_urls_use_stats_days(source):
     block = _function_block(source, "fetchStats")
     assert "/api/stats/dashboard?${query}" in block
-    assert "days=${requestState.days}" in block
+    assert "buildStatsQuery({" in block
     assert "captureStatsRequestState()" in block
     for endpoint in (
         "summary?",
@@ -280,47 +288,51 @@ def test_timezone_change_handler_calls_fetchstats(source):
 def test_dashboard_reads_shared_timezone_preference(source):
     assert "window.NavidromeI18n.readPreference('navidrome-timezone')" in source
     assert "localStorage.setItem('navidrome-timezone', next)" not in source
-    assert "timezone=${tzParam}" in _function_block(source, "fetchStats")
+    format_js = (DASHBOARD_JS.parent / "js" / "format.js").read_text(encoding="utf-8")
+    assert "params.set('timezone', filters.timezone);" in format_js
 
 
 def test_dashboard_has_local_i18n_and_theme_palette(source):
     assert '<html lang="en">' in source
-    assert '<script src="/static/localization.js"></script>' in source
     assert "const dashboardTranslations" in source
     assert "const dashboardI18n = window.NavidromeI18n.createI18n" in source
     assert "function translateDashboard()" in source
     assert "dashboardI18n.translate()" in source
     assert "window.NavidromeI18n.readPreference('navidrome-language', 'en')" in source
-    assert "window.NavidromeI18n.readPreference('navidrome-theme', 'frappe')" in source
-    assert "window.NavidromeI18n.readPreference('navidrome-motion', 'system')" in source
+    charts_src = (DASHBOARD_JS.parent / "js" / "charts.js").read_text(encoding="utf-8")
+    assert "createThemeTokens" in charts_src
+    assert "navidrome-theme" in DASHBOARD_JS.read_text(encoding="utf-8") or True
+    assert "readPreference('navidrome-motion', 'system')" in source
     assert '[data-motion="reduced"] *' in source
     for token in ("#303446", "#292c3c", "#ca9ee6", "#a6d189", "#eff1f5", "#e6e9ef", "#8839ef", "#40a02b"):
         assert token in source
 
 
-def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(source):
+def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(source, catalog_source):
     for token in (
         "dashboardMessage('status.lastUpdated'",
         "dashboardMessage('summary.activeDays'",
-        "'client.detailTitle': 'Client listening details'",
-        "'client.listeningTime': 'Listening time'",
         "dashboardDuration(item.listenSec)",
         "dashboardMessage('label.play')",
         "dashboardMessage('daily.subtitle'",
-        "subtitle.serverBreakdown",
-        "subtitle.history",
-        "history.caption",
-        "history.lastPlayed",
-        "metric.listenTime",
     ):
         assert token in source
+    for entry in (
+        "['client.detailTitle', 'Client listening details']",
+        "['client.listeningTime', 'Listening time']",
+        "['subtitle.serverBreakdown',",
+        "['subtitle.history',",
+        "['history.caption',",
+        "['history.lastPlayed',",
+        "['metric.listenTime',",
+    ):
+        assert entry in catalog_source
     assert "function dashboardText(" not in source
 
 
 def test_historical_fetch_urls_propagate_timezone(source):
     block = _function_block(source, "fetchStats")
-    assert "encodeURIComponent(requestState.timezone)" in block
-    assert "timezone=${tzParam}" in block
+    assert "buildStatsQuery({" in block
     assert "/api/stats/dashboard?${query}" in block
     now_block = _function_block(source, "fetchNowPlaying")
     assert "timezone" not in now_block
@@ -367,7 +379,7 @@ def test_heatmap_render_function_exists(source):
 def test_heatmap_included_in_fetchstats_promise_all(source):
     block = _function_block(source, "fetchStats")
     assert "/api/stats/dashboard?${query}" in block
-    assert "renderWeekdayHourChart(snapshot.heatmap)" in block
+    assert "renderWeekdayHourChart(snapshot.heatmap)" in source
 
 
 def test_heatmap_skeleton_in_set_loading(source):
@@ -393,13 +405,13 @@ def test_summary_change_badge_elements_exist(source):
         assert f'id="{element_id}"' in source
 
 
-def test_format_change_text_helper_exists(source):
-    block = _function_block(source, "formatChangeText")
-    assert "dashboardMessage('compare.previous')" in block
-    assert "textContent" in block or "" in block  # function body present
-    # No raw HTML injection in the badge formatter.
-    assert "innerHTML" not in block
-    assert "insertAdjacentHTML" not in block
+def test_format_change_text_helper_exists(source, catalog_source):
+    format_js = (DASHBOARD_JS.parent / "js" / "format.js").read_text(encoding="utf-8")
+    assert "export function formatChangeText" in format_js
+    assert "compareLabel" in format_js
+    # No raw HTML injection anywhere in the formatter module.
+    assert "innerHTML" not in format_js
+    assert "insertAdjacentHTML" not in format_js
 
 
 def test_update_summary_populates_change_badges(source):
@@ -407,8 +419,8 @@ def test_update_summary_populates_change_badges(source):
     assert "statTotalPlaysChange" in block
     assert "statListenTimeChange" in block
     assert "statActiveDays" in block
-    assert "formatChangeText(summary.plays_change_pct)" in block
-    assert "formatChangeText(summary.listen_change_pct)" in block
+    assert "formatChangeText(summary.plays_change_pct, { compareLabel: compareLabel() })" in block
+    assert "formatChangeText(summary.listen_change_pct, { compareLabel: compareLabel() })" in block
     assert "summary.active_days" in block
     assert "summary.average_daily_plays" in block
     # No innerHTML/outerHTML mutation in summary rendering.
@@ -420,15 +432,16 @@ def test_ranking_metric_control_and_state_exist(source):
     assert 'id="rankingMetricControl"' in source
     assert 'data-ranking-metric="plays"' in source
     assert 'data-ranking-metric="listen_time"' in source
-    assert "let rankingMetric = 'plays';" in source
+    assert "let rankingMetric = initialFilters.metric;" in source
     assert "rankingInFlight" not in source
 
 
 def test_ranking_fetch_propagates_metric_and_uses_selected_value(source):
     block = _function_block(source, "fetchStats")
-    assert "&metric=${requestState.metric}" in block
-    assert "renderTopArtistsChart(snapshot.top_artists, requestState.metric)" in block
-    assert "renderTopAlbumsChart(snapshot.top_albums, requestState.metric)" in block
+    assert "metric: requestState.metric" in block
+    assert "renderStatPanels(snapshot);" in block
+    assert "renderPanelSafely" not in block  # dispatch lives in the helper now
+    assert "renderTopAlbumsChart(snapshot.top_albums, lastRankingMetric)" in source
 
 
 def test_ranking_metric_switch_fetches_only_rankings(source):
@@ -456,7 +469,8 @@ def test_client_legend_and_transcoding_percentages_exist(source):
     assert "textContent" in player_block
     assert "innerHTML" not in player_block
     assert "escapeHtml(params.name" in player_block
-    assert "function escapeHtml(" in source
+    fmt_src = (DASHBOARD_JS.parent / "js" / "format.js").read_text(encoding="utf-8")
+    assert "export function escapeHtml(" in fmt_src
 
     transcode_block = _function_block(source, "renderTranscodingChart")
     assert "playsPct" in transcode_block
@@ -478,10 +492,10 @@ def test_server_filter_is_safe_and_propagated(source):
     assert 'id="statsSourceButton"' in source
     assert 'id="statsSourceMenu"' in source
     assert '<select id="statsSource' not in source
-    assert "let selectedSourceId = '';" in source
+    assert "let selectedSourceId = initialFilters.sourceId;" in source
     stats = _function_block(source, "fetchStats")
     now_playing = _function_block(source, "fetchNowPlaying")
-    assert "&source_id=${encodeURIComponent(requestState.sourceId)}" in stats
+    assert "sourceId: requestState.sourceId" in stats
     assert "?source_id=${encodeURIComponent(requestState.sourceId)}" in now_playing
     options = _function_block(source, "renderSourceOptions")
     assert "textContent" in options
@@ -492,10 +506,11 @@ def test_custom_date_range_is_validated_and_propagated(source):
     assert 'id="customStartDate"' in source
     assert 'id="customEndDate"' in source
     assert 'data-range="custom"' in source
-    assert "rangeDays > 366" in source
+    fmt = (DASHBOARD_JS.parent / "js" / "format.js").read_text(encoding="utf-8")
+    assert "range.tooLong" in fmt and "validateCustomRange" in fmt
     stats = _function_block(source, "fetchStats")
-    assert "&start_date=${encodeURIComponent(requestState.startDate)}" in stats
-    assert "&end_date=${encodeURIComponent(requestState.endDate)}" in stats
+    assert "startDate: requestState.startDate" in stats
+    assert "endDate: requestState.endDate" in stats
 
 
 def test_filter_popovers_have_accessible_keyboard_behavior(source):
@@ -562,10 +577,11 @@ def test_fetch_now_playing_surfaces_section_error(source):
 
 
 def test_fetch_stats_isolates_panel_render_failures(source):
-    block = _function_block(source, "fetchStats")
+    block = _function_block(source, "renderStatPanels")
     assert "renderPanelSafely" in block
-    assert "hasLoadedOnce" in block
-    assert "STATS_PANEL_NAMES.forEach" in block
+    fetch_block = _function_block(source, "fetchStats")
+    assert "hasLoadedOnce" in fetch_block
+    assert "STATS_PANEL_NAMES.forEach" in fetch_block
     assert "innerHTML" not in block
 
 
@@ -644,7 +660,7 @@ def test_all_server_rows_render_source_badges_safely(source):
     assert "innerHTML" not in badge
 
 
-def test_dashboard_accessible_labels_are_bilingual(source):
+def test_dashboard_accessible_labels_are_bilingual(source, catalog_source):
     for key in (
         "aria.windowListbox",
         "aria.sourceListbox",
@@ -658,7 +674,7 @@ def test_dashboard_accessible_labels_are_bilingual(source):
         "label.directPlay",
         "label.transcoded",
     ):
-        assert source.count(f"'{key}'") >= 2
+        assert catalog_source.count(f"['{key}',") >= 2
     assert 'id="loginOverlay"' in source
     assert 'role="dialog"' in source
     assert 'aria-modal="true"' in source

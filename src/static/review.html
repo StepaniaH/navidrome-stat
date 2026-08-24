@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="frappe" data-motion="system">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Year in Review · Navidrome Statistic</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <script src="/static/vendor/echarts.min.js"></script>
+    <script type="module" src="/static/localization.js"></script>
+    <script type="module" src="/static/theme-bootstrap.js"></script>
+    <link rel="stylesheet" href="/static/vendor/tailwind.css">
+    <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+    <div id="reviewApp" class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <header class="dashboard-header">
+            <div class="dashboard-header-main">
+                <div class="dashboard-brand">
+                    <a class="header-icon-button" href="/" data-i18n-attr="aria-label:review.back" aria-label="Back to statistics">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                        </svg>
+                    </a>
+                    <h1 class="dashboard-title" data-i18n="review.title">Year in Review</h1>
+                </div>
+                <div class="dashboard-filters">
+                    <div class="filter-control window">
+                        <label class="visually-hidden" for="reviewYear" data-i18n="review.year">Year</label>
+                        <select id="reviewYear" class="review-year-select"></select>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="review-main" aria-label="Year in review page" data-i18n-attr="aria-label:review.aria.page">
+            <p id="reviewSubtitle" class="review-subtitle"></p>
+
+            <section id="reviewEmpty" class="review-empty hidden">
+                <p data-i18n="review.emptyYear">No plays were recorded for this year yet.</p>
+            </section>
+
+            <section id="reviewContent" class="hidden">
+                <div class="review-hero">
+                    <div class="review-stat-card">
+                        <span class="review-stat-label" data-i18n="review.totalPlays">Total plays</span>
+                        <span id="reviewTotalPlays" class="review-stat-value">0</span>
+                    </div>
+                    <div class="review-stat-card">
+                        <span class="review-stat-label" data-i18n="review.listenTime">Listening time</span>
+                        <span id="reviewListenTime" class="review-stat-value">0</span>
+                    </div>
+                    <div class="review-stat-card">
+                        <span class="review-stat-label" data-i18n="review.activeDays">Active days</span>
+                        <span id="reviewActiveDays" class="review-stat-value">0</span>
+                    </div>
+                    <div class="review-stat-card">
+                        <span class="review-stat-label" data-i18n="review.uniqueTracks">Tracks heard</span>
+                        <span id="reviewUniqueTracks" class="review-stat-value">0</span>
+                    </div>
+                </div>
+
+                <div class="review-facts">
+                    <span><span class="review-fact-label" data-i18n="review.longestStreak">Longest streak</span> <span id="reviewStreak" class="review-fact-value"></span></span>
+                    <span><span class="review-fact-label" data-i18n="review.firstPlay">First play</span> <span id="reviewFirstPlay" class="review-fact-value"></span></span>
+                    <span><span class="review-fact-label" data-i18n="review.lastPlay">Latest play</span> <span id="reviewLastPlay" class="review-fact-value"></span></span>
+                    <span><span class="review-fact-label" data-i18n="review.biggestMonth">Busiest month</span> <span id="reviewBiggestMonth" class="review-fact-value"></span></span>
+                </div>
+
+                <div class="review-chart-card review-chart-wide">
+                    <h2 class="review-chart-title" data-i18n="review.monthly">Plays per month</h2>
+                    <div id="reviewMonthlyChart" class="review-chart review-chart-tall" role="img" aria-label="Monthly plays bar chart" data-i18n-attr="aria-label:review.aria.monthlyChart"></div>
+                </div>
+
+                <div class="review-charts-row">
+                    <div class="review-chart-card">
+                        <h2 class="review-chart-title" data-i18n="review.hourly">Listening by hour of day</h2>
+                        <div id="reviewHourlyChart" class="review-chart" role="img" aria-label="Listening by hour bar chart" data-i18n-attr="aria-label:review.aria.hourlyChart"></div>
+                    </div>
+                    <div class="review-chart-card">
+                        <h2 class="review-chart-title" data-i18n="review.weekday">Spread across the week</h2>
+                        <div id="reviewWeekdayChart" class="review-chart" role="img" aria-label="Weekday distribution bar chart" data-i18n-attr="aria-label:review.aria.weekdayChart"></div>
+                    </div>
+                </div>
+
+                <div class="review-tops-row">
+                    <section class="review-top-card" aria-labelledby="reviewTopArtistsHeading">
+                        <h2 id="reviewTopArtistsHeading" class="review-chart-title" data-i18n="review.topArtists">Top artists</h2>
+                        <ol id="reviewTopArtists" class="review-top-list" role="list"></ol>
+                    </section>
+                    <section class="review-top-card" aria-labelledby="reviewTopAlbumsHeading">
+                        <h2 id="reviewTopAlbumsHeading" class="review-chart-title" data-i18n="review.topAlbums">Top albums</h2>
+                        <ol id="reviewTopAlbums" class="review-top-list" role="list"></ol>
+                    </section>
+                    <section class="review-top-card" aria-labelledby="reviewTopTracksHeading">
+                        <h2 id="reviewTopTracksHeading" class="review-chart-title" data-i18n="review.topTracks">Top tracks</h2>
+                        <ol id="reviewTopTracks" class="review-top-list" role="list"></ol>
+                    </section>
+                </div>
+            </section>
+
+            <section id="reviewError" class="review-empty hidden">
+                <p data-i18n="review.error">Could not build the year in review. Please try again.</p>
+            </section>
+        </main>
+    </div>
+    <div id="loginOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-ink-950/90 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="reviewLoginTitle">
+        <form id="loginForm" class="w-full max-w-sm rounded-2xl bg-ink-900 border border-white/10 shadow-card p-6 space-y-4">
+            <div>
+                <h2 id="reviewLoginTitle" class="text-lg font-semibold text-white" data-i18n="auth.title">需要访问令牌</h2>
+                <p class="text-sm text-slate-400 mt-1" data-i18n="auth.description">输入管理员配置的访问令牌以查看统计数据。</p>
+            </div>
+            <label class="block">
+                <span class="text-xs text-slate-500 uppercase tracking-wider" data-i18n="auth.token">访问令牌</span>
+                <input id="loginToken" type="password" autocomplete="current-password" required
+                    class="mt-2 w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/50" />
+            </label>
+            <p id="loginError" class="hidden text-sm text-red-400" role="alert"></p>
+            <button type="submit" class="w-full rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium py-2.5 transition-colors" data-i18n="auth.login">登录</button>
+        </form>
+    </div>
+    <script type="module" src="/static/js/review.js"></script>
+</body>
+</html>

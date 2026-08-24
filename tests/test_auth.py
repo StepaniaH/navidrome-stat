@@ -8,7 +8,7 @@ from src.main import app
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_player_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_player_stats", new_callable=AsyncMock)
 async def test_stats_open_when_auth_not_configured(mock_get_stats):
     mock_get_stats.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -18,7 +18,7 @@ async def test_stats_open_when_auth_not_configured(mock_get_stats):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_player_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_player_stats", new_callable=AsyncMock)
 async def test_stats_require_token_when_auth_enabled(mock_get_stats):
     mock_get_stats.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -54,7 +54,7 @@ async def test_unauthorized_privacy_import_does_not_read_request_body():
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_player_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_player_stats", new_callable=AsyncMock)
 async def test_stats_allow_bearer_token(mock_get_stats):
     mock_get_stats.return_value = [{"client_name": "Web", "count": 1}]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -67,7 +67,7 @@ async def test_stats_allow_bearer_token(mock_get_stats):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_player_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_player_stats", new_callable=AsyncMock)
 async def test_stats_allow_session_cookie_after_login(mock_get_stats):
     mock_get_stats.return_value = [{"client_name": "Web", "count": 1}]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -190,7 +190,7 @@ async def test_secure_cookie_can_be_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_player_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_player_stats", new_callable=AsyncMock)
 async def test_stats_allow_lowercase_bearer_scheme(mock_get_stats):
     mock_get_stats.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

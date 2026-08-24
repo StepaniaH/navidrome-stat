@@ -12,6 +12,7 @@ class CollectorRuntimeState:
     last_poll_at: Optional[datetime] = None
     last_poll_ok: Optional[bool] = None
     last_upstream_error_code: Optional[int] = None
+    song_history: Optional[bool] = None
 
     def task_alive(self) -> bool:
         return self.task is not None and not self.task.done()
@@ -29,6 +30,19 @@ class RuntimeState:
     save_success_count: int = 0
     save_failure_count: int = 0
     collectors: dict[str, CollectorRuntimeState] = field(default_factory=dict)
+
+    def reset(self) -> None:
+        """Clear every counter and collector entry; used between test runs."""
+        self.polling_task = None
+        self.client_initialized = False
+        self.poll_success_count = 0
+        self.poll_failure_count = 0
+        self.last_poll_at = None
+        self.last_poll_ok = None
+        self.last_upstream_error_code = None
+        self.save_success_count = 0
+        self.save_failure_count = 0
+        self.collectors.clear()
 
     def _collector(self, source_id: str) -> CollectorRuntimeState:
         return self.collectors.setdefault(source_id, CollectorRuntimeState())
@@ -79,6 +93,9 @@ class RuntimeState:
         collector.last_poll_at = at
         collector.last_poll_ok = False
 
+    def set_song_history(self, source_id: str, supported: bool) -> None:
+        self._collector(source_id).song_history = bool(supported)
+
     def record_save_success(self) -> None:
         self.save_success_count += 1
 
@@ -97,6 +114,7 @@ class RuntimeState:
                 "status": "not_running",
                 "last_poll_ok": None,
                 "last_poll_at": None,
+                "song_history": None,
             }
         if not collector.task_alive():
             status = "stopped"
@@ -110,6 +128,7 @@ class RuntimeState:
             "status": status,
             "last_poll_ok": collector.last_poll_ok,
             "last_poll_at": collector.last_poll_at,
+            "song_history": collector.song_history,
         }
 
 

@@ -36,7 +36,7 @@ def _snapshot():
 async def test_dashboard_snapshot_is_cached_and_redacts_connection_fields():
     await dashboard_snapshot_cache.invalidate()
     build = AsyncMock(return_value=_snapshot())
-    with patch("src.main._build_dashboard_snapshot", build):
+    with patch("src.stats_service.StatsService._build_snapshot", build):
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -56,7 +56,7 @@ async def test_dashboard_snapshot_is_cached_and_redacts_connection_fields():
 async def test_dashboard_cache_invalidation_rebuilds_snapshot():
     await dashboard_snapshot_cache.invalidate()
     build = AsyncMock(return_value=_snapshot())
-    with patch("src.main._build_dashboard_snapshot", build):
+    with patch("src.stats_service.StatsService._build_snapshot", build):
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -71,7 +71,7 @@ async def test_dashboard_cache_invalidation_rebuilds_snapshot():
 async def test_dashboard_custom_range_is_validated_and_forwarded():
     await dashboard_snapshot_cache.invalidate()
     build = AsyncMock(return_value=_snapshot())
-    with patch("src.main._build_dashboard_snapshot", build):
+    with patch("src.stats_service.StatsService._build_snapshot", build):
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",

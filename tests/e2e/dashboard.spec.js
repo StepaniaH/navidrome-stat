@@ -51,6 +51,7 @@ const snapshot = {
     total_listen_sec: 120,
     source_id: "server-1",
     source_name: "Synthetic Server",
+    track_id: "tr-1",
   }],
   servers: [{
     source_id: "server-1",
@@ -73,6 +74,7 @@ const snapshot = {
     count: 3,
     total_listen_sec: 185,
     value: 3,
+    album_id: "al-1",
   }],
 };
 
@@ -600,4 +602,57 @@ test("Chinese locale covers regions, chart labels, listboxes, and footer", async
     "周一", "周二", "周三", "周四", "周五", "周六", "周日",
   ]);
   expect(chartLabels.transcoding).toEqual(["直出"]);
+});
+
+test("changing the theme preference recolors charts without a reload", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => {
+    const chart = echarts.getInstanceByDom(document.getElementById("hourlyChart"));
+    return Boolean(chart && chart.getOption().series[0]?.data?.length);
+  });
+  const before = await page.evaluate(() =>
+    echarts.getInstanceByDom(document.getElementById("hourlyChart")).getOption().textStyle.color,
+  );
+  await page.evaluate(() => {
+    localStorage.setItem("navidrome-theme", "latte");
+    window.dispatchEvent(new StorageEvent("storage", { key: "navidrome-theme", newValue: "latte" }));
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        echarts.getInstanceByDom(document.getElementById("hourlyChart")).getOption().textStyle.color,
+      ),
+    )
+    .not.toBe(before);
+});
+
+test("dashboard filters persist across a reload and are shareable", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => {
+    const chart = echarts.getInstanceByDom(document.getElementById("hourlyChart"));
+    return Boolean(chart && chart.getOption().series[0]?.data?.length);
+  });
+  await page.locator("#statsWindowButton").click();
+  await page.locator('.stats-window-option[data-days="7"]').click();
+  await expect(page).toHaveURL(/days=7/);
+
+  await page.reload();
+  await page.waitForFunction(() => {
+    const chart = echarts.getInstanceByDom(document.getElementById("hourlyChart"));
+    return Boolean(chart && chart.getOption().series[0]?.data?.length);
+  });
+  await expect(page.locator("#statsWindowButton")).toContainText("Last 7 days");
+});
+
+test("history and album rankings request cover art through the proxy", async ({ page }) => {
+  await page.route("**/api/coverart*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from("89504e470d0a1a0a", "hex"),
+    }),
+  );
+  await page.goto("/");
+  await expect(page.locator('#historyTable img.history-cover[src*="/api/coverart"]')).toHaveCount(1);
+  await expect(page.locator('img.ranking-cover[src*="id=al-1"]')).toHaveCount(1);
 });

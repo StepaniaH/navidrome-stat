@@ -43,6 +43,33 @@ class NavidromeClient:
     async def get_now_playing(self):
         return await self._get_json("getNowPlaying")
 
+    async def get_cover_art(self, item_id: str, size: int):
+        """Return raw cover art bytes and their content type."""
+        params = self.get_auth_params()
+        params.pop("f", None)
+        params["id"] = item_id
+        params["size"] = str(size)
+        response = await self._http_client.get(f"{self.url}/rest/getCoverArt", params=params)
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+        return response.content, content_type
+
+    async def search3(self, query: str, *, album_count: int = 5):
+        """Return album hits for a free-text search."""
+        data = await self._get_json(
+            "search3",
+            query=query,
+            artistCount="0",
+            albumCount=str(album_count),
+            songCount="0",
+        )
+        envelope = data.get("subsonic-response", {}) if isinstance(data, dict) else {}
+        result = envelope.get("searchResult3", {}) if isinstance(envelope, dict) else {}
+        albums = result.get("album", []) if isinstance(result, dict) else []
+        if isinstance(albums, dict):
+            albums = [albums]
+        return [album for album in albums if isinstance(album, dict)]
+
     async def get_open_subsonic_extensions(self):
         """Return advertised OpenSubsonic extensions, if the server supports it."""
         return await self._get_json("getOpenSubsonicExtensions")
@@ -69,6 +96,14 @@ class NavidromeClient:
             for extension in extensions
         )
 
+    async def supports_song_history(self) -> bool:
+        """Probe the proposed OpenSubsonic getSongHistory endpoint."""
+        try:
+            data = await self._get_json("getSongHistory", size="1")
+        except (httpx.HTTPError, ValueError, TypeError, RuntimeError):
+            return False
+        return self.response_is_ok(data)
+
     @staticmethod
     def response_is_ok(data) -> bool:
         return (
@@ -89,8 +124,9 @@ class NavidromeClient:
             return []
         return entries
 
-    async def _get_json(self, method: str):
+    async def _get_json(self, method: str, **extra):
         params = self.get_auth_params()
+        params.update(extra)
         endpoint = f"{self.url}/rest/{method}"
         response = await self._http_client.get(endpoint, params=params)
         response.raise_for_status()

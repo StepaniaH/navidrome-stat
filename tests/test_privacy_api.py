@@ -145,7 +145,7 @@ async def test_retention_policy_update_waits_for_matching_apply(isolated_db):
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         await ac.put("/api/privacy/settings", json={"retention_days": 90})
-        with patch("src.main.apply_retention_purge", side_effect=blocked_purge):
+        with patch("src.stats_service.apply_retention_purge", side_effect=blocked_purge):
             apply_task = asyncio.create_task(
                 ac.post(
                     "/api/privacy/retention/apply",
@@ -249,12 +249,14 @@ async def test_import_rejects_invalid_content_length_header():
 
 @pytest.mark.asyncio
 async def test_empty_replace_import_invalidates_dashboard_cache(monkeypatch):
-    import src.main as main
+    import src.stats_service
 
     import_user = AsyncMock(return_value={"imported": 0, "attempts_imported": 0})
     invalidate = AsyncMock()
-    monkeypatch.setattr(main, "import_user_data", import_user)
-    monkeypatch.setattr(main.dashboard_snapshot_cache, "invalidate", invalidate)
+    monkeypatch.setattr(src.stats_service, "import_user_data", import_user)
+    monkeypatch.setattr(
+        src.stats_service.stats_service._cache, "invalidate", invalidate
+    )
     request_body = {
         "payload": {
             "format_version": 2,

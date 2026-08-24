@@ -1,4 +1,19 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.svg">
+  <img src="assets/icon.svg" alt="Navidrome Statistic" width="140">
+</picture>
+
 # Navidrome Statistic
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Product Hunt](https://img.shields.io/badge/Product_Hunt-Visit-DA552F?logo=producthunt&logoColor=white)](https://www.producthunt.com/products/navidrome-stat)
+[![Docker Hub](https://img.shields.io/docker/v/stepaniah/navidrome-statistic/latest?label=Docker&logo=docker&logoColor=white)](https://hub.docker.com/r/stepaniah/navidrome-statistic)
+
+<img src="assets/screenshots/dashboard-frappe-top.png" alt="播放统计仪表盘：正在播放、总览、客户端与转码图表" width="920">
+
+</div>
 
 [English](README.md)
 
@@ -9,11 +24,22 @@ Navidrome Statistic 汇总 Navidrome 上报的播放活动，并通过一个仪�
 ## 功能
 
 - 汇总不同客户端、设备、用户和 Navidrome 服务器的当前与历史播放活动。
-- 展示收听时长、播放历史、小时与每日趋势、客户端使用、转码，以及艺人和专辑排行。
+- 展示收听时长、播放历史、小时与每日趋势、星期 × 小时热力图、客户端使用、转码，以及艺人、专辑与曲目排行。
+- 年度回顾页面：全年总量、连续收听天数、逐月与时段分布，以及热门榜单。
+- 播放历史、排行与正在播放显示封面图（经认证的本地缓存代理）。
+- 内置十款主题（Catppuccin、Nord、Dracula、Tokyo Night、Gruvbox、Solarized），跨标签页即时切换；六种界面语言，Apple 风格语言选择器。
+- 仪表盘筛选条件保存在 URL 中，刷新不丢失、链接可分享。
 - 支持自定义播放阈值与暂停宽限期、持久化会话检查点，并在上游支持时使用 OpenSubsonic 播放进度。
 - 支持按服务器筛选、连接管理、保留策略，以及按用户导出、导入和删除 JSON 数据。
 - 可为仪表盘数据和接口启用 token 认证。
 - 固定并自托管前端资源；发布的容器以非 root 用户运行。
+
+## 截图
+
+| | |
+| --- | --- |
+| <img src="assets/screenshots/dashboard-frappe-charts.png" alt="小时、每日与星期 × 小时图表"> | <img src="assets/screenshots/dashboard-frappe-rankings.png" alt="热门艺人与专辑、服务器来源、最近播放"> |
+| <img src="assets/screenshots/dashboard-gruvbox.png" alt="Gruvbox 主题下的同一仪表盘"> | |
 
 ## 重要限制
 

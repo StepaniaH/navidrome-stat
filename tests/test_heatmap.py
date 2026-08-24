@@ -133,7 +133,7 @@ def test_daily_all_history_empty_returns_empty(db_path):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_weekday_hour_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_weekday_hour_stats", new_callable=AsyncMock)
 async def test_api_heatmap_returns_full_grid(mock_get):
     mock_get.return_value = [
         {"weekday": w, "hour": h, "count": 0} for w in range(7) for h in range(24)
@@ -147,7 +147,7 @@ async def test_api_heatmap_returns_full_grid(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_weekday_hour_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_weekday_hour_stats", new_callable=AsyncMock)
 async def test_api_heatmap_propagates_timezone(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -159,7 +159,7 @@ async def test_api_heatmap_propagates_timezone(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_weekday_hour_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_weekday_hour_stats", new_callable=AsyncMock)
 async def test_api_heatmap_rejects_invalid_timezone(mock_get):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/heatmap?days=7&timezone=Invalid/Zone")
@@ -176,7 +176,7 @@ async def test_api_heatmap_rejects_invalid_days(days):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_weekday_hour_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
+@patch("src.routes.stats.get_weekday_hour_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
 async def test_api_heatmap_database_error_returns_503(mock_get):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/heatmap")
@@ -185,7 +185,7 @@ async def test_api_heatmap_database_error_returns_503(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_weekday_hour_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_weekday_hour_stats", new_callable=AsyncMock)
 async def test_api_heatmap_requires_auth_when_token_configured(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

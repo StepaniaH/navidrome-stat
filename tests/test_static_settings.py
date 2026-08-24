@@ -90,16 +90,18 @@ def test_shared_localization_runtime_has_fallback_interpolation_and_dom_translat
     html = _read(SETTINGS_HTML)
     settings_script = _read(SETTINGS_JS)
     runtime = _read(LOCALIZATION_JS)
-    assert '<script src="/static/localization.js"></script>' in html
-    assert '<script src="/static/settings.js"></script>' in html
+    assert '<script type="module" src="/static/localization.js"></script>' in html
+    assert '<script type="module" src="/static/settings.js"></script>' in html
     assert "function normalizeLocale(" in runtime
     assert "function interpolate(" in runtime
     assert "localizedMessage ?? fallbackMessage ?? key" in runtime
     assert "element.textContent = t(element.dataset.i18n)" in runtime
     assert "data-i18n-attr" in runtime
     assert "createI18n({ messages, fallbackLocale: 'en' })" in settings_script
-    assert "'zh-CN': {" in settings_script
-    assert "en: {" in settings_script
+    catalog_js = _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
+    assert "'zh-CN': {" not in settings_script
+    assert "zhTW:" in catalog_js and "ja:" in catalog_js
+    assert "en: catalog(settingsMessages.en)" in settings_script
     assert "function localized(" not in settings_script
     assert "localized(" not in settings_script
 
@@ -162,10 +164,11 @@ def test_sensitive_values_use_safe_dom_apis_and_password_is_never_rendered():
 
 def test_server_settings_apply_immediately_without_restart_copy():
     script = _read(SETTINGS_JS)
-    assert "连接更改保存后立即应用" in script
-    assert "Saved changes apply immediately" in script
-    assert "连接已保存并立即应用" in script
-    assert "Connection saved and applied immediately" in script
+    assert "连接更改保存后立即应用" in _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
+    catalog = _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
+    assert "Saved changes apply immediately" in catalog
+    assert "连接已保存并立即应用" in _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
+    assert "Connection saved and applied immediately" in _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
     assert "重启服务后生效" not in script
     assert "Restart the service to apply it" not in script
 
@@ -174,7 +177,8 @@ def test_retention_copy_matches_automatic_cleanup_and_apply_uses_saved_policy():
     html = _read(SETTINGS_HTML)
     script = _read(SETTINGS_JS)
     assert "deleted automatically at startup and during background maintenance" in html
-    assert "有限策略会在启动和后台维护时自动执行" in script
+    catalog_js = _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
+    assert "有限策略会在启动和后台维护时自动执行" in catalog_js
     assert "Records are deleted only after" not in html
     assert "只有点击“确认清理”才会删除" not in script
     assert "function retentionDraftIsDirty()" in script
@@ -219,8 +223,10 @@ def test_settings_login_is_an_accessible_dialog():
     assert 'aria-modal="true"' in html
     assert 'aria-labelledby="settingsLoginTitle"' in html
     assert 'id="loginError" class="login-error" role="alert"' in html
-    assert "document.querySelector('.settings-shell').inert = true" in script
-    assert "document.querySelector('.settings-shell').inert = false" in script
-    assert "window.requestAnimationFrame(() => document.getElementById('loginToken').focus())" in script
-    assert "event.key !== 'Tab'" in script
+    assert "inertSelector: '.settings-shell'" in script
+    assert "login.bind()" in script
+    auth_js = _read(ROOT / "src" / "static" / "js" / "auth.js")
+    assert "shell().inert" in auth_js
+    assert "requestAnimationFrame" in auth_js
+    assert "event.key" in _read(ROOT / "src/static/js/auth.js")
     assert "tokenInput.value = ''" in script

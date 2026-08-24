@@ -121,7 +121,7 @@ def test_get_daily_stats_respects_days_window(db_path):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_hourly_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_hourly_stats", new_callable=AsyncMock)
 async def test_api_hourly_stats(mock_get):
     mock_get.return_value = [{"hour": 9, "count": 5}, {"hour": 21, "count": 7}]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -131,7 +131,7 @@ async def test_api_hourly_stats(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
 async def test_api_daily_stats(mock_get):
     mock_get.return_value = [{"date": "2024-03-24", "count": 3}]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -141,7 +141,7 @@ async def test_api_daily_stats(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_hourly_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
+@patch("src.routes.stats.get_hourly_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
 async def test_api_hourly_stats_database_error(mock_get):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/hourly")
@@ -150,7 +150,7 @@ async def test_api_hourly_stats_database_error(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_daily_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
+@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
 async def test_api_daily_stats_database_error(mock_get):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/daily")
@@ -159,7 +159,7 @@ async def test_api_daily_stats_database_error(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_hourly_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_hourly_stats", new_callable=AsyncMock)
 async def test_api_hourly_requires_auth_when_token_configured(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -171,7 +171,7 @@ async def test_api_hourly_requires_auth_when_token_configured(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
 async def test_api_daily_requires_auth_when_token_configured(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -184,7 +184,7 @@ async def test_api_daily_requires_auth_when_token_configured(mock_get):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("days", [7, 30, 90])
-@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
 async def test_api_daily_stats_days_param(mock_get, days):
     mock_get.return_value = [{"date": "2024-03-24", "count": 3}]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -195,7 +195,7 @@ async def test_api_daily_stats_days_param(mock_get, days):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
 async def test_api_daily_stats_default_days_is_30(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -205,7 +205,7 @@ async def test_api_daily_stats_default_days_is_30(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
 async def test_api_daily_stats_propagates_timezone(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -215,7 +215,7 @@ async def test_api_daily_stats_propagates_timezone(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
 async def test_api_daily_stats_rejects_invalid_timezone(mock_get):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/daily?days=7&timezone=NotAReal/Zone")
@@ -229,7 +229,7 @@ async def test_api_daily_stats_rejects_invalid_timezone(mock_get):
     (91, 422),
     (-1, 422),
 ])
-@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
 async def test_api_daily_stats_days_invalid_out_of_range(mock_get, days, expected_status):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -239,7 +239,7 @@ async def test_api_daily_stats_days_invalid_out_of_range(mock_get, days, expecte
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_daily_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
 async def test_api_daily_stats_days_zero_selects_all_history(mock_get):
     mock_get.return_value = [{"date": "2024-01-01", "count": 5}]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

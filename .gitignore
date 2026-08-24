@@ -9,3 +9,6 @@ __pycache__/
 node_modules/
 test-results/
 playwright-report/
+
+# Local cover art disk cache
+coverart-cache/

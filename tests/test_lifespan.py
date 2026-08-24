@@ -3,7 +3,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.main import POLL_INTERVAL, app, lifespan, polling_loop, runtime_state, session_tracker
+import src.collectors as collectors
+from src.collectors import POLL_INTERVAL, polling_loop, session_tracker
+from src.main import app, lifespan
+from src.runtime_state import runtime_state
 
 
 @pytest.fixture
@@ -15,24 +18,15 @@ def synthetic_navidrome_env(monkeypatch):
 
 @pytest.fixture
 def reset_runtime(monkeypatch, db_path):
-    import src.main as main
 
     monkeypatch.setenv("DATABASE_URL", db_path)
-    runtime_state.polling_task = None
-    runtime_state.client_initialized = False
-    runtime_state.poll_success_count = 0
-    runtime_state.poll_failure_count = 0
-    runtime_state.last_poll_at = None
-    runtime_state.last_poll_ok = None
-    runtime_state.last_upstream_error_code = None
-    runtime_state.save_success_count = 0
-    runtime_state.save_failure_count = 0
-    session_tracker.active_sessions.clear()
-    main._runtime_trackers.clear()
+    runtime_state.reset()
+    session_tracker._sessions.clear()
+    collectors._runtime_trackers.clear()
     yield
     if runtime_state.polling_task is not None and not runtime_state.polling_task.done():
         runtime_state.polling_task.cancel()
-    session_tracker.active_sessions.clear()
+    session_tracker._sessions.clear()
 
 
 @pytest.mark.asyncio
@@ -44,8 +38,8 @@ async def test_lifespan_starts_polling_and_closes_client(
         "subsonic-response": {"status": "ok", "nowPlaying": {"entry": []}}
     }
 
-    with patch("src.main.list_servers", AsyncMock(return_value=[])):
-        with patch("src.main.NavidromeClient", return_value=mock_client):
+    with patch("src.collectors.list_servers", AsyncMock(return_value=[])):
+        with patch("src.collectors.NavidromeClient", return_value=mock_client):
             async with lifespan(app):
                 assert runtime_state.client_initialized is True
                 assert runtime_state.polling_task is not None
@@ -59,7 +53,6 @@ async def test_lifespan_starts_polling_and_closes_client(
 async def test_lifespan_registers_and_cleans_up_runtime_trackers(
     reset_runtime, db_path
 ):
-    import src.main as main
 
     configured_server = {
         "id": "synthetic-server",
@@ -74,18 +67,18 @@ async def test_lifespan_registers_and_cleans_up_runtime_trackers(
         "subsonic-response": {"status": "ok", "nowPlaying": {"entry": []}}
     }
 
-    with patch("src.main.list_servers", AsyncMock(return_value=[configured_server])):
-        with patch("src.main.NavidromeClient", return_value=mock_client):
+    with patch("src.collectors.list_servers", AsyncMock(return_value=[configured_server])):
+        with patch("src.collectors.NavidromeClient", return_value=mock_client):
             async with lifespan(app):
-                assert len(main._runtime_trackers) == 1
+                assert len(collectors._runtime_trackers) == 1
 
-    assert main._runtime_trackers == []
+    assert collectors._runtime_trackers == []
 
 
 @pytest.mark.asyncio
 async def test_lifespan_degraded_when_client_init_fails(reset_runtime, db_path):
-    with patch("src.main.list_servers", AsyncMock(return_value=[])):
-        with patch("src.main.NavidromeClient", side_effect=ValueError("missing config")):
+    with patch("src.collectors.list_servers", AsyncMock(return_value=[])):
+        with patch("src.collectors.NavidromeClient", side_effect=ValueError("missing config")):
             async with lifespan(app):
                 assert runtime_state.client_initialized is False
                 assert runtime_state.polling_task is None
@@ -108,12 +101,12 @@ async def test_retention_task_starts_when_collector_reconcile_fails(reset_runtim
     with patch.object(main, "init_db", AsyncMock()):
         with patch.object(main, "run_startup_retention_purge", AsyncMock()):
             with patch.object(
-                main,
-                "_reconcile_collectors",
+                collectors,
+                "reconcile_collectors",
                 AsyncMock(side_effect=RuntimeError("synthetic reconcile failure")),
             ):
                 with patch.object(main, "retention_maintenance_loop", retention_loop):
-                    with patch.object(main.collector_manager, "stop_all", AsyncMock()):
+                    with patch.object(collectors.collector_manager, "stop_all", AsyncMock()):
                         async with lifespan(app):
                             await retention_started.wait()
                             assert runtime_state.client_initialized is False

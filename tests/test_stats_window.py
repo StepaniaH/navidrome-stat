@@ -9,7 +9,6 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from src.database import (
-    _format_utc,
     _previous_window_bounds,
     _window_bounds,
     get_daily_stats,
@@ -23,6 +22,7 @@ from src.database import (
     get_transcoding_stats,
     init_db,
     save_play_session,
+    utc_instant,
 )
 from src.main import app
 
@@ -138,7 +138,7 @@ def test_get_summary_zero_previous_window_yields_null_pct(db_path):
 
 def test_previous_window_uses_local_calendar_days_across_dst(monkeypatch, db_path):
     """Preset previous windows follow local midnights, not UTC-span subtraction."""
-    import src.database as database
+    import src.windows
 
     tz = ZoneInfo("America/New_York")
     frozen = datetime(2024, 3, 12, 15, 0, tzinfo=tz)
@@ -150,11 +150,11 @@ def test_previous_window_uses_local_calendar_days_across_dst(monkeypatch, db_pat
                 return frozen.astimezone(timezone.utc).replace(tzinfo=None)
             return frozen.astimezone(tz)
 
-    monkeypatch.setattr(database, "datetime", FrozenDateTime)
+    monkeypatch.setattr(src.windows, "datetime", FrozenDateTime)
 
     start, end = _previous_window_bounds(7, tz)
-    expected_start = _format_utc(datetime(2024, 2, 28, 0, 0, tzinfo=tz))
-    expected_end = _format_utc(datetime(2024, 3, 6, 0, 0, tzinfo=tz))
+    expected_start = utc_instant(datetime(2024, 2, 28, 0, 0, tzinfo=tz))
+    expected_end = utc_instant(datetime(2024, 3, 6, 0, 0, tzinfo=tz))
     assert (start, end) == (expected_start, expected_end)
 
     current_start, current_end = _window_bounds(7, tz)
@@ -164,7 +164,7 @@ def test_previous_window_uses_local_calendar_days_across_dst(monkeypatch, db_pat
     naive_previous_start = datetime.fromisoformat(
         current_start.replace(" ", "T") + "+00:00"
     ) - utc_span
-    assert _format_utc(naive_previous_start) != start
+    assert utc_instant(naive_previous_start) != start
 
     asyncio.run(init_db(db_path))
     # 2024-02-28 00:30 EST is inside the local previous window, but would sit
@@ -375,15 +375,15 @@ def test_get_playback_history_respects_window(db_path):
 @pytest.mark.parametrize(
     "endpoint,target,mock_path,kwargs",
     [
-        ("/api/stats/summary?days=30", "get_summary", "src.main.get_summary", {"days": 30, "timezone_name": "UTC"}),
-        ("/api/stats/summary?days=0", "get_summary", "src.main.get_summary", {"days": 0, "timezone_name": "UTC"}),
-        ("/api/stats/players?days=7", "get_player_stats", "src.main.get_player_stats", {"days": 7, "timezone_name": "UTC"}),
-        ("/api/stats/transcoding?days=30", "get_transcoding_stats", "src.main.get_transcoding_stats", {"days": 30, "timezone_name": "UTC"}),
-        ("/api/stats/hourly?days=90", "get_hourly_stats", "src.main.get_hourly_stats", {"days": 90, "timezone_name": "UTC"}),
-        ("/api/stats/daily?days=90", "get_daily_stats", "src.main.get_daily_stats", {"days": 90, "timezone_name": "UTC"}),
-        ("/api/stats/top-artists?limit=10&days=30", "get_top_artists", "src.main.get_top_artists", {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays"}),
-        ("/api/stats/top-albums?limit=10&days=30", "get_top_albums", "src.main.get_top_albums", {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays"}),
-        ("/api/stats/history?limit=10&days=30", "get_playback_history", "src.main.get_playback_history", {"limit": 10, "days": 30, "timezone_name": "UTC"}),
+        ("/api/stats/summary?days=30", "get_summary", "src.routes.stats.get_summary", {"days": 30, "timezone_name": "UTC"}),
+        ("/api/stats/summary?days=0", "get_summary", "src.routes.stats.get_summary", {"days": 0, "timezone_name": "UTC"}),
+        ("/api/stats/players?days=7", "get_player_stats", "src.routes.stats.get_player_stats", {"days": 7, "timezone_name": "UTC"}),
+        ("/api/stats/transcoding?days=30", "get_transcoding_stats", "src.routes.stats.get_transcoding_stats", {"days": 30, "timezone_name": "UTC"}),
+        ("/api/stats/hourly?days=90", "get_hourly_stats", "src.routes.stats.get_hourly_stats", {"days": 90, "timezone_name": "UTC"}),
+        ("/api/stats/daily?days=90", "get_daily_stats", "src.routes.stats.get_daily_stats", {"days": 90, "timezone_name": "UTC"}),
+        ("/api/stats/top-artists?limit=10&days=30", "get_top_artists", "src.routes.stats.get_top_artists", {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays"}),
+        ("/api/stats/top-albums?limit=10&days=30", "get_top_albums", "src.routes.stats.get_top_albums", {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays"}),
+        ("/api/stats/history?limit=10&days=30", "get_playback_history", "src.routes.stats.get_playback_history", {"limit": 10, "days": 30, "timezone_name": "UTC"}),
     ],
 )
 async def test_historical_endpoints_propagate_days(endpoint, target, mock_path, kwargs):
@@ -436,7 +436,7 @@ async def test_historical_endpoints_reject_invalid_days(endpoint):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_summary", new_callable=AsyncMock)
+@patch("src.routes.stats.get_summary", new_callable=AsyncMock)
 async def test_summary_response_includes_comparison_fields(mock_get):
     mock_get.return_value = {
         "total_plays": 100,
@@ -466,12 +466,12 @@ async def test_summary_response_includes_comparison_fields(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_now_playing_data", new_callable=AsyncMock, create=True)
+@patch("src.routes.stats.get_now_playing_data", new_callable=AsyncMock, create=True)
 async def test_now_playing_endpoint_accepts_no_days_param(_mock):
     # Now-playing is real-time and has no statistics window.
     import inspect
 
-    from src.main import api_now_playing
+    from src.routes.stats import api_now_playing
 
     sig = inspect.signature(api_now_playing)
     assert "days" not in sig.parameters
@@ -485,31 +485,31 @@ async def test_now_playing_endpoint_accepts_no_days_param(_mock):
         (
             "/api/stats/summary?days=30&timezone=Asia/Shanghai",
             "get_summary",
-            "src.main.get_summary",
+            "src.routes.stats.get_summary",
             {"days": 30, "timezone_name": "Asia/Shanghai"},
         ),
         (
             "/api/stats/daily?days=30&timezone=America/New_York",
             "get_daily_stats",
-            "src.main.get_daily_stats",
+            "src.routes.stats.get_daily_stats",
             {"days": 30, "timezone_name": "America/New_York"},
         ),
         (
             "/api/stats/heatmap?days=90&timezone=Europe/London",
             "get_weekday_hour_stats",
-            "src.main.get_weekday_hour_stats",
+            "src.routes.stats.get_weekday_hour_stats",
             {"days": 90, "timezone_name": "Europe/London"},
         ),
         (
             "/api/stats/heatmap?days=0&timezone=UTC",
             "get_weekday_hour_stats",
-            "src.main.get_weekday_hour_stats",
+            "src.routes.stats.get_weekday_hour_stats",
             {"days": 0, "timezone_name": "UTC"},
         ),
         (
             "/api/stats/heatmap?timezone=Asia/Shanghai",
             "get_weekday_hour_stats",
-            "src.main.get_weekday_hour_stats",
+            "src.routes.stats.get_weekday_hour_stats",
             {"days": 30, "timezone_name": "Asia/Shanghai"},
         ),
     ],
@@ -566,7 +566,7 @@ async def test_historical_endpoints_reject_invalid_timezone(endpoint):
 async def test_heatmap_endpoint_default_window_is_30_days():
     import inspect
 
-    from src.main import api_weekday_hour_stats
+    from src.routes.stats import api_weekday_hour_stats
 
     sig = inspect.signature(api_weekday_hour_stats)
     days_default = sig.parameters["days"].default

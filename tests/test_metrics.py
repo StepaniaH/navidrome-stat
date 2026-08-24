@@ -3,7 +3,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.main import app, build_readiness_report
+from src.collectors import build_readiness_report
+from src.main import app
 from src.sessions import PlaybackSessionTracker
 
 
@@ -75,20 +76,21 @@ async def test_metrics_stay_public_when_auth_flag_set_without_token(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_readiness_and_metrics_aggregate_non_paused_runtime_sessions(monkeypatch):
-    import src.main as main
+
+    import src.collectors as collectors
 
     async def save_session(_session):
         return None
 
     first_tracker = PlaybackSessionTracker(save_session)
     second_tracker = PlaybackSessionTracker(save_session)
-    first_tracker.active_sessions["active-1"] = {"paused": False}
-    second_tracker.active_sessions["active-2"] = {"paused": False}
-    second_tracker.active_sessions["paused"] = {"paused": True}
+    first_tracker._sessions["active-1"] = {"paused": False}
+    second_tracker._sessions["active-2"] = {"paused": False}
+    second_tracker._sessions["paused"] = {"paused": True}
     monkeypatch.setattr(
-        main, "_runtime_trackers", [first_tracker, second_tracker], raising=False
+        collectors, "_runtime_trackers", [first_tracker, second_tracker]
     )
-    monkeypatch.setattr(main, "ping_db", AsyncMock(return_value=True))
+    monkeypatch.setattr(collectors, "ping_db", AsyncMock(return_value=True))
 
     report = await build_readiness_report()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -103,7 +105,7 @@ async def test_readiness_reports_one_failed_collector(monkeypatch):
     import asyncio
     from datetime import datetime, timezone
 
-    import src.main as main
+    import src.collectors as collectors
     from src.runtime_state import RuntimeState
 
     state = RuntimeState(client_initialized=True)
@@ -114,10 +116,10 @@ async def test_readiness_reports_one_failed_collector(monkeypatch):
     now = datetime.now(timezone.utc)
     state.record_poll_success(now, "server-a")
     state.record_poll_upstream_error(now, 40, "server-b")
-    monkeypatch.setattr(main, "runtime_state", state)
-    monkeypatch.setattr(main, "ping_db", AsyncMock(return_value=True))
+    monkeypatch.setattr(collectors, "runtime_state", state)
+    monkeypatch.setattr(collectors, "ping_db", AsyncMock(return_value=True))
     try:
-        report = await main.build_readiness_report()
+        report = await collectors.build_readiness_report()
     finally:
         first_task.cancel()
         second_task.cancel()

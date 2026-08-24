@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.collectors import polling_loop_for_tracker
 from src.database import init_db, save_play_session
-from src.main import polling_loop_for_tracker
 from src.sessions import PlaybackPersistenceError, PlaybackSessionTracker
 
 
@@ -57,7 +57,7 @@ async def test_advertised_playback_report_polling_persists_reported_checkpoint(
     t0 = datetime(2024, 3, 24, 12, 0, tzinfo=timezone.utc)
     fake_datetime = MagicMock()
     fake_datetime.now.side_effect = [t0, t0 + timedelta(seconds=10)]
-    monkeypatch.setattr("src.main.datetime", fake_datetime)
+    monkeypatch.setattr("src.collectors.datetime", fake_datetime)
     sleep_count = 0
 
     async def stop_after_second_poll(_seconds):
@@ -66,7 +66,7 @@ async def test_advertised_playback_report_polling_persists_reported_checkpoint(
         if sleep_count == 2:
             raise asyncio.CancelledError()
 
-    monkeypatch.setattr("src.main.asyncio.sleep", stop_after_second_poll)
+    monkeypatch.setattr("src.collectors.asyncio.sleep", stop_after_second_poll)
 
     with pytest.raises(asyncio.CancelledError):
         await polling_loop_for_tracker(client, tracker)
@@ -86,7 +86,7 @@ async def test_advertised_playback_report_polling_persists_reported_checkpoint(
 
 @pytest.mark.asyncio
 async def test_ok_null_now_playing_is_empty_success(monkeypatch):
-    import src.main as main
+    import src.collectors as main
     from src.runtime_state import RuntimeState
 
     state = RuntimeState()
@@ -108,12 +108,12 @@ async def test_ok_null_now_playing_is_empty_success(monkeypatch):
 
     assert state.poll_success_count == 1
     assert state.poll_failure_count == 0
-    assert tracker.active_sessions == {}
+    assert tracker._sessions == {}
 
 
 @pytest.mark.asyncio
 async def test_ok_poll_records_success_when_persistence_fails(monkeypatch):
-    import src.main as main
+    import src.collectors as main
     from src.runtime_state import RuntimeState
 
     state = RuntimeState()
@@ -146,7 +146,7 @@ async def test_ok_poll_records_success_when_persistence_fails(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_ok_poll_treats_tracker_failure_as_cycle_failure(monkeypatch):
-    import src.main as main
+    import src.collectors as main
     from src.runtime_state import RuntimeState
 
     state = RuntimeState()

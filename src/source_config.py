@@ -10,7 +10,8 @@ import os
 from typing import Any, Optional
 from urllib.parse import urlparse
 
-from src import database
+from src import config
+from src.schema import LEGACY_SOURCE_ID, set_meta_value
 from src.sqlite import connect_db
 
 SOURCE_URL_KEY = "source_url"
@@ -23,17 +24,7 @@ ENV_PASS = "NAVIDROME_PASS"
 
 
 def _path(db_path: str | None = None) -> str:
-    return database.DB_PATH if db_path is None else db_path
-
-
-async def _set_meta(db, key: str, value: str) -> None:
-    await db.execute(
-        """
-        INSERT INTO schema_meta (key, value) VALUES (?, ?)
-        ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        """,
-        (key, value),
-    )
+    return config.DATABASE_PATH if db_path is None else db_path
 
 
 async def get_saved_source_config(
@@ -65,10 +56,10 @@ async def set_saved_source_config(
     async with connect_db(path) as db:
         await db.execute("BEGIN IMMEDIATE")
         try:
-            await _set_meta(db, SOURCE_URL_KEY, url)
-            await _set_meta(db, SOURCE_USER_KEY, user)
+            await set_meta_value(db, SOURCE_URL_KEY, url)
+            await set_meta_value(db, SOURCE_USER_KEY, user)
             if password:
-                await _set_meta(db, SOURCE_PASSWORD_KEY, password)
+                await set_meta_value(db, SOURCE_PASSWORD_KEY, password)
             await db.commit()
         except BaseException:
             await db.rollback()
@@ -96,11 +87,33 @@ async def replace_saved_source_config(
                 if value is None:
                     await db.execute("DELETE FROM schema_meta WHERE key = ?", (key,))
                 else:
-                    await _set_meta(db, key, value)
+                    await set_meta_value(db, key, value)
             await db.commit()
         except BaseException:
             await db.rollback()
             raise
+
+
+async def credentials_for_source(source_id: str) -> Optional[dict[str, str]]:
+    """Resolve upstream credentials for a saved server or the legacy fallback."""
+    from src.server_registry import get_server
+
+    server = await get_server(source_id)
+    if server is not None:
+        return {
+            "url": server["url"],
+            "user": server["username"],
+            "password": server["password"],
+        }
+    if source_id == LEGACY_SOURCE_ID:
+        config = await resolve_effective_source_config()
+        if has_full_config(config):
+            return {
+                "url": config["url"] or "",
+                "user": config["user"] or "",
+                "password": config["password"] or "",
+            }
+    return None
 
 
 def validate_source_url(url: Optional[str]) -> str:

@@ -1,8 +1,12 @@
-(function initSettingsPage() {
-    'use strict';
+import { apiFetch, isAbortError, UnauthorizedError } from './js/http.js';
+import { createLoginController } from './js/auth.js';
+import { UNAUTHORIZED_EVENT } from './js/http.js';
+import { readPreference, removePreference, writePreference } from './js/prefs.js';
+import { createI18n } from './localization.js';
+import { DEFAULT_THEME, THEMES, resolveTheme, themeScheme } from './js/themes.js';
+import { SUPPORTED_LOCALES } from './js/locales.js';
+import { catalog, settingsMessages } from './js/messages-settings.js';
 
-    const { createI18n, readPreference, removePreference, writePreference } = window.NavidromeI18n;
-    const fetchOptions = { credentials: 'same-origin' };
     const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
     const preferenceKeys = Object.freeze({
         language: 'navidrome-language',
@@ -11,337 +15,12 @@
         motion: 'navidrome-motion',
     });
 
-    const messages = {
-        'zh-CN': {
-            'page.title': '设置 · Navidrome Statistic',
-            'page.heading': '设置',
-            'page.description': '管理连接、数据边界与本地显示偏好。',
-            'nav.back': '返回统计',
-            'nav.categories': '设置分类',
-            'nav.group.data': '服务与数据',
-            'nav.group.app': '应用',
-            'nav.group.project': '项目',
-            'tab.source': '连接',
-            'tab.privacy': '隐私',
-            'tab.preferences': '偏好',
-            'tab.about': '关于',
-            'common.loading': '加载中…',
-            'common.retry': '重试',
-            'common.refresh': '刷新',
-            'common.none': '暂无数据',
-            'common.records': '{count} 条记录',
-            'common.days': '{count} 天',
-            'common.permanent': '永久保留',
-            'common.edit': '编辑',
-            'common.delete': '删除',
-            'common.test': '测试',
-            'common.cancel': '取消',
-            'auth.heading': '需要访问令牌',
-            'auth.description': '输入部署方提供的统计服务访问令牌。',
-            'auth.token': '访问令牌',
-            'auth.login': '登录',
-            'auth.invalid': '令牌无效，请重试。',
-            'source.heading': 'Navidrome 连接',
-            'source.description': '管理统计服务读取播放状态所使用的服务器。连接更改保存后立即应用。',
-            'source.status': '上游状态',
-            'source.statusUnknown': '尚未检查',
-            'source.statusOk': '连接正常',
-            'source.statusError': '连接异常',
-            'source.statusDegraded': '部分功能不可用',
-            'source.savedConnections': '已保存的服务器',
-            'source.savedConnectionsHelp': '密码不会在页面或 API 响应中回显。',
-            'source.noServers': '尚未保存服务器。',
-            'source.formHeading': '连接详情',
-            'source.formDescription': '编辑现有服务器，或填写下方信息新增连接。',
-            'source.serverName': '显示名称',
-            'source.namePlaceholder': '例如：家庭 Navidrome',
-            'source.url': 'Navidrome URL',
-            'source.username': '用户名',
-            'source.usernamePlaceholder': '账户名',
-            'source.password': '密码',
-            'source.passwordPlaceholder': '新增连接时必填',
-            'source.passwordConfigured': '已配置 · 留空则保持不变',
-            'source.passwordRequired': '新增连接需要填写密码。',
-            'source.enabled': '采集此服务器',
-            'source.enabledHelp': '禁用的连接仍会保留，但不会启动采集器。',
-            'source.enabledStatus': '已启用',
-            'source.disabledStatus': '已禁用',
-            'source.save': '保存连接',
-            'source.update': '更新连接',
-            'source.cancelEdit': '取消编辑',
-            'source.testConnection': '测试当前表单',
-            'source.testing': '正在测试连接…',
-            'source.testSuccess': '连接成功。',
-            'source.testFailure': '连接失败，请核对地址与凭据。',
-            'source.testFailed': '无法完成连接测试。',
-            'source.saved': '连接已保存并立即应用。',
-            'source.loadFailed': '无法加载服务器列表。',
-            'source.configFailed': '无法加载连接配置。',
-            'source.saveFailed': '保存失败。',
-            'source.nameRequired': '请填写服务器显示名称。',
-            'source.urlRequired': '请填写 Navidrome URL。',
-            'source.userRequired': '请填写用户名。',
-            'source.deleteConfirm': '删除服务器“{name}”？这不会删除已有播放统计。',
-            'source.fallbackTitle': '环境变量回退连接',
-            'source.fallbackDescription': '仅当没有任何已保存服务器时，NAVIDROME_URL、NAVIDROME_USER 与 NAVIDROME_PASS 才作为单服务器回退配置。已保存服务器作为独立连接使用。',
-            'source.fallbackConfigured': '当前已配置回退连接：{username} · {url}',
-            'source.fallbackMissing': '当前没有完整的环境变量或兼容回退连接。',
-            'privacy.heading': '隐私与数据',
-            'privacy.description': '控制行为数据的保留期限，并按用户导出或删除记录。',
-            'privacy.currentPolicy': '当前保留策略',
-            'privacy.policyLoading': '正在读取当前策略…',
-            'privacy.policyLoadError': '未能读取策略。现有数据未被修改。',
-            'privacy.retention': '数据保留',
-            'privacy.retentionDescription': '保存有限策略后，服务会在启动时和后台维护期间自动删除超期记录；“立即应用”会现在执行一次。',
-            'privacy.retentionMode': '保留方式',
-            'privacy.finiteRetention': '指定天数',
-            'privacy.finiteHelp': '1–360 天',
-            'privacy.summaryPermanent': '永久保留，除非你主动删除。',
-            'privacy.summaryFinite': '保留最近 {days} 天，超期记录会自动清理。',
-            'privacy.previewPermanent': '播放记录会永久保留，除非按用户主动删除。',
-            'privacy.previewFinite': '按 {label} 计算：将影响 {count} 条记录，预计释放 {bytes}。',
-            'privacy.saveRetention': '保存策略',
-            'privacy.cleanup': '立即应用',
-            'privacy.retentionSaved': '保留策略已保存。有限策略会在启动和后台维护时自动执行。',
-            'privacy.retentionSaveConfirm': '保存后，服务会自动删除超出该期限的记录。\n\n{preview}\n\n保存此有限保留策略吗？',
-            'privacy.saveFirst': '请先保存当前保留策略，再立即应用。',
-            'privacy.noCleanup': '当前为永久保留，无需清理。',
-            'privacy.cleanupConfirm': '此操作不可撤销。\n\n{preview}\n\n立即删除这些超期记录吗？',
-            'privacy.cleanupSuccess': '已清理 {count} 条超期记录。',
-            'privacy.cleanupFailed': '清理失败，请重试。',
-            'privacy.policyChanged': '保留策略已在其它会话中变更，页面已重新加载，未执行清理。',
-            'privacy.storage': '数据占用',
-            'privacy.storageDescription': '以下估算只基于统计数据库，不读取媒体文件。',
-            'privacy.currentDatabaseSize': '当前数据库',
-            'privacy.estimatedStorage': '按当前策略预计',
-            'privacy.storagePermanent': '永久保留，预计占用不变',
-            'privacy.storageRelease': '预计释放 {bytes} · {count} 条',
-            'privacy.storagePending': '策略加载后显示估算',
-            'privacy.userData': '按用户管理',
-            'privacy.userDataDescription': '导出、导入与删除都只作用于当前选择的用户。',
-            'privacy.selectUser': '用户',
-            'privacy.userLoading': '正在读取用户…',
-            'privacy.noUsers': '暂无用户数据',
-            'privacy.userOption': '{username} · {count} 条',
-            'privacy.userPreview': '删除预览：{count} 条记录',
-            'privacy.export': '导出 JSON',
-            'privacy.import': '导入 JSON',
-            'privacy.mergeImport': '合并导入',
-            'privacy.mergeImportHelp': '关闭后会先清空该用户的既有数据。',
-            'privacy.deleteUser': '删除该用户数据',
-            'privacy.exportSuccess': '已导出用户“{username}”的数据。',
-            'privacy.exportFailed': '导出失败。',
-            'privacy.importConfirm': '为“{username}”导入 {records} 条播放记录与 {attempts} 条短播放记录？',
-            'privacy.importSuccess': '已导入 {records} 条播放记录与 {attempts} 条短播放记录。',
-            'privacy.importTooLarge': '导入文件不能超过 5 MiB。',
-            'privacy.importFailed': '导入失败，请检查 JSON 格式与用户名。',
-            'privacy.deleteConfirm': '此操作不可撤销。\n\n{preview}\n\n确定删除用户“{username}”的全部播放数据吗？',
-            'privacy.deleteSuccess': '已删除 {count} 条记录。',
-            'privacy.deleteFailed': '删除失败。',
-            'privacy.selectUserFirst': '请先选择用户。',
-            'privacy.principles': '数据边界',
-            'privacy.principleRetention': '播放历史、用户名、曲目、艺人、专辑与客户端名称均属于个人行为数据。',
-            'privacy.principleCleanup': '有限保留策略会自动清理超期记录；立即清理和按用户删除会先提供影响预览并再次确认。',
-            'privacy.principleExport': '导出仅包含所选用户的数据，服务不会记录导出内容。',
-            'privacy.principleNotice': '部署方仍需确认访问边界、告知方式、备份位置与实际保留周期。',
-            'preferences.heading': '偏好',
-            'preferences.description': '这些选项只保存在当前浏览器，不会上传到服务器。',
-            'preferences.language': '界面语言',
-            'preferences.languageHelp': '切换后立即更新设置页与统计页。',
-            'preferences.timezone': '统计时区',
-            'preferences.timezoneHelp': '“浏览器时区”会使用当前设备报告的 IANA 时区。',
-            'preferences.timezoneBrowser': '浏览器时区',
-            'preferences.timezoneUtc': 'UTC',
-            'preferences.theme': '主题',
-            'preferences.themeHelp': '选择适合当前环境的深色或浅色配色。',
-            'preferences.themeFrappe': 'Frappe · 深色',
-            'preferences.themeLatte': 'Latte · 浅色',
-            'preferences.motion': '减少动态效果',
-            'preferences.motionHelp': '关闭脉冲、过渡和骨架动画，适合晕动敏感或低性能设备。',
-            'preferences.reset': '恢复本地偏好',
-            'preferences.resetHelp': '恢复英语、Frappe、浏览器时区和系统默认动效。',
-            'preferences.resetButton': '恢复默认值',
-            'preferences.resetConfirm': '恢复当前浏览器中的所有显示偏好？',
-            'preferences.resetSuccess': '本地显示偏好已恢复默认值。',
-            'about.heading': '关于',
-            'about.description': 'Navidrome Statistic 是一个自托管的播放状态与收听习惯分析工具。',
-            'about.project': '项目',
-            'about.runtime': '运行方式',
-            'about.runtimeValue': '自托管 · 本地 SQLite',
-            'about.license': '许可证',
-            'about.repository': '源代码',
-            'about.repositoryValue': 'GitHub 仓库',
-            'about.privacy': '隐私说明',
-            'about.privacyValue': '查看项目隐私文档',
-            'error.generic': '操作失败，请重试。',
-            'error.settingsLoad': '部分设置未能加载；未完成的项目已标出。',
-        },
-        en: {
-            'page.title': 'Settings · Navidrome Statistic',
-            'page.heading': 'Settings',
-            'page.description': 'Manage connections, data boundaries, and local display preferences.',
-            'nav.back': 'Back to statistics',
-            'nav.categories': 'Settings categories',
-            'nav.group.data': 'Service & data',
-            'nav.group.app': 'Application',
-            'nav.group.project': 'Project',
-            'tab.source': 'Connections',
-            'tab.privacy': 'Privacy',
-            'tab.preferences': 'Preferences',
-            'tab.about': 'About',
-            'common.loading': 'Loading…',
-            'common.retry': 'Retry',
-            'common.refresh': 'Refresh',
-            'common.none': 'No data',
-            'common.records': '{count} records',
-            'common.days': '{count} days',
-            'common.permanent': 'Keep forever',
-            'common.edit': 'Edit',
-            'common.delete': 'Delete',
-            'common.test': 'Test',
-            'common.cancel': 'Cancel',
-            'auth.heading': 'Access token required',
-            'auth.description': 'Enter the statistics service token provided by the operator.',
-            'auth.token': 'Access token',
-            'auth.login': 'Log in',
-            'auth.invalid': 'That token is not valid. Try again.',
-            'source.heading': 'Navidrome connections',
-            'source.description': 'Manage the servers used to read playback state. Saved changes apply immediately.',
-            'source.status': 'Upstream status',
-            'source.statusUnknown': 'Not checked yet',
-            'source.statusOk': 'Connected',
-            'source.statusError': 'Connection issue',
-            'source.statusDegraded': 'Some features unavailable',
-            'source.savedConnections': 'Saved servers',
-            'source.savedConnectionsHelp': 'Passwords are never returned to this page or exposed by the API.',
-            'source.noServers': 'No servers have been saved.',
-            'source.formHeading': 'Connection details',
-            'source.formDescription': 'Edit a saved server or fill in the fields below to add one.',
-            'source.serverName': 'Display name',
-            'source.namePlaceholder': 'e.g. Home Navidrome',
-            'source.url': 'Navidrome URL',
-            'source.username': 'Username',
-            'source.usernamePlaceholder': 'Account name',
-            'source.password': 'Password',
-            'source.passwordPlaceholder': 'Required for a new connection',
-            'source.passwordConfigured': 'Configured · leave blank to keep current',
-            'source.passwordRequired': 'Enter a password for a new connection.',
-            'source.enabled': 'Collect from this server',
-            'source.enabledHelp': 'Disabled connections remain saved but do not run a collector.',
-            'source.enabledStatus': 'Enabled',
-            'source.disabledStatus': 'Disabled',
-            'source.save': 'Save connection',
-            'source.update': 'Update connection',
-            'source.cancelEdit': 'Cancel edit',
-            'source.testConnection': 'Test current form',
-            'source.testing': 'Testing connection…',
-            'source.testSuccess': 'Connection succeeded.',
-            'source.testFailure': 'Connection failed. Check the URL and credentials.',
-            'source.testFailed': 'The connection test could not be completed.',
-            'source.saved': 'Connection saved and applied immediately.',
-            'source.loadFailed': 'Unable to load the server list.',
-            'source.configFailed': 'Unable to load the connection configuration.',
-            'source.saveFailed': 'Save failed.',
-            'source.nameRequired': 'Enter a server display name.',
-            'source.urlRequired': 'Enter the Navidrome URL.',
-            'source.userRequired': 'Enter a username.',
-            'source.deleteConfirm': 'Delete “{name}”? Existing playback statistics will be kept.',
-            'source.fallbackTitle': 'Environment fallback connection',
-            'source.fallbackDescription': 'NAVIDROME_URL, NAVIDROME_USER, and NAVIDROME_PASS provide one fallback connection only when no saved server entries exist. Saved servers are independent connections.',
-            'source.fallbackConfigured': 'Fallback connection configured: {username} · {url}',
-            'source.fallbackMissing': 'No complete environment or compatible fallback connection is configured.',
-            'privacy.heading': 'Privacy & data',
-            'privacy.description': 'Control how long behavioral data is kept, then export or delete records by user.',
-            'privacy.currentPolicy': 'Current retention policy',
-            'privacy.policyLoading': 'Reading the current policy…',
-            'privacy.policyLoadError': 'The policy could not be loaded. Existing data was not changed.',
-            'privacy.retention': 'Data retention',
-            'privacy.retentionDescription': 'After a finite policy is saved, expired records are deleted automatically at startup and during background maintenance. “Apply now” runs it immediately.',
-            'privacy.retentionMode': 'Retention mode',
-            'privacy.finiteRetention': 'Keep for a period',
-            'privacy.finiteHelp': '1–360 days',
-            'privacy.summaryPermanent': 'Kept forever unless you explicitly delete it.',
-            'privacy.summaryFinite': 'Keep the most recent {days} days. Older records are removed automatically.',
-            'privacy.previewPermanent': 'Playback records are kept forever unless they are explicitly deleted by user.',
-            'privacy.previewFinite': 'For {label}: {count} records affected, approximately {bytes} released.',
-            'privacy.saveRetention': 'Save policy',
-            'privacy.cleanup': 'Apply now',
-            'privacy.retentionSaved': 'Retention policy saved. Finite policies run automatically at startup and during background maintenance.',
-            'privacy.retentionSaveConfirm': 'After this is saved, the service automatically deletes records older than the selected period.\n\n{preview}\n\nSave this finite retention policy?',
-            'privacy.saveFirst': 'Save the current retention policy before applying it now.',
-            'privacy.noCleanup': 'Retention is permanent; no cleanup is needed.',
-            'privacy.cleanupConfirm': 'This action cannot be undone.\n\n{preview}\n\nDelete these expired records now?',
-            'privacy.cleanupSuccess': 'Deleted {count} expired records.',
-            'privacy.cleanupFailed': 'Cleanup failed. Please try again.',
-            'privacy.policyChanged': 'The retention policy changed in another session. Settings were reloaded and no cleanup was run.',
-            'privacy.storage': 'Data footprint',
-            'privacy.storageDescription': 'These estimates cover the statistics database only, never media files.',
-            'privacy.currentDatabaseSize': 'Current database',
-            'privacy.estimatedStorage': 'Estimated with this policy',
-            'privacy.storagePermanent': 'Permanent retention; estimated size is unchanged',
-            'privacy.storageRelease': 'About {bytes} released · {count} records',
-            'privacy.storagePending': 'Estimate appears after the policy loads',
-            'privacy.userData': 'Manage by user',
-            'privacy.userDataDescription': 'Export, import, and delete actions affect only the selected user.',
-            'privacy.selectUser': 'User',
-            'privacy.userLoading': 'Reading users…',
-            'privacy.noUsers': 'No user data',
-            'privacy.userOption': '{username} · {count} records',
-            'privacy.userPreview': 'Delete preview: {count} records',
-            'privacy.export': 'Export JSON',
-            'privacy.import': 'Import JSON',
-            'privacy.mergeImport': 'Merge import',
-            'privacy.mergeImportHelp': 'When off, existing data for this user is cleared first.',
-            'privacy.deleteUser': 'Delete this user’s data',
-            'privacy.exportSuccess': 'Exported data for “{username}”.',
-            'privacy.exportFailed': 'Export failed.',
-            'privacy.importConfirm': 'Import {records} plays and {attempts} short-play records for “{username}”?',
-            'privacy.importSuccess': 'Imported {records} plays and {attempts} short-play records.',
-            'privacy.importTooLarge': 'Import files cannot exceed 5 MiB.',
-            'privacy.importFailed': 'Import failed. Check the JSON format and username.',
-            'privacy.deleteConfirm': 'This action cannot be undone.\n\n{preview}\n\nDelete all playback data for “{username}”?',
-            'privacy.deleteSuccess': 'Deleted {count} records.',
-            'privacy.deleteFailed': 'Delete failed.',
-            'privacy.selectUserFirst': 'Select a user first.',
-            'privacy.principles': 'Data boundaries',
-            'privacy.principleRetention': 'Playback history, usernames, tracks, artists, albums, and client names are all behavioral data.',
-            'privacy.principleCleanup': 'Finite retention automatically removes expired records. Apply-now and per-user deletion show an impact preview and require confirmation.',
-            'privacy.principleExport': 'Exports contain data for the selected user only; export contents are not logged.',
-            'privacy.principleNotice': 'The operator must still confirm access boundaries, notice, backup locations, and the actual retention period.',
-            'preferences.heading': 'Preferences',
-            'preferences.description': 'These options stay in this browser and are never uploaded to the server.',
-            'preferences.language': 'Interface language',
-            'preferences.languageHelp': 'Changes the settings and statistics pages immediately.',
-            'preferences.timezone': 'Statistics timezone',
-            'preferences.timezoneHelp': '“Browser timezone” uses the IANA timezone reported by this device.',
-            'preferences.timezoneBrowser': 'Browser timezone',
-            'preferences.timezoneUtc': 'UTC',
-            'preferences.theme': 'Theme',
-            'preferences.themeHelp': 'Choose a dark or light palette for the current environment.',
-            'preferences.themeFrappe': 'Frappe · Dark',
-            'preferences.themeLatte': 'Latte · Light',
-            'preferences.motion': 'Reduce motion',
-            'preferences.motionHelp': 'Disables pulses, transitions, and skeleton animation for motion sensitivity or slower devices.',
-            'preferences.reset': 'Reset local preferences',
-            'preferences.resetHelp': 'Restores English, Frappe, browser timezone, and system motion defaults.',
-            'preferences.resetButton': 'Restore defaults',
-            'preferences.resetConfirm': 'Restore all display preferences in this browser?',
-            'preferences.resetSuccess': 'Local display preferences restored to defaults.',
-            'about.heading': 'About',
-            'about.description': 'Navidrome Statistic is a self-hosted playback status and listening-habits tool.',
-            'about.project': 'Project',
-            'about.runtime': 'Runtime',
-            'about.runtimeValue': 'Self-hosted · local SQLite',
-            'about.license': 'License',
-            'about.repository': 'Source',
-            'about.repositoryValue': 'GitHub repository',
-            'about.privacy': 'Privacy',
-            'about.privacyValue': 'Read the project privacy guide',
-            'error.generic': 'The operation failed. Please try again.',
-            'error.settingsLoad': 'Some settings could not be loaded; affected sections are marked.',
-        },
+const messages = {
+            'zh-CN': catalog(settingsMessages.zhCN),
+            'zh-TW': catalog(settingsMessages.zhTW),
+            en: catalog(settingsMessages.en),
+            ja: catalog(settingsMessages.ja),
     };
-
     const i18n = createI18n({ messages, fallbackLocale: 'en' });
     const t = (key, values) => i18n.t(key, values);
     const state = {
@@ -360,39 +39,28 @@
     let previewTimer = null;
     let retentionPreviewController = null;
     let userPreviewController = null;
-    let lastFocusBeforeLogin = null;
 
     function isResponseOk(response) {
         return response && response.ok;
     }
 
-    async function apiFetch(url, options = {}) {
-        const response = await fetch(url, { ...fetchOptions, ...options });
-        if (response.status === 401) {
-            showLogin();
-            throw new Error('unauthorized');
-        }
-        return response;
+    let lastUnauthorizedHandler = null;
+
+    function onUnauthorized() {
+        if (lastUnauthorizedHandler) lastUnauthorizedHandler();
     }
 
-    function isAbortError(error) {
-        return error && error.name === 'AbortError';
-    }
+    const login = createLoginController({
+        overlayId: 'loginOverlay',
+        tokenId: 'loginToken',
+        inertSelector: '.settings-shell',
+        onAuthenticated: () => bootstrapData(),
+    });
+
+    window.addEventListener(UNAUTHORIZED_EVENT, () => showLogin());
 
     function showLogin() {
-        const overlay = document.getElementById('loginOverlay');
-        if (overlay.hidden) lastFocusBeforeLogin = document.activeElement;
-        overlay.hidden = false;
-        document.querySelector('.settings-shell').inert = true;
-        window.requestAnimationFrame(() => document.getElementById('loginToken').focus());
-    }
-
-    function hideLogin() {
-        document.getElementById('loginOverlay').hidden = true;
-        document.getElementById('loginError').hidden = true;
-        document.querySelector('.settings-shell').inert = false;
-        if (lastFocusBeforeLogin instanceof HTMLElement) lastFocusBeforeLogin.focus();
-        lastFocusBeforeLogin = null;
+        login.show();
     }
 
     function showBanner(kind, message) {
@@ -472,7 +140,20 @@
                 item.className = 'settings-option';
                 item.dataset.value = String(option.value);
                 item.tabIndex = -1;
-                item.textContent = getOptionLabel(option);
+                if (option.subtitleKey) {
+                    const lines = document.createElement('span');
+                    lines.className = 'settings-option-lines';
+                    const primary = document.createElement('span');
+                    primary.className = 'settings-option-label';
+                    primary.textContent = getOptionLabel(option);
+                    const subtitle = document.createElement('span');
+                    subtitle.className = 'settings-option-subtitle';
+                    subtitle.textContent = t(option.subtitleKey);
+                    lines.append(primary, subtitle);
+                    item.appendChild(lines);
+                } else {
+                    item.textContent = getOptionLabel(option);
+                }
                 item.setAttribute('aria-selected', String(option.value) === String(currentValue) ? 'true' : 'false');
                 item.addEventListener('click', () => {
                     setValue(option.value, { emit: true });
@@ -569,11 +250,10 @@
     }
 
     function applyLocalPreferences() {
-        const theme = ['frappe', 'latte'].includes(readPreference(preferenceKeys.theme, 'frappe'))
-            ? readPreference(preferenceKeys.theme, 'frappe')
-            : 'frappe';
+        const theme = resolveTheme(readPreference(preferenceKeys.theme, DEFAULT_THEME));
         const motion = readPreference(preferenceKeys.motion, 'system') === 'reduced' ? 'reduced' : 'system';
         document.documentElement.dataset.theme = theme;
+        document.documentElement.dataset.scheme = themeScheme(theme);
         document.documentElement.dataset.motion = motion;
         document.getElementById('motionToggle').setAttribute('aria-checked', motion === 'reduced' ? 'true' : 'false');
         listboxes.get('themeSelect')?.setValue(theme);
@@ -1044,15 +724,12 @@
     }
 
     async function submitLogin(token) {
-        const response = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ token }),
-        });
-        if (!response.ok) throw new Error('invalid token');
-        hideLogin();
-        await bootstrapData();
+        try {
+            await login.submit(token);
+        } catch (error) {
+            if (!(error instanceof UnauthorizedError)) throw error;
+            throw new Error('invalid token');
+        }
     }
 
     function switchSettingsTab(name, { focus = true, updateHash = true } = {}) {
@@ -1093,21 +770,23 @@
     function bindPreferenceControls() {
         createListbox('languageSelect', {
             value: i18n.getLocale(),
-            options: [
-                { value: 'en', label: 'English' },
-                { value: 'zh-CN', label: '简体中文' },
-            ],
+            options: SUPPORTED_LOCALES.map((locale) => ({
+                value: locale.code,
+                label: locale.native,
+                subtitleKey: `localeName.${locale.code}`,
+            })),
             onChange: (language) => {
                 i18n.setLocale(language);
                 renderLocalizedState();
             },
         });
         createListbox('themeSelect', {
-            value: readPreference(preferenceKeys.theme, 'frappe'),
-            options: [
-                { value: 'frappe', labelKey: 'preferences.themeFrappe' },
-                { value: 'latte', labelKey: 'preferences.themeLatte' },
-            ],
+            value: readPreference(preferenceKeys.theme, DEFAULT_THEME),
+            options: THEMES.map((theme) => ({
+                value: theme.id,
+                labelKey: `preferences.theme.${theme.id}`,
+                subtitleKey: `common.scheme.${theme.scheme}`,
+            })),
             onChange: (theme) => {
                 writePreference(preferenceKeys.theme, theme);
                 applyLocalPreferences();
@@ -1443,21 +1122,7 @@
     }
 
     function bindAuthentication() {
-        document.getElementById('loginOverlay').addEventListener('keydown', (event) => {
-            if (event.key !== 'Tab') return;
-            const focusable = [...event.currentTarget.querySelectorAll('input, button')]
-                .filter((element) => !element.disabled && !element.hidden);
-            if (!focusable.length) return;
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-            if (event.shiftKey && document.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-                event.preventDefault();
-                first.focus();
-            }
-        });
+        login.bind();
         document.getElementById('loginForm').addEventListener('submit', async (event) => {
             event.preventDefault();
             const tokenInput = document.getElementById('loginToken');
@@ -1475,14 +1140,18 @@
     async function bootstrapData() {
         hideBanner();
         try {
-            const statusResponse = await fetch('/api/auth/status', fetchOptions);
+            const statusResponse = await apiFetch('/api/auth/status');
             if (statusResponse.ok) {
                 const status = await statusResponse.json();
                 if (status.auth_required) {
-                    const probe = await fetch('/api/privacy/settings', fetchOptions);
-                    if (probe.status === 401) {
-                        showLogin();
-                        return;
+                    try {
+                        await apiFetch('/api/privacy/settings');
+                    } catch (error) {
+                        if (error instanceof UnauthorizedError) {
+                            showLogin();
+                            return;
+                        }
+                        throw error;
                     }
                 }
             }
@@ -1516,4 +1185,3 @@
     }
 
     initialize();
-}());

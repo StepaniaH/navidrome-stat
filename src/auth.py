@@ -6,7 +6,7 @@ import time
 from collections import defaultdict, deque
 from typing import Optional
 
-from fastapi import HTTPException, Request
+from fastapi import Request
 
 SESSION_COOKIE_NAME = "stats_session"
 SESSION_SALT = b"navidrome-stat-session-v1"
@@ -71,12 +71,6 @@ def is_authorized(request: Request) -> bool:
         return True
 
     return False
-
-
-def require_stats_access(request: Request) -> None:
-    if is_authorized(request):
-        return
-    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def verify_login_token(presented: str) -> bool:
