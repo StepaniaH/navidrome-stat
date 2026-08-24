@@ -22,7 +22,7 @@ def payload(*, enabled=True):
 async def test_create_server_applies_runtime_config_immediately():
     reconcile = AsyncMock()
     with patch("src.stats_service.save_server", AsyncMock()) as save:
-        with patch("src.main._reconcile_collectors", reconcile):
+        with patch("src.collectors.reconcile_collectors", reconcile):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                 response = await ac.post("/api/servers", json=payload())
 
@@ -35,9 +35,9 @@ async def test_create_server_applies_runtime_config_immediately():
 async def test_update_server_applies_disabled_state_immediately():
     existing = {"id": "server-1", **payload()}
     reconcile = AsyncMock()
-    with patch("src.main.get_server", AsyncMock(return_value=existing)):
+    with patch("src.routes.servers.get_server", AsyncMock(return_value=existing)):
         with patch("src.stats_service.save_server", AsyncMock()):
-            with patch("src.main._reconcile_collectors", reconcile):
+            with patch("src.collectors.reconcile_collectors", reconcile):
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                     response = await ac.put("/api/servers/server-1", json=payload(enabled=False))
 
@@ -50,7 +50,7 @@ async def test_update_server_rejects_whitespace_identity_fields():
     existing = {"id": "server-1", **payload()}
     invalid = payload()
     invalid["display_name"] = "   "
-    with patch("src.main.get_server", AsyncMock(return_value=existing)):
+    with patch("src.routes.servers.get_server", AsyncMock(return_value=existing)):
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -64,9 +64,9 @@ async def test_update_server_rejects_whitespace_identity_fields():
 async def test_delete_server_stops_runtime_collector():
     reconcile = AsyncMock()
     existing = {"id": "server-1", **payload()}
-    with patch("src.main.get_server", AsyncMock(return_value=existing)):
+    with patch("src.routes.servers.get_server", AsyncMock(return_value=existing)):
         with patch("src.stats_service.delete_server", AsyncMock(return_value=True)):
-            with patch("src.main._reconcile_collectors", reconcile):
+            with patch("src.collectors.reconcile_collectors", reconcile):
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                     response = await ac.delete("/api/servers/server-1")
 
@@ -80,7 +80,7 @@ async def test_runtime_apply_failure_rolls_back_created_server(isolated_db):
     reconcile = AsyncMock(
         side_effect=[RuntimeError("synthetic-password upstream detail"), None]
     )
-    with patch("src.main._reconcile_collectors", reconcile):
+    with patch("src.collectors.reconcile_collectors", reconcile):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             response = await ac.post("/api/servers", json=payload())
 
@@ -100,7 +100,7 @@ async def test_runtime_apply_failure_restores_updated_server(isolated_db):
     changed["display_name"] = "Changed Server"
     reconcile = AsyncMock(side_effect=[RuntimeError("synthetic failure"), None])
 
-    with patch("src.main._reconcile_collectors", reconcile):
+    with patch("src.collectors.reconcile_collectors", reconcile):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             response = await ac.put("/api/servers/server-1", json=changed)
 
@@ -121,7 +121,7 @@ async def test_runtime_apply_failure_restores_deleted_server(isolated_db):
     await save_server(original, isolated_db)
     reconcile = AsyncMock(side_effect=[RuntimeError("synthetic failure"), None])
 
-    with patch("src.main._reconcile_collectors", reconcile):
+    with patch("src.collectors.reconcile_collectors", reconcile):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             response = await ac.delete("/api/servers/server-1")
 
@@ -154,7 +154,7 @@ async def test_server_mutations_are_serialized(isolated_db):
         "url": "http://second.example.invalid:4533",
         "username": "second-user",
     }
-    with patch("src.main._reconcile_collectors", side_effect=reconcile):
+    with patch("src.collectors.reconcile_collectors", side_effect=reconcile):
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -189,7 +189,7 @@ async def test_cancelled_server_mutation_rolls_back_and_releases_lock(isolated_d
             reconcile_started.set()
             await asyncio.Event().wait()
 
-    with patch("src.main._reconcile_collectors", side_effect=reconcile):
+    with patch("src.collectors.reconcile_collectors", side_effect=reconcile):
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -220,11 +220,11 @@ async def test_server_connection_test_uses_submitted_fields_and_checks_status():
     client.get_now_playing.return_value = {
         "subsonic-response": {"status": "failed", "error": {"code": 40}}
     }
-    client_type = patch("src.main.NavidromeClient").start()
+    client_type = patch("src.routes.servers.NavidromeClient").start()
     client_type.return_value = client
     client_type.response_is_ok.return_value = False
     try:
-        with patch("src.main.get_server", AsyncMock(return_value=existing)):
+        with patch("src.routes.servers.get_server", AsyncMock(return_value=existing)):
             async with AsyncClient(
                 transport=ASGITransport(app=app),
                 base_url="http://test",

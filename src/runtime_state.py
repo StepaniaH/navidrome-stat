@@ -30,6 +30,19 @@ class RuntimeState:
     save_failure_count: int = 0
     collectors: dict[str, CollectorRuntimeState] = field(default_factory=dict)
 
+    def reset(self) -> None:
+        """Clear every counter and collector entry; used between test runs."""
+        self.polling_task = None
+        self.client_initialized = False
+        self.poll_success_count = 0
+        self.poll_failure_count = 0
+        self.last_poll_at = None
+        self.last_poll_ok = None
+        self.last_upstream_error_code = None
+        self.save_success_count = 0
+        self.save_failure_count = 0
+        self.collectors.clear()
+
     def _collector(self, source_id: str) -> CollectorRuntimeState:
         return self.collectors.setdefault(source_id, CollectorRuntimeState())
 

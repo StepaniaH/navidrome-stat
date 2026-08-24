@@ -15,7 +15,7 @@ async def test_health_check():
 
 
 @pytest.mark.asyncio
-@patch("src.main.ping_db", return_value=True)
+@patch("src.collectors.ping_db", return_value=True)
 async def test_health_ready_ok_when_database_available(mock_ping):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/health/ready")
@@ -28,7 +28,7 @@ async def test_health_ready_ok_when_database_available(mock_ping):
 
 
 @pytest.mark.asyncio
-@patch("src.main.ping_db", return_value=False)
+@patch("src.collectors.ping_db", return_value=False)
 async def test_health_ready_not_ready_when_database_unavailable(mock_ping):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/health/ready")
@@ -38,7 +38,7 @@ async def test_health_ready_not_ready_when_database_unavailable(mock_ping):
     assert body["checks"]["database"] == "error"
 
 @pytest.mark.asyncio
-@patch("src.main.get_player_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_player_stats", new_callable=AsyncMock)
 async def test_api_player_stats(mock_get_stats):
     mock_get_stats.return_value = [{
         "client_name": "Feishin",
@@ -61,7 +61,7 @@ async def test_api_player_stats(mock_get_stats):
     }]
 
 @pytest.mark.asyncio
-@patch("src.main.get_summary", new_callable=AsyncMock)
+@patch("src.routes.stats.get_summary", new_callable=AsyncMock)
 async def test_api_summary_stats(mock_get_summary):
     mock_get_summary.return_value = {
         "total_plays": 12,
@@ -76,7 +76,7 @@ async def test_api_summary_stats(mock_get_summary):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_transcoding_stats", new_callable=AsyncMock)
+@patch("src.routes.stats.get_transcoding_stats", new_callable=AsyncMock)
 async def test_api_transcoding_stats(mock_get_stats):
     mock_get_stats.return_value = [{
         "is_transcoding": 0,
@@ -98,7 +98,7 @@ async def test_api_transcoding_stats(mock_get_stats):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_playback_history", new_callable=AsyncMock)
+@patch("src.routes.stats.get_playback_history", new_callable=AsyncMock)
 async def test_api_history_limit_default(mock_get_history):
     mock_get_history.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -115,7 +115,7 @@ async def test_api_history_limit_default(mock_get_history):
     (-1, 422),
     (101, 422),
 ])
-@patch("src.main.get_playback_history", new_callable=AsyncMock)
+@patch("src.routes.stats.get_playback_history", new_callable=AsyncMock)
 async def test_api_history_limit_bounds(mock_get_history, limit, expected_status):
     mock_get_history.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -133,7 +133,7 @@ async def test_api_history_limit_invalid_type():
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_player_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
+@patch("src.routes.stats.get_player_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
 async def test_api_stats_database_error_returns_generic_message(mock_get_stats):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/players")
@@ -144,7 +144,7 @@ async def test_api_stats_database_error_returns_generic_message(mock_get_stats):
 
 @pytest.mark.asyncio
 async def test_api_now_playing_empty_when_no_sessions():
-    from src.main import session_tracker
+    from src.collectors import session_tracker
     session_tracker._sessions.clear()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/now-playing")
@@ -156,7 +156,7 @@ async def test_api_now_playing_empty_when_no_sessions():
 async def test_api_now_playing_returns_active_sessions():
     from datetime import datetime, timedelta, timezone
 
-    from src.main import session_tracker
+    from src.collectors import session_tracker
 
     first_seen = datetime.now(timezone.utc) - timedelta(seconds=65)
     session_tracker._sessions.clear()
@@ -199,7 +199,7 @@ async def test_api_now_playing_aggregates_runtime_trackers_and_excludes_paused(
 ):
     from datetime import datetime, timedelta, timezone
 
-    import src.main as main
+    import src.collectors as collectors
     from src.sessions import PlaybackSessionTracker
 
     async def save_session(_session):
@@ -248,7 +248,7 @@ async def test_api_now_playing_aggregates_runtime_trackers_and_excludes_paused(
         [entries["player-2"], paused_entry], now + timedelta(seconds=1)
     )
     monkeypatch.setattr(
-        main, "_runtime_trackers", [first_tracker, second_tracker], raising=False
+        collectors, "_runtime_trackers", [first_tracker, second_tracker]
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

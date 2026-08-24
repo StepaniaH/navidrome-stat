@@ -31,6 +31,25 @@ def service(cache):
     return StatsService(cache=cache, retry_attempts=2)
 
 
+@pytest.fixture(autouse=True)
+def restore_module_symbols():
+    saved = {
+        name: getattr(stats_module, name)
+        for name in (
+            "save_play_session",
+            "save_play_attempt",
+            "apply_retention_purge",
+            "import_user_data",
+            "delete_user_data",
+            "save_server",
+            "delete_server",
+        )
+    }
+    yield
+    for name, value in saved.items():
+        setattr(stats_module, name, value)
+
+
 @pytest.fixture
 def restore_runtime_counters():
     saved = (

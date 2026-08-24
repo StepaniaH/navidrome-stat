@@ -17,7 +17,7 @@ def server_config(server_id="server-1", *, enabled=True, password="synthetic-pas
 
 @pytest.mark.asyncio
 async def test_start_registers_collector_and_tracker():
-    from src.main import CollectorManager
+    from src.collectors import CollectorManager
 
     clients = []
 
@@ -42,7 +42,7 @@ async def test_start_registers_collector_and_tracker():
 
 @pytest.mark.asyncio
 async def test_replace_finalizes_and_closes_old_collector():
-    from src.main import CollectorManager
+    from src.collectors import CollectorManager
 
     clients = []
 
@@ -71,7 +71,7 @@ async def test_replace_finalizes_and_closes_old_collector():
 
 @pytest.mark.asyncio
 async def test_disabled_replacement_stops_existing_collector():
-    from src.main import CollectorManager
+    from src.collectors import CollectorManager
 
     client = AsyncMock()
 
@@ -89,7 +89,7 @@ async def test_disabled_replacement_stops_existing_collector():
 
 @pytest.mark.asyncio
 async def test_failed_replacement_keeps_old_collector_running():
-    from src.main import CollectorManager
+    from src.collectors import CollectorManager
 
     old_client = AsyncMock()
     calls = 0
@@ -120,7 +120,7 @@ async def test_failed_replacement_keeps_old_collector_running():
 
 @pytest.mark.asyncio
 async def test_stop_only_removes_selected_collector():
-    from src.main import CollectorManager
+    from src.collectors import CollectorManager
 
     clients = []
 
@@ -149,7 +149,7 @@ async def test_stop_only_removes_selected_collector():
 
 @pytest.mark.asyncio
 async def test_finalize_failure_still_closes_old_and_starts_replacement():
-    from src.main import CollectorManager
+    from src.collectors import CollectorManager
 
     clients = []
 
@@ -182,7 +182,7 @@ async def test_finalize_failure_still_closes_old_and_starts_replacement():
 
 @pytest.mark.asyncio
 async def test_stop_cleans_up_after_poller_task_has_failed():
-    import src.main as main
+    import src.collectors as main
 
     client = AsyncMock()
 
@@ -206,7 +206,7 @@ async def test_stop_cleans_up_after_poller_task_has_failed():
 
 @pytest.mark.asyncio
 async def test_replace_starts_new_collector_after_old_poller_task_failed():
-    from src.main import CollectorManager
+    from src.collectors import CollectorManager
 
     clients = []
     poller_calls = 0
@@ -243,7 +243,7 @@ async def test_replace_starts_new_collector_after_old_poller_task_failed():
 
 @pytest.mark.asyncio
 async def test_stop_all_continues_after_one_collector_finalize_fails():
-    from src.main import CollectorManager
+    from src.collectors import CollectorManager
 
     clients = []
 
@@ -274,7 +274,7 @@ async def test_stop_all_continues_after_one_collector_finalize_fails():
 
 @pytest.mark.asyncio
 async def test_reconcile_activates_replacements_after_finalize_failure():
-    from src.main import CollectorManager
+    from src.collectors import CollectorManager
 
     clients = []
 
@@ -325,7 +325,7 @@ async def test_reconcile_replaces_legacy_with_configured_server():
         await asyncio.Event().wait()
 
     manager = __import__(
-        "src.main", fromlist=["CollectorManager"]
+        "src.collectors", fromlist=["CollectorManager"]
     ).CollectorManager(client_factory, poller, [])
     legacy = server_config("legacy")
     legacy["display_name"] = "Legacy environment source"
@@ -350,7 +350,7 @@ async def test_reconcile_unchanged_configuration_keeps_running_collector():
         await asyncio.Event().wait()
 
     manager = __import__(
-        "src.main", fromlist=["CollectorManager"]
+        "src.collectors", fromlist=["CollectorManager"]
     ).CollectorManager(client_factory, poller, [])
     desired = server_config("server-1")
     await manager.reconcile([desired])

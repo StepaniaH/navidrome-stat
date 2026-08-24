@@ -191,8 +191,8 @@ async def test_put_config_hot_reloads_legacy_when_no_servers(isolated_db):
         "username": "example_user",
         "password": "synthetic_password_123",
     }
-    with patch("src.main.list_servers", AsyncMock(return_value=[])):
-        with patch("src.main.collector_manager", manager):
+    with patch("src.routes.servers.list_servers", AsyncMock(return_value=[])):
+        with patch("src.collectors.collector_manager", manager):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                 response = await ac.put("/api/source/config", json=payload)
 
@@ -215,7 +215,7 @@ async def test_put_config_reconcile_failure_restores_saved_tuple(isolated_db):
     )
     reconcile = AsyncMock(side_effect=[RuntimeError("synthetic failure"), None])
 
-    with patch("src.main._reconcile_collectors", reconcile):
+    with patch("src.collectors.reconcile_collectors", reconcile):
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -253,7 +253,7 @@ async def test_fallback_and_server_mutations_share_one_lock(isolated_db):
             first_reconcile_started.set()
             await release_first_reconcile.wait()
 
-    with patch("src.main._reconcile_collectors", side_effect=reconcile):
+    with patch("src.collectors.reconcile_collectors", side_effect=reconcile):
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
@@ -304,8 +304,8 @@ async def test_put_config_does_not_reload_legacy_when_servers_exist(isolated_db)
         "username": "example_user",
         "password": "synthetic_password_123",
     }
-    with patch("src.main.list_servers", AsyncMock(return_value=[{"id": "server-1"}])):
-        with patch("src.main.collector_manager", manager):
+    with patch("src.collectors.list_servers", AsyncMock(return_value=[{"id": "server-1"}])):
+        with patch("src.collectors.collector_manager", manager):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                 response = await ac.put("/api/source/config", json=payload)
 
@@ -457,7 +457,7 @@ async def test_source_test_success_with_mocked_client(isolated_db, monkeypatch):
     mock_client = AsyncMock()
     mock_client.get_now_playing.return_value = {"subsonic-response": {"status": "ok", "nowPlaying": {"entry": []}}}
 
-    with patch("src.main.NavidromeClient", return_value=mock_client):
+    with patch("src.routes.servers.NavidromeClient", return_value=mock_client):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             response = await ac.post("/api/source/test", json={})
 
@@ -485,7 +485,7 @@ async def test_source_test_failure_returns_generic_message(isolated_db):
     mock_client.get_now_playing.side_effect = ConnectionError("upstream unreachable")
     mock_client.close = AsyncMock()
 
-    with patch("src.main.NavidromeClient", return_value=mock_client):
+    with patch("src.routes.servers.NavidromeClient", return_value=mock_client):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             response = await ac.post("/api/source/test", json={})
 
@@ -518,7 +518,7 @@ async def test_source_test_uses_supplied_overrides(isolated_db, monkeypatch):
     mock_client = AsyncMock()
     mock_client.get_now_playing.return_value = {"subsonic-response": {"status": "ok", "nowPlaying": {"entry": []}}}
 
-    with patch("src.main.NavidromeClient", return_value=mock_client) as ctor:
+    with patch("src.routes.servers.NavidromeClient", return_value=mock_client) as ctor:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             response = await ac.post(
                 "/api/source/test",

@@ -107,7 +107,7 @@ def test_get_top_albums_empty_database(db_path):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_top_artists", new_callable=AsyncMock)
+@patch("src.routes.stats.get_top_artists", new_callable=AsyncMock)
 async def test_api_top_artists(mock_get):
     mock_get.return_value = [{"artist": "Alpha", "count": 5, "total_listen_sec": 120, "value": 5}]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -118,7 +118,7 @@ async def test_api_top_artists(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_top_albums", new_callable=AsyncMock)
+@patch("src.routes.stats.get_top_albums", new_callable=AsyncMock)
 async def test_api_top_albums(mock_get):
     mock_get.return_value = [{"album": "Record A", "count": 3, "total_listen_sec": 90, "value": 3}]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -136,7 +136,7 @@ async def test_api_top_albums(mock_get):
     (-1, 422),
     (51, 422),
 ])
-@patch("src.main.get_top_artists", new_callable=AsyncMock)
+@patch("src.routes.stats.get_top_artists", new_callable=AsyncMock)
 async def test_api_top_artists_limit_bounds(mock_get, limit, expected_status):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -154,7 +154,7 @@ async def test_api_top_artists_limit_bounds(mock_get, limit, expected_status):
     (-1, 422),
     (51, 422),
 ])
-@patch("src.main.get_top_albums", new_callable=AsyncMock)
+@patch("src.routes.stats.get_top_albums", new_callable=AsyncMock)
 async def test_api_top_albums_limit_bounds(mock_get, limit, expected_status):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -172,7 +172,7 @@ async def test_api_top_artists_limit_invalid_type():
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_top_artists", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
+@patch("src.routes.stats.get_top_artists", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
 async def test_api_top_artists_database_error(mock_get):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/top-artists")
@@ -182,7 +182,7 @@ async def test_api_top_artists_database_error(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_top_artists", new_callable=AsyncMock)
+@patch("src.routes.stats.get_top_artists", new_callable=AsyncMock)
 async def test_api_top_artists_requires_auth_when_token_configured(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -194,7 +194,7 @@ async def test_api_top_artists_requires_auth_when_token_configured(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_top_albums", new_callable=AsyncMock)
+@patch("src.routes.stats.get_top_albums", new_callable=AsyncMock)
 async def test_api_top_albums_requires_auth_when_token_configured(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

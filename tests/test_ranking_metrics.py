@@ -164,7 +164,7 @@ def test_top_artists_listen_time_respects_timezone_window(db_path):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_top_artists", new_callable=AsyncMock)
+@patch("src.routes.stats.get_top_artists", new_callable=AsyncMock)
 async def test_api_top_artists_propagates_metric_listen_time(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -174,7 +174,7 @@ async def test_api_top_artists_propagates_metric_listen_time(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_top_albums", new_callable=AsyncMock)
+@patch("src.routes.stats.get_top_albums", new_callable=AsyncMock)
 async def test_api_top_albums_propagates_metric_listen_time(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -185,7 +185,7 @@ async def test_api_top_albums_propagates_metric_listen_time(mock_get):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("metric", ["plays", "listen_time"])
-@patch("src.main.get_top_artists", new_callable=AsyncMock)
+@patch("src.routes.stats.get_top_artists", new_callable=AsyncMock)
 async def test_api_top_artists_accepts_valid_metrics(mock_get, metric):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -223,7 +223,7 @@ async def test_api_top_albums_rejects_invalid_metric():
 
 
 @pytest.mark.asyncio
-@patch("src.main.get_top_albums", new_callable=AsyncMock)
+@patch("src.routes.stats.get_top_albums", new_callable=AsyncMock)
 async def test_api_top_albums_default_metric_is_plays(mock_get):
     mock_get.return_value = []
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
