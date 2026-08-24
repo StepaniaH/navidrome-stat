@@ -601,3 +601,25 @@ test("Chinese locale covers regions, chart labels, listboxes, and footer", async
   ]);
   expect(chartLabels.transcoding).toEqual(["直出"]);
 });
+
+test("changing the theme preference recolors charts without a reload", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => {
+    const chart = echarts.getInstanceByDom(document.getElementById("hourlyChart"));
+    return Boolean(chart && chart.getOption().series[0]?.data?.length);
+  });
+  const before = await page.evaluate(() =>
+    echarts.getInstanceByDom(document.getElementById("hourlyChart")).getOption().textStyle.color,
+  );
+  await page.evaluate(() => {
+    localStorage.setItem("navidrome-theme", "latte");
+    window.dispatchEvent(new StorageEvent("storage", { key: "navidrome-theme", newValue: "latte" }));
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        echarts.getInstanceByDom(document.getElementById("hourlyChart")).getOption().textStyle.color,
+      ),
+    )
+    .not.toBe(before);
+});

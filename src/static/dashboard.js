@@ -1,10 +1,13 @@
 import { catalog, dashboardMessages } from './js/messages-dashboard.js';
+import { buildStatsQuery, escapeHtml, formatChangeText, validateCustomRange } from './js/format.js';
+import { chartPalette, createThemeTokens } from './js/charts.js';
+import { onPreferenceChange } from './js/prefs.js';
 
 
     const REFRESH_MS = 60000;
     const HIDDEN_REFRESH_MS = 300000;
     const NOW_PLAYING_REFRESH_MS = 10000;
-    const colorPalette = ['#a78bfa', '#818cf8', '#34d399', '#f472b6', '#fb923c', '#facc15', '#22d3ee', '#f87171'];
+    let colorPalette = [...chartPalette];
 
     const playerChart = echarts.init(document.getElementById('playerChart'), null, { renderer: 'canvas' });
     const transcodingChart = echarts.init(document.getElementById('transcodingChart'), null, { renderer: 'canvas' });
@@ -147,17 +150,20 @@ import { catalog, dashboardMessages } from './js/messages-dashboard.js';
         }
     }
 
-    const dashboardUsesLatteTheme =
-        window.NavidromeI18n.readPreference('navidrome-theme', 'frappe') === 'latte';
-    const chartBase = {
-        backgroundColor: 'transparent',
-        textStyle: { color: dashboardUsesLatteTheme ? '#5c5f77' : '#a5adce', fontFamily: 'system-ui, sans-serif' },
-        tooltip: {
-            backgroundColor: dashboardUsesLatteTheme ? '#e6e9ef' : '#292c3c',
-            borderColor: dashboardUsesLatteTheme ? '#bcc0cc' : '#51576d',
-            textStyle: { color: dashboardUsesLatteTheme ? '#4c4f69' : '#c6d0f5', fontSize: 12 },
-        },
-    };
+    // Theme tokens stay mutable so a preference change can re-color charts live.
+    let chartBase = createThemeTokens();
+
+    function applyChartTheme() {
+        colorPalette = [...chartPalette];
+        chartBase = createThemeTokens();
+        if (lastStatsSnapshot) renderStatPanels(lastStatsSnapshot);
+    }
+
+    onPreferenceChange('navidrome-theme', (value) => {
+        if (value) document.documentElement.dataset.theme = value;
+        applyChartTheme();
+    });
+
 
     const dashboardTranslations = {
         'zh-CN': catalog(dashboardMessages.zhCN),
@@ -563,8 +569,8 @@ import { catalog, dashboardMessages } from './js/messages-dashboard.js';
         const playsChangeEl = document.getElementById('statTotalPlaysChange');
         const listenChangeEl = document.getElementById('statListenTimeChange');
         const activeDaysEl = document.getElementById('statActiveDays');
-        playsChangeEl.textContent = formatChangeText(summary.plays_change_pct);
-        listenChangeEl.textContent = formatChangeText(summary.listen_change_pct);
+        playsChangeEl.textContent = formatChangeText(summary.plays_change_pct, { compareLabel: compareLabel() });
+        listenChangeEl.textContent = formatChangeText(summary.listen_change_pct, { compareLabel: compareLabel() });
 
         const activeDays = Number(summary.active_days) || 0;
         const avgPlays = summary.average_daily_plays;
@@ -602,22 +608,8 @@ import { catalog, dashboardMessages } from './js/messages-dashboard.js';
         }));
     }
 
-    function formatChangeText(pct) {
-        if (pct === null || pct === undefined || !Number.isFinite(pct)) {
-            return '';
-        }
-        const sign = pct > 0 ? '↑' : (pct < 0 ? '↓' : '·');
-        const absVal = Math.abs(pct).toFixed(1).replace(/\.0$/, '');
-        return `${sign} ${absVal}% ${dashboardMessage('compare.previous')}`;
-    }
-
-    function escapeHtml(value) {
-        return String(value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+    function compareLabel() {
+        return dashboardMessage('compare.previous');
     }
 
     function renderPlayerChart(data) {
@@ -1247,6 +1239,22 @@ import { catalog, dashboardMessages } from './js/messages-dashboard.js';
         );
     }
 
+    let lastStatsSnapshot = null;
+    let lastRankingMetric = 'plays';
+
+    function renderStatPanels(snapshot) {
+        renderPanelSafely('summary', () => updateSummary(snapshot.summary, snapshot.transcoding));
+        renderPanelSafely('players', () => renderPlayerChart(snapshot.players));
+        renderPanelSafely('transcoding', () => renderTranscodingChart(snapshot.transcoding));
+        renderPanelSafely('hourly', () => renderHourlyChart(snapshot.hourly));
+        renderPanelSafely('daily', () => renderDailyChart(snapshot.daily));
+        renderPanelSafely('heatmap', () => renderWeekdayHourChart(snapshot.heatmap));
+        renderPanelSafely('artists', () => renderTopArtistsChart(snapshot.top_artists, lastRankingMetric));
+        renderPanelSafely('albums', () => renderTopAlbumsChart(snapshot.top_albums, lastRankingMetric));
+        renderPanelSafely('history', () => renderHistoryTable(snapshot.history, !selectedSourceId));
+        renderPanelSafely('sources', () => renderServerSourceBreakdown(snapshot.servers));
+    }
+
     async function fetchStats() {
         const requestState = captureStatsRequestState();
         const generation = ++statsRequestGeneration;
@@ -1258,14 +1266,14 @@ import { catalog, dashboardMessages } from './js/messages-dashboard.js';
         setStatus('loading', dashboardMessage('status.syncing'));
 
         try {
-            const tzParam = encodeURIComponent(requestState.timezone);
-            const sourceParam = requestState.sourceId
-                ? `&source_id=${encodeURIComponent(requestState.sourceId)}`
-                : '';
-            const customRangeParam = requestState.startDate && requestState.endDate
-                ? `&start_date=${encodeURIComponent(requestState.startDate)}&end_date=${encodeURIComponent(requestState.endDate)}`
-                : '';
-            const query = `days=${requestState.days}&timezone=${tzParam}&metric=${requestState.metric}${sourceParam}${customRangeParam}`;
+            const query = buildStatsQuery({
+                days: requestState.days,
+                timezone: requestState.timezone,
+                metric: requestState.metric,
+                sourceId: requestState.sourceId,
+                startDate: requestState.startDate,
+                endDate: requestState.endDate,
+            });
             const snapshotRes = await fetch(`/api/stats/dashboard?${query}`, {
                 ...fetchOptions,
                 signal: controller.signal,
@@ -1280,16 +1288,9 @@ import { catalog, dashboardMessages } from './js/messages-dashboard.js';
             }
             const snapshot = await snapshotRes.json();
             if (generation !== statsRequestGeneration || controller.signal.aborted) return;
-            renderPanelSafely('summary', () => updateSummary(snapshot.summary, snapshot.transcoding));
-            renderPanelSafely('players', () => renderPlayerChart(snapshot.players));
-            renderPanelSafely('transcoding', () => renderTranscodingChart(snapshot.transcoding));
-            renderPanelSafely('hourly', () => renderHourlyChart(snapshot.hourly));
-            renderPanelSafely('daily', () => renderDailyChart(snapshot.daily));
-            renderPanelSafely('heatmap', () => renderWeekdayHourChart(snapshot.heatmap));
-            renderPanelSafely('artists', () => renderTopArtistsChart(snapshot.top_artists, requestState.metric));
-            renderPanelSafely('albums', () => renderTopAlbumsChart(snapshot.top_albums, requestState.metric));
-            renderPanelSafely('history', () => renderHistoryTable(snapshot.history, !requestState.sourceId));
-            renderPanelSafely('sources', () => renderServerSourceBreakdown(snapshot.servers));
+            lastStatsSnapshot = snapshot;
+            lastRankingMetric = requestState.metric;
+            renderStatPanels(snapshot);
             sourceSelectionReset = updateSourceOptions(
                 snapshot.available_servers,
                 snapshot.servers,
@@ -1547,17 +1548,8 @@ import { catalog, dashboardMessages } from './js/messages-dashboard.js';
         const start = document.getElementById('customStartDate').value;
         const end = document.getElementById('customEndDate').value;
         const error = document.getElementById('customRangeError');
-        const startValue = new Date(`${start}T00:00:00`);
-        const endValue = new Date(`${end}T00:00:00`);
-        const rangeDays = Math.round((endValue - startValue) / 86400000) + 1;
-        let message = '';
-        if (!start || !end) {
-            message = dashboardMessage('range.missing');
-        } else if (start > end) {
-            message = dashboardMessage('range.order');
-        } else if (rangeDays > 366) {
-            message = dashboardMessage('range.tooLong');
-        }
+        const validation = validateCustomRange(start, end);
+        const message = validation.ok ? '' : dashboardMessage(validation.reason);
         if (message) {
             error.textContent = message;
             error.classList.remove('hidden');
