@@ -11,8 +11,7 @@ This roadmap describes project direction, not release commitments. Shipped chang
 - Keep contributor and maintainer workflows reproducible, including dependency-lock refresh, frontend asset builds, browser tests, the statistics benchmark, the container smoke test, and tag-only Docker releases.
 - Improve collector diagnostics while keeping health responses free of credentials and playback metadata.
 - Adopt the shared settings listbox module inside the dashboard filter menus.
-- Extend interface localization to German, Spanish, and French; the picker and catalog infrastructure already support additional locales.
-- Enrich rankings and history with album covers through a locally cached `getCoverArt` proxy.
+- Extend interface localization to Spanish and French; German is done and the catalog pipeline is proven.
 
 ## Medium term
 
@@ -20,7 +19,6 @@ This roadmap describes project direction, not release commitments. Shipped chang
 - Improve large-history query, cache, and retention performance within the existing single-host SQLite architecture, guided by synthetic benchmarks.
 - Reduce credential exposure for saved multi-server connections without obscuring deployment, migration, or backup behavior.
 - Watch upstream for a public Navidrome listening-history read API (the `getSongHistory` proposal) so a native import can land once one exists.
-- Add a year-in-review page built from the stored session data.
 - Offer opt-in ListenBrainz-format scrobble forwarding with per-server deduplication.
 
 ## Long term

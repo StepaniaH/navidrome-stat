@@ -5,6 +5,11 @@ All notable user-facing changes are documented in this file. The format follows 
 ## [Unreleased]
 
 ### Added
+- Cover art for play history, album rankings, and now-playing through an authenticated proxy with a size-capped disk cache; album names are resolved to Navidrome album IDs via `search3` with a 24-hour negative cache.
+- A year-in-review page at `/review` with totals, streaks, monthly/hourly/weekday charts, and top artists, albums, and tracks.
+- A `getSongHistory` capability probe per server, surfaced through the connections API ahead of an upstream read API.
+- A pre-1.0 compatibility policy (docs/compat.md).
+- German interface localization.
 ### Added
 
 - Dashboard filters persist across reloads and are shareable through URL parameters.
@@ -18,6 +23,9 @@ All notable user-facing changes are documented in this file. The format follows 
 - A concise project roadmap plus reproducible benchmark, dependency-lock, browser-test, and release guidance.
 
 ### Changed
+- The brand icon is now line art that adapts to the active theme; the favicon uses the same drawing.
+- Ten themes ship out of the box: Catppuccin (Latte, Frappé, Macchiato, Mocha), Nord, Dracula, Tokyo Night, Gruvbox, and Solarized (dark and light), with a `data-scheme` attribute for light-specific rules.
+- The language picker shows each language in its own script with a translated subtitle, and Traditional Chinese plus Japanese join Simplified Chinese and English.
 
 - Internal layout: application assembly, collectors, retention, statistics routes, privacy routes, and connection routes now live in dedicated modules; the SQLite layer is split into schema, time-window, persistence, query, and server-registry modules with one shared database-path setting.
 - Every playback write path goes through a single stats service that also invalidates the dashboard snapshot cache, so stale dashboard responses after writes are structurally prevented.
