@@ -36,7 +36,7 @@ async def test_persistence_error_log_does_not_include_exception_text(
     caplog,
     monkeypatch,
 ):
-    import src.main as main
+    import src.stats_service as main
 
     async def fail():
         raise RuntimeError(
@@ -45,7 +45,7 @@ async def test_persistence_error_log_does_not_include_exception_text(
 
     monkeypatch.setattr(main, "SAVE_RETRY_ATTEMPTS", 1)
     with pytest.raises(RuntimeError):
-        await main._retry_save(fail, kind="synthetic")
+        await main.retry_save(fail, kind="synthetic", attempts=1)
 
     assert "RuntimeError" in caplog.text
     assert "private" not in caplog.text

@@ -1,11 +1,9 @@
 import asyncio
 import logging
 import os
-import threading
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
-from weakref import WeakKeyDictionary
 
 import anyio
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -24,7 +22,6 @@ from src.auth import (
 from src.client import NavidromeClient
 from src.collector_manager import CollectorManager as BaseCollectorManager
 from src.config import env_flag, env_int
-from src.dashboard_cache import dashboard_snapshot_cache
 from src.database import (
     LEGACY_SOURCE_ID,
     LEGACY_SOURCE_NAME,
@@ -39,7 +36,6 @@ from src.database import (
     get_short_play_stats,
     get_source_stats,
     get_summary,
-    get_time_bucket_stats,
     get_top_albums,
     get_top_artists,
     get_transcoding_stats,
@@ -48,8 +44,6 @@ from src.database import (
     list_servers,
     ping_db,
     resolve_timezone,
-    save_play_attempt,
-    save_play_session,
     save_server,
 )
 from src.metrics import format_prometheus_metrics
@@ -57,12 +51,9 @@ from src.privacy_ops import (
     IMPORT_MAX_PAYLOAD_BYTES,
     RETENTION_MAX_DAYS,
     RETENTION_MIN_DAYS,
-    apply_retention_purge,
-    delete_user_data,
     export_user_data,
     get_retention_days,
     get_storage_stats,
-    import_user_data,
     list_users,
     preview_delete_user,
     preview_retention_purge,
@@ -138,6 +129,12 @@ from src.source_config import (
     resolve_source_config,
     validate_source_url,
 )
+from src.stats_service import (
+    exception_kind,
+    retention_policy_lock,
+    server_mutation_lock,
+    stats_service,
+)
 from src.version import APP_VERSION, LICENSE, PROJECT_NAME, PROJECT_URL
 
 # Configure logging
@@ -154,99 +151,24 @@ PLAY_THRESHOLD_SEC = env_int(
     "PLAY_THRESHOLD_SEC", default=30, min_value=1, max_value=3600
 )
 PAUSE_GRACE_SEC = env_int("PAUSE_GRACE_SEC", default=30, min_value=0, max_value=3600)
-SAVE_RETRY_ATTEMPTS = env_int(
-    "SAVE_RETRY_ATTEMPTS", default=3, min_value=1, max_value=10
-)
 CHECKPOINT_INTERVAL_SEC = env_int(
     "CHECKPOINT_INTERVAL_SEC", default=60, min_value=10, max_value=3600
 )
 OPENAPI_ENABLED = env_flag("OPENAPI_ENABLED", default=True)
 
 
-class _LoopLocalLock:
-    """Provide one asyncio lock per event loop."""
-
-    def __init__(self) -> None:
-        self._locks: WeakKeyDictionary[
-            asyncio.AbstractEventLoop, asyncio.Lock
-        ] = WeakKeyDictionary()
-        self._guard = threading.Lock()
-
-    def __call__(self) -> asyncio.Lock:
-        loop = asyncio.get_running_loop()
-        with self._guard:
-            lock = self._locks.get(loop)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._locks[loop] = lock
-            return lock
-
-
-_retention_policy_lock = _LoopLocalLock()
-_server_mutation_lock = _LoopLocalLock()
-
-
-def _exception_kind(exc: Exception) -> str:
-    """Return a non-sensitive error category suitable for application logs."""
-    return type(exc).__name__
-
-
-async def _retry_save(operation, *, kind: str) -> None:
-    for attempt in range(1, SAVE_RETRY_ATTEMPTS + 1):
-        try:
-            await operation()
-            return
-        except Exception as exc:
-            if attempt >= SAVE_RETRY_ATTEMPTS:
-                logger.error(
-                    "%s persistence failed (type=%s, attempts=%s)",
-                    kind,
-                    _exception_kind(exc),
-                    attempt,
-                )
-                raise
-            logger.warning(
-                "%s persistence retry (type=%s, attempt=%s)",
-                kind,
-                _exception_kind(exc),
-                attempt,
-            )
-            await asyncio.sleep(0.05 * (2 ** (attempt - 1)))
-
-
-async def _save_play_session_with_logging(session: dict) -> None:
-    try:
-        await _retry_save(lambda: save_play_session(session), kind="play_session")
-        runtime_state.record_save_success()
-        await dashboard_snapshot_cache.invalidate()
-        logger.debug(
-            "Recorded play session (duration=%ss)",
-            session["duration_sec"],
-        )
-    except Exception:
-        runtime_state.record_save_failure()
-        raise
-
-
-async def _save_play_attempt_with_logging(attempt: dict) -> None:
-    await _retry_save(lambda: save_play_attempt(attempt), kind="play_attempt")
-    await dashboard_snapshot_cache.invalidate()
-
-
-def _attempt_callback(source_id: str, source_name: str):
-    async def save(attempt: dict) -> None:
-        await _save_play_attempt_with_logging({
-            **attempt, "source_id": source_id, "source_name": source_name,
-        })
-    return save
+def _record_source_session(session: dict, source_id: str, source_name: str) -> None:
+    return stats_service.record_session(
+        {**session, "source_id": source_id, "source_name": source_name}
+    )
 
 
 session_tracker = PlaybackSessionTracker(
-    _save_play_session_with_logging,
+    stats_service.record_session,
     play_threshold_sec=PLAY_THRESHOLD_SEC,
     pause_grace_sec=PAUSE_GRACE_SEC,
     checkpoint_interval_sec=CHECKPOINT_INTERVAL_SEC,
-    save_attempt=_save_play_attempt_with_logging,
+    save_attempt=stats_service.record_attempt,
 )
 _runtime_trackers: list[PlaybackSessionTracker] = []
 
@@ -312,7 +234,7 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
                 except PlaybackPersistenceError as exc:
                     logger.error(
                         "Play persistence failed after successful poll (type=%s)",
-                        _exception_kind(exc),
+                        exception_kind(exc),
                     )
                 runtime_state.record_poll_success(current_time, tracker.source_id)
                 consecutive_failures = 0
@@ -321,7 +243,7 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
             runtime_state.record_poll_exception(current_time, tracker.source_id)
             logger.error(
                 "Polling cycle failed (type=%s)",
-                _exception_kind(exc),
+                exception_kind(exc),
             )
             consecutive_failures += 1
             sleep_for = min(
@@ -333,15 +255,16 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
 
 
 def _tracker_for_server(server: dict) -> PlaybackSessionTracker:
+    sid, name = server["id"], server["display_name"]
     return PlaybackSessionTracker(
-        lambda session, sid=server["id"], name=server["display_name"]: _save_play_session_with_logging(
-            {**session, "source_id": sid, "source_name": name}
-        ),
+        lambda session: _record_source_session(session, sid, name),
         play_threshold_sec=PLAY_THRESHOLD_SEC,
         pause_grace_sec=PAUSE_GRACE_SEC,
-        save_attempt=_attempt_callback(server["id"], server["display_name"]),
-        source_id=server["id"],
-        source_name=server["display_name"],
+        save_attempt=lambda attempt: stats_service.record_attempt(
+            {**attempt, "source_id": sid, "source_name": name}
+        ),
+        source_id=sid,
+        source_name=name,
         checkpoint_interval_sec=CHECKPOINT_INTERVAL_SEC,
     )
 
@@ -371,28 +294,26 @@ async def retention_maintenance_loop():
     while True:
         await asyncio.sleep(RETENTION_MAINTENANCE_SEC)
         try:
-            async with _retention_policy_lock():
-                result = await apply_retention_purge()
+            async with retention_policy_lock():
+                result = await stats_service.purge_retention()
             if result["deleted"]:
-                await dashboard_snapshot_cache.invalidate()
                 logger.info("Retention purge removed %s records", result["deleted"])
         except Exception as exc:
             logger.error(
                 "Retention maintenance failed (type=%s)",
-                _exception_kind(exc),
+                exception_kind(exc),
             )
 
 
 async def run_startup_retention_purge():
     try:
-        result = await apply_retention_purge()
+        result = await stats_service.purge_retention()
         if result["deleted"]:
-            await dashboard_snapshot_cache.invalidate()
             logger.info("Startup retention purge removed %s records", result["deleted"])
     except Exception as exc:
         logger.error(
             "Startup retention purge failed (type=%s)",
-            _exception_kind(exc),
+            exception_kind(exc),
         )
 
 
@@ -501,16 +422,16 @@ async def _compensate_collector_config_mutation(restore) -> None:
     except Exception as exc:
         logger.error(
             "Collector configuration rollback failed (type=%s)",
-            _exception_kind(exc),
+            exception_kind(exc),
         )
 
-    await dashboard_snapshot_cache.invalidate()
+    await stats_service.invalidate()
     try:
         await _reconcile_collectors()
     except Exception as exc:
         logger.error(
             "Collector reconciliation after rollback failed (type=%s)",
-            _exception_kind(exc),
+            exception_kind(exc),
         )
 
 
@@ -579,7 +500,7 @@ async def lifespan(app: FastAPI):
         runtime_state.client_initialized = False
         logger.error(
             "Collector initialization failed (type=%s)",
-            _exception_kind(exc),
+            exception_kind(exc),
         )
 
     yield
@@ -773,104 +694,6 @@ async def metrics():
     )
 
 
-async def _build_dashboard_snapshot(
-    *,
-    days: int,
-    timezone_name: str,
-    metric: str,
-    source_id: str | None,
-    start_date: date | None = None,
-    end_date: date | None = None,
-) -> dict:
-    source_kwargs = _source_kwargs(source_id)
-    window_kwargs = {
-        "start_date": start_date,
-        "end_date": end_date,
-    }
-    (
-        summary,
-        players,
-        transcoding,
-        time_buckets,
-        history,
-        servers,
-        available_servers,
-        top_artists,
-        top_albums,
-    ) = await asyncio.gather(
-        get_summary(
-            days=days,
-            timezone_name=timezone_name,
-            **source_kwargs,
-            **window_kwargs,
-        ),
-        get_player_stats(
-            days=days,
-            timezone_name=timezone_name,
-            **source_kwargs,
-            **window_kwargs,
-        ),
-        get_transcoding_stats(
-            days=days,
-            timezone_name=timezone_name,
-            **source_kwargs,
-            **window_kwargs,
-        ),
-        get_time_bucket_stats(
-            days=days,
-            timezone_name=timezone_name,
-            **source_kwargs,
-            **window_kwargs,
-        ),
-        get_playback_history(
-            limit=HISTORY_LIMIT_DEFAULT,
-            days=days,
-            timezone_name=timezone_name,
-            **source_kwargs,
-            **window_kwargs,
-        ),
-        get_server_stats(
-            days=days,
-            timezone_name=timezone_name,
-            source_id=source_id,
-            **window_kwargs,
-        ),
-        list_servers(),
-        get_top_artists(
-            limit=TOP_LIMIT_DEFAULT,
-            days=days,
-            timezone_name=timezone_name,
-            metric=metric,
-            **source_kwargs,
-            **window_kwargs,
-        ),
-        get_top_albums(
-            limit=TOP_LIMIT_DEFAULT,
-            days=days,
-            timezone_name=timezone_name,
-            metric=metric,
-            **source_kwargs,
-            **window_kwargs,
-        ),
-    )
-    return {
-        "summary": summary,
-        "players": players,
-        "transcoding": transcoding,
-        "hourly": time_buckets["hourly"],
-        "daily": time_buckets["daily"],
-        "heatmap": time_buckets["heatmap"],
-        "history": history,
-        "servers": servers,
-        "available_servers": [
-            {"id": server["id"], "display_name": server["display_name"]}
-            for server in available_servers
-        ],
-        "top_artists": top_artists,
-        "top_albums": top_albums,
-    }
-
-
 @app.get("/api/stats/dashboard", response_model=DashboardSnapshot)
 async def api_dashboard_snapshot(
     days: int = Query(default=STATS_DAYS_DEFAULT, ge=0, le=STATS_DAYS_MAX),
@@ -900,18 +723,14 @@ async def api_dashboard_snapshot(
                 status_code=422,
                 detail="custom date range must not exceed 366 days",
             )
-    key = (window, tz, ranking, source_id, start_date, end_date)
     return await _query_stats(
-        lambda: dashboard_snapshot_cache.get_or_create(
-            key,
-            lambda: _build_dashboard_snapshot(
-                days=window,
-                timezone_name=tz,
-                metric=ranking,
-                source_id=source_id,
-                start_date=start_date,
-                end_date=end_date,
-            ),
+        lambda: stats_service.dashboard(
+            days=window,
+            timezone_name=tz,
+            metric=ranking,
+            source_id=source_id,
+            start_date=start_date,
+            end_date=end_date,
         )
     )
 
@@ -1196,7 +1015,7 @@ async def api_update_privacy_settings(body: PrivacySettingsUpdate):
         validate_retention_days(body.retention_days)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    async with _retention_policy_lock():
+    async with retention_policy_lock():
         await set_retention_days(body.retention_days)
     return _privacy_settings_response(body.retention_days)
 
@@ -1221,7 +1040,7 @@ async def api_retention_preview(
 async def api_retention_apply(body: RetentionApplyRequest):
     if not body.confirm:
         raise HTTPException(status_code=400, detail="confirm=true is required to delete data")
-    async with _retention_policy_lock():
+    async with retention_policy_lock():
         try:
             current_retention_days = await get_retention_days()
         except Exception as exc:
@@ -1236,9 +1055,7 @@ async def api_retention_apply(body: RetentionApplyRequest):
                 detail="Retention policy changed; preview again",
             )
         try:
-            result = await apply_retention_purge()
-            if result["deleted"]:
-                await dashboard_snapshot_cache.invalidate()
+            result = await stats_service.purge_retention()
             return result
         except Exception as exc:
             logger.error("Retention apply failed")
@@ -1274,13 +1091,11 @@ async def api_export_user(username: str):
 async def api_import_user(username: str, body: UserImportRequest):
     normalized = _validated_username(username)
     try:
-        result = await import_user_data(
+        result = await stats_service.import_user(
             normalized,
             body.payload,
             merge=body.merge,
         )
-        if not body.merge or result["imported"] or result.get("attempts_imported", 0):
-            await dashboard_snapshot_cache.invalidate()
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -1307,9 +1122,7 @@ async def api_delete_user(username: str, body: ConfirmRequest):
     if not body.confirm:
         raise HTTPException(status_code=400, detail="confirm=true is required to delete data")
     try:
-        result = await delete_user_data(normalized)
-        if result["deleted"]:
-            await dashboard_snapshot_cache.invalidate()
+        result = await stats_service.delete_user(normalized)
         return result
     except Exception as exc:
         logger.error("User delete failed")
@@ -1336,7 +1149,7 @@ async def api_source_config_put(body: SourceConfigUpdate):
     if body.username is not None and not body.username.strip():
         raise HTTPException(status_code=422, detail="username must not be empty")
 
-    async with _server_mutation_lock():
+    async with server_mutation_lock():
         saved = await get_saved_source_config()
         new_url = body.url if body.url is not None else saved.get("url")
         new_user = body.username if body.username is not None else saved.get("user")
@@ -1441,9 +1254,8 @@ async def api_servers_create(body: ServerRequest):
         raise HTTPException(status_code=422, detail="password is required")
     server = {"id": uuid.uuid4().hex, "display_name": body.display_name.strip(), "url": url,
               "username": body.username.strip(), "password": body.password, "enabled": body.enabled}
-    async with _server_mutation_lock():
-        await save_server(server)
-        await dashboard_snapshot_cache.invalidate()
+    async with server_mutation_lock():
+        await stats_service.create_server(server)
         await _apply_collector_runtime_or_rollback(
             lambda: delete_server(server["id"])
         )
@@ -1461,15 +1273,14 @@ async def api_servers_update(server_id: str, body: ServerRequest):
         url = validate_source_url(body.url)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    async with _server_mutation_lock():
+    async with server_mutation_lock():
         existing = await get_server(server_id)
         if existing is None:
             raise HTTPException(status_code=404, detail="Server not found")
         server = {"id": server_id, "display_name": body.display_name.strip(), "url": url,
                   "username": body.username.strip(), "password": body.password or existing["password"],
                   "enabled": body.enabled}
-        await save_server(server)
-        await dashboard_snapshot_cache.invalidate()
+        await stats_service.update_server(server)
         await _apply_collector_runtime_or_rollback(
             lambda: save_server(existing)
         )
@@ -1478,11 +1289,10 @@ async def api_servers_update(server_id: str, body: ServerRequest):
 
 @app.delete("/api/servers/{server_id}")
 async def api_servers_delete(server_id: str):
-    async with _server_mutation_lock():
+    async with server_mutation_lock():
         existing = await get_server(server_id)
-        if existing is None or not await delete_server(server_id):
+        if not existing or not await stats_service.remove_server(server_id):
             raise HTTPException(status_code=404, detail="Server not found")
-        await dashboard_snapshot_cache.invalidate()
         await _apply_collector_runtime_or_rollback(
             lambda: save_server(existing)
         )

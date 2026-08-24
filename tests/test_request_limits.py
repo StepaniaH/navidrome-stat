@@ -80,7 +80,7 @@ async def test_import_rejects_chunked_body_over_limit_without_parsing(monkeypatc
         called.append(True)
         raise AssertionError("import_user_data must not run for oversized bodies")
 
-    monkeypatch.setattr("src.main.import_user_data", should_not_run)
+    monkeypatch.setattr("src.stats_service.import_user_data", should_not_run)
 
     oversized = b"{" + (b" " * (IMPORT_MAX_PAYLOAD_BYTES + 128_000)) + b"}"
     chunks = [oversized[i : i + 64_000] for i in range(0, len(oversized), 64_000)]
@@ -130,11 +130,11 @@ async def test_import_rejects_chunked_body_over_limit_without_parsing(monkeypatc
 async def test_import_accepts_chunked_body_under_limit(monkeypatch):
     from httpx import ASGITransport, AsyncClient
 
-    import src.main as main
+    import src.stats_service
     from src.main import app
 
     import_user = AsyncMock(return_value={"imported": 0, "attempts_imported": 0})
-    monkeypatch.setattr(main, "import_user_data", import_user)
+    monkeypatch.setattr(src.stats_service, "import_user_data", import_user)
     payload = {
         "payload": {
             "format_version": 2,

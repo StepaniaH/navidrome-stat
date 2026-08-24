@@ -21,7 +21,7 @@ def payload(*, enabled=True):
 @pytest.mark.asyncio
 async def test_create_server_applies_runtime_config_immediately():
     reconcile = AsyncMock()
-    with patch("src.main.save_server", AsyncMock()) as save:
+    with patch("src.stats_service.save_server", AsyncMock()) as save:
         with patch("src.main._reconcile_collectors", reconcile):
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                 response = await ac.post("/api/servers", json=payload())
@@ -36,7 +36,7 @@ async def test_update_server_applies_disabled_state_immediately():
     existing = {"id": "server-1", **payload()}
     reconcile = AsyncMock()
     with patch("src.main.get_server", AsyncMock(return_value=existing)):
-        with patch("src.main.save_server", AsyncMock()):
+        with patch("src.stats_service.save_server", AsyncMock()):
             with patch("src.main._reconcile_collectors", reconcile):
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                     response = await ac.put("/api/servers/server-1", json=payload(enabled=False))
@@ -65,7 +65,7 @@ async def test_delete_server_stops_runtime_collector():
     reconcile = AsyncMock()
     existing = {"id": "server-1", **payload()}
     with patch("src.main.get_server", AsyncMock(return_value=existing)):
-        with patch("src.main.delete_server", AsyncMock(return_value=True)):
+        with patch("src.stats_service.delete_server", AsyncMock(return_value=True)):
             with patch("src.main._reconcile_collectors", reconcile):
                 async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
                     response = await ac.delete("/api/servers/server-1")
