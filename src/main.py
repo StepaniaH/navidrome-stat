@@ -265,11 +265,6 @@ def _active_sessions() -> list[dict]:
     ]
 
 
-async def finalize_session(player_id: str):
-    """Finalize one legacy-source playback session."""
-    await session_tracker.finalize_session(player_id)
-
-
 async def polling_loop(client: NavidromeClient):
     await polling_loop_for_tracker(client, session_tracker)
 
