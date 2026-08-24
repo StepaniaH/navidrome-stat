@@ -145,7 +145,7 @@ async def test_api_stats_database_error_returns_generic_message(mock_get_stats):
 @pytest.mark.asyncio
 async def test_api_now_playing_empty_when_no_sessions():
     from src.main import session_tracker
-    session_tracker.active_sessions.clear()
+    session_tracker._sessions.clear()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/now-playing")
     assert response.status_code == 200
@@ -157,20 +157,22 @@ async def test_api_now_playing_returns_active_sessions():
     from datetime import datetime, timedelta, timezone
 
     from src.main import session_tracker
+
     first_seen = datetime.now(timezone.utc) - timedelta(seconds=65)
-    session_tracker.active_sessions.clear()
-    session_tracker.active_sessions["player-1"] = {
-        "first_seen_at": first_seen,
-        "last_seen_at": first_seen,
-        "username": "alice",
-        "client_name": "Feishin",
-        "track_id": "t-1",
-        "title": "Song A",
-        "artist": "Artist A",
-        "album": "Album A",
-        "is_transcoding": 0,
-        "committed": False,
-    }
+    session_tracker._sessions.clear()
+    await session_tracker.process_poll(
+        [{
+            "playerId": "player-1",
+            "id": "t-1",
+            "title": "Song A",
+            "artist": "Artist A",
+            "album": "Album A",
+            "username": "alice",
+            "playerName": "Feishin",
+            "isPlaying": True,
+        }],
+        first_seen,
+    )
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             response = await ac.get("/api/stats/now-playing")
@@ -188,14 +190,14 @@ async def test_api_now_playing_returns_active_sessions():
         assert "last_seen_at" not in item
         assert "committed" not in item
     finally:
-        session_tracker.active_sessions.clear()
+        session_tracker._sessions.clear()
 
 
 @pytest.mark.asyncio
 async def test_api_now_playing_aggregates_runtime_trackers_and_excludes_paused(
     monkeypatch,
 ):
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
     import src.main as main
     from src.sessions import PlaybackSessionTracker
@@ -203,33 +205,48 @@ async def test_api_now_playing_aggregates_runtime_trackers_and_excludes_paused(
     async def save_session(_session):
         return None
 
+    now = datetime.now(timezone.utc)
+    entries = {
+        "player-1": {
+            "playerId": "player-1",
+            "id": "t-1",
+            "title": "Synthetic Track 1",
+            "artist": "Synthetic Artist 1",
+            "username": "synthetic-user-1",
+            "playerName": "Synthetic Client 1",
+            "isPlaying": True,
+        },
+        "player-2": {
+            "playerId": "player-2",
+            "id": "t-2",
+            "title": "Synthetic Track 2",
+            "artist": "Synthetic Artist 2",
+            "username": "synthetic-user-2",
+            "playerName": "Synthetic Client 2",
+            "isPlaying": True,
+        },
+        "paused-player": {
+            "playerId": "paused-player",
+            "id": "t-3",
+            "title": "Synthetic Paused Track",
+            "artist": "Synthetic Paused Artist",
+            "username": "synthetic-paused-user",
+            "playerName": "Synthetic Paused Client",
+            "isPlaying": True,
+        },
+    }
     first_tracker = PlaybackSessionTracker(save_session)
     second_tracker = PlaybackSessionTracker(save_session)
-    now = datetime.now(timezone.utc)
-    first_tracker.active_sessions["player-1"] = {
-        "first_seen_at": now,
-        "username": "synthetic-user-1",
-        "client_name": "Synthetic Client 1",
-        "title": "Synthetic Track 1",
-        "artist": "Synthetic Artist 1",
-        "paused": False,
-    }
-    second_tracker.active_sessions["player-2"] = {
-        "first_seen_at": now,
-        "username": "synthetic-user-2",
-        "client_name": "Synthetic Client 2",
-        "title": "Synthetic Track 2",
-        "artist": "Synthetic Artist 2",
-        "paused": False,
-    }
-    second_tracker.active_sessions["paused-player"] = {
-        "first_seen_at": now,
-        "username": "synthetic-paused-user",
-        "client_name": "Synthetic Paused Client",
-        "title": "Synthetic Paused Track",
-        "artist": "Synthetic Paused Artist",
-        "paused": True,
-    }
+    await first_tracker.process_poll([entries["player-1"]], now)
+    await second_tracker.process_poll(
+        [entries["player-2"], entries["paused-player"]], now
+    )
+    # A pause poll keeps that session visible but excluded from now-playing,
+    # while players still reporting stay active.
+    paused_entry = dict(entries["paused-player"], isPlaying=False)
+    await second_tracker.process_poll(
+        [entries["player-2"], paused_entry], now + timedelta(seconds=1)
+    )
     monkeypatch.setattr(
         main, "_runtime_trackers", [first_tracker, second_tracker], raising=False
     )

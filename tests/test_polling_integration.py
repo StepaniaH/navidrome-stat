@@ -108,7 +108,7 @@ async def test_ok_null_now_playing_is_empty_success(monkeypatch):
 
     assert state.poll_success_count == 1
     assert state.poll_failure_count == 0
-    assert tracker.active_sessions == {}
+    assert tracker._sessions == {}
 
 
 @pytest.mark.asyncio

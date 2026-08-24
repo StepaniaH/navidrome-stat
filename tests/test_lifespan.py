@@ -27,12 +27,12 @@ def reset_runtime(monkeypatch, db_path):
     runtime_state.last_upstream_error_code = None
     runtime_state.save_success_count = 0
     runtime_state.save_failure_count = 0
-    session_tracker.active_sessions.clear()
+    session_tracker._sessions.clear()
     main._runtime_trackers.clear()
     yield
     if runtime_state.polling_task is not None and not runtime_state.polling_task.done():
         runtime_state.polling_task.cancel()
-    session_tracker.active_sessions.clear()
+    session_tracker._sessions.clear()
 
 
 @pytest.mark.asyncio

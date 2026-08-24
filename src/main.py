@@ -260,8 +260,7 @@ def _active_sessions() -> list[dict]:
     return [
         session
         for tracker in _live_trackers()
-        for session in tuple(tracker.active_sessions.values())
-        if not session.get("paused")
+        for session in tracker.now_playing()
     ]
 
 

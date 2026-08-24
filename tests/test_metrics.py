@@ -82,9 +82,9 @@ async def test_readiness_and_metrics_aggregate_non_paused_runtime_sessions(monke
 
     first_tracker = PlaybackSessionTracker(save_session)
     second_tracker = PlaybackSessionTracker(save_session)
-    first_tracker.active_sessions["active-1"] = {"paused": False}
-    second_tracker.active_sessions["active-2"] = {"paused": False}
-    second_tracker.active_sessions["paused"] = {"paused": True}
+    first_tracker._sessions["active-1"] = {"paused": False}
+    second_tracker._sessions["active-2"] = {"paused": False}
+    second_tracker._sessions["paused"] = {"paused": True}
     monkeypatch.setattr(
         main, "_runtime_trackers", [first_tracker, second_tracker], raising=False
     )

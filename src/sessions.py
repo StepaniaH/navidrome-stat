@@ -51,7 +51,7 @@ class PlaybackSessionTracker:
         supports_playback_report: bool = False,
         checkpoint_interval_sec: int = _DEFAULT_CHECKPOINT_INTERVAL_SEC,
     ):
-        self.active_sessions: dict[str, dict] = {}
+        self._sessions: dict[str, dict] = {}
         self._save_session = save_session
         self.play_threshold_sec = play_threshold_sec
         self.stale_threshold_sec = stale_threshold_sec
@@ -66,11 +66,25 @@ class PlaybackSessionTracker:
         """Use playback-report timing when the server advertises it."""
         self.supports_playback_report = bool(supported)
 
+    def now_playing(self) -> list[dict]:
+        """Return copies of unpaused sessions for display endpoints."""
+        return [
+            dict(session)
+            for session in self._sessions.values()
+            if not session.get("paused")
+        ]
+
+    def active_count(self) -> int:
+        """Count unpaused sessions."""
+        return sum(
+            1 for session in self._sessions.values() if not session.get("paused")
+        )
+
     async def finalize_session(self, player_id: str) -> None:
-        if player_id not in self.active_sessions:
+        if player_id not in self._sessions:
             return
 
-        session = self.active_sessions[player_id]
+        session = self._sessions[player_id]
         duration = session.get("active_duration_sec", 0.0)
         if duration >= self.play_threshold_sec:
             await self._commit_session(session, int(duration), finalized=True)
@@ -86,7 +100,7 @@ class PlaybackSessionTracker:
                     ).isoformat(),
                 },
             )
-        self.active_sessions.pop(player_id, None)
+        self._sessions.pop(player_id, None)
 
     @staticmethod
     async def _persist(callback: SaveSessionCallback, payload: dict) -> None:
@@ -117,7 +131,7 @@ class PlaybackSessionTracker:
         await self._persist(self._save_session, payload)
 
     async def _maybe_commit_active_session(self, player_id: str) -> None:
-        session = self.active_sessions.get(player_id)
+        session = self._sessions.get(player_id)
         if not session:
             return
 
@@ -138,7 +152,7 @@ class PlaybackSessionTracker:
 
     async def finalize_all(self) -> None:
         errors: list[Exception] = []
-        for player_id in list(self.active_sessions.keys()):
+        for player_id in list(self._sessions.keys()):
             try:
                 await self.finalize_session(player_id)
             except Exception as exc:
@@ -258,19 +272,19 @@ class PlaybackSessionTracker:
             if not is_playing:
                 # A pause updates visibility without advancing listen duration.
                 if (
-                    player_id in self.active_sessions
-                    and self.active_sessions[player_id]["track_id"] == track_id
+                    player_id in self._sessions
+                    and self._sessions[player_id]["track_id"] == track_id
                 ):
-                    session = self.active_sessions[player_id]
+                    session = self._sessions[player_id]
                     session["last_seen_at"] = current_time
                     session["paused"] = True
                 continue
 
             actively_seen_player_ids.add(player_id)
 
-            if player_id in self.active_sessions:
-                if self.active_sessions[player_id]["track_id"] == track_id:
-                    session = self.active_sessions[player_id]
+            if player_id in self._sessions:
+                if self._sessions[player_id]["track_id"] == track_id:
+                    session = self._sessions[player_id]
                     if session.get("paused"):
                         # Resume from this timestamp so the idle gap is excluded.
                         session["last_active_at"] = current_time
@@ -286,12 +300,12 @@ class PlaybackSessionTracker:
                     await self._maybe_commit_active_session(player_id)
                 else:
                     await self.finalize_session(player_id)
-                    self.active_sessions[player_id] = self._session_from_entry(entry, current_time)
+                    self._sessions[player_id] = self._session_from_entry(entry, current_time)
             else:
-                self.active_sessions[player_id] = self._session_from_entry(entry, current_time)
+                self._sessions[player_id] = self._session_from_entry(entry, current_time)
 
         stale_players: list[str] = []
-        for pid, session in self.active_sessions.items():
+        for pid, session in self._sessions.items():
             if pid in actively_seen_player_ids:
                 continue
             last_active = session.get("last_active_at") or session["last_seen_at"]
@@ -304,6 +318,6 @@ class PlaybackSessionTracker:
             stale_players.append(pid)
 
         for pid in stale_players:
-            if pid not in self.active_sessions:
+            if pid not in self._sessions:
                 continue
             await self.finalize_session(pid)
