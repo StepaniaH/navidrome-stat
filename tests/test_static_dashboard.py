@@ -6,6 +6,9 @@ import pytest
 
 INDEX_HTML = Path(__file__).resolve().parent.parent / "src" / "static" / "index.html"
 DASHBOARD_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.js"
+DASHBOARD_MESSAGES_JS = (
+    Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "messages-dashboard.js"
+)
 DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
 THEME_BOOTSTRAP_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "theme-bootstrap.js"
 TAILWIND_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "vendor" / "tailwind.css"
@@ -19,10 +22,15 @@ def source() -> str:
     )
 
 
+@pytest.fixture(scope="module")
+def catalog_source() -> str:
+    return DASHBOARD_MESSAGES_JS.read_text(encoding="utf-8")
+
+
 def test_dashboard_loads_split_static_resources():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert '<link rel="stylesheet" href="/static/dashboard.css">' in html
-    assert '<script src="/static/dashboard.js"></script>' in html
+    assert '<script type="module" src="/static/dashboard.js"></script>' in html
     assert '<script src="/static/theme-bootstrap.js"></script>' in html
     assert '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">' in html
     assert "<style>" not in html
@@ -298,22 +306,25 @@ def test_dashboard_has_local_i18n_and_theme_palette(source):
         assert token in source
 
 
-def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(source):
+def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(source, catalog_source):
     for token in (
         "dashboardMessage('status.lastUpdated'",
         "dashboardMessage('summary.activeDays'",
-        "'client.detailTitle': 'Client listening details'",
-        "'client.listeningTime': 'Listening time'",
         "dashboardDuration(item.listenSec)",
         "dashboardMessage('label.play')",
         "dashboardMessage('daily.subtitle'",
-        "subtitle.serverBreakdown",
-        "subtitle.history",
-        "history.caption",
-        "history.lastPlayed",
-        "metric.listenTime",
     ):
         assert token in source
+    for entry in (
+        "['client.detailTitle', 'Client listening details']",
+        "['client.listeningTime', 'Listening time']",
+        "['subtitle.serverBreakdown',",
+        "['subtitle.history',",
+        "['history.caption',",
+        "['history.lastPlayed',",
+        "['metric.listenTime',",
+    ):
+        assert entry in catalog_source
     assert "function dashboardText(" not in source
 
 
@@ -644,7 +655,7 @@ def test_all_server_rows_render_source_badges_safely(source):
     assert "innerHTML" not in badge
 
 
-def test_dashboard_accessible_labels_are_bilingual(source):
+def test_dashboard_accessible_labels_are_bilingual(source, catalog_source):
     for key in (
         "aria.windowListbox",
         "aria.sourceListbox",
@@ -658,7 +669,7 @@ def test_dashboard_accessible_labels_are_bilingual(source):
         "label.directPlay",
         "label.transcoded",
     ):
-        assert source.count(f"'{key}'") >= 2
+        assert catalog_source.count(f"['{key}',") >= 2
     assert 'id="loginOverlay"' in source
     assert 'role="dialog"' in source
     assert 'aria-modal="true"' in source
