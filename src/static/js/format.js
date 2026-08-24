@@ -50,3 +50,13 @@ export function validateCustomRange(start, end) {
     if (rangeDays > 366) return { ok: false, reason: 'range.tooLong' };
     return { ok: true };
 }
+
+/** URL of the authenticated cover art proxy for one item. */
+export function coverArtUrl({ sourceId, id, size = 300 }) {
+    const params = new URLSearchParams({
+        source_id: sourceId,
+        id,
+        size: String(size),
+    });
+    return `/api/coverart?${params.toString()}`;
+}

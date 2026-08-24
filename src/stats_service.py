@@ -188,13 +188,23 @@ class StatsService:
 
         return await self._cache.get_or_create(key, build)
 
-    async def _attach_album_ids(self, source_id: str | None, albums: list) -> list:
+    async def _attach_album_ids(
+        self,
+        source_id: str | None,
+        albums: list,
+        available_servers: list,
+    ) -> list:
         if not albums:
             return albums
+        effective_source = source_id
+        if effective_source is None and len(available_servers) == 1:
+            effective_source = available_servers[0].get("id")
+        if effective_source is None:
+            return [{**entry, "album_id": None} for entry in albums]
         attached = []
         for entry in albums:
             album_id = await cover_art_service.resolve_album_id(
-                source_id, entry.get("album"), None
+                effective_source, entry.get("album"), None
             )
             attached.append({**entry, "album_id": album_id})
         return attached
@@ -276,7 +286,7 @@ class StatsService:
                 **window_kwargs,
             ),
         )
-        top_albums = await self._attach_album_ids(source_id, top_albums)
+        top_albums = await self._attach_album_ids(source_id, top_albums, available_servers)
         return {
             "summary": summary,
             "players": players,

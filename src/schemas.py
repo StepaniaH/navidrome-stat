@@ -239,6 +239,7 @@ class NowPlayingItem(BaseModel):
     client_name: Optional[str] = None
     seconds_elapsed: int
     source_name: Optional[str] = None
+    source_id: Optional[str] = None
     track_id: Optional[str] = None
 
 

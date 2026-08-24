@@ -781,3 +781,23 @@
             }
             .app-footer { margin-top: 1.5rem; }
         }
+
+        .now-playing-cover,
+        .ranking-cover,
+        .history-cover {
+            flex: 0 0 auto;
+            border-radius: 5px;
+            object-fit: cover;
+            background: var(--app-field);
+        }
+
+        .now-playing-cover { width: 38px; height: 38px; }
+        .ranking-cover { width: 34px; height: 34px; align-self: center; }
+        .history-cover { width: 30px; height: 30px; border-radius: 4px; }
+
+        .history-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }

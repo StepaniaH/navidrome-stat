@@ -51,6 +51,7 @@ const snapshot = {
     total_listen_sec: 120,
     source_id: "server-1",
     source_name: "Synthetic Server",
+    track_id: "tr-1",
   }],
   servers: [{
     source_id: "server-1",
@@ -73,6 +74,7 @@ const snapshot = {
     count: 3,
     total_listen_sec: 185,
     value: 3,
+    album_id: "al-1",
   }],
 };
 
@@ -640,4 +642,17 @@ test("dashboard filters persist across a reload and are shareable", async ({ pag
     return Boolean(chart && chart.getOption().series[0]?.data?.length);
   });
   await expect(page.locator("#statsWindowButton")).toContainText("Last 7 days");
+});
+
+test("history and album rankings request cover art through the proxy", async ({ page }) => {
+  await page.route("**/api/coverart*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from("89504e470d0a1a0a", "hex"),
+    }),
+  );
+  await page.goto("/");
+  await expect(page.locator('#historyTable img.history-cover[src*="/api/coverart"]')).toHaveCount(1);
+  await expect(page.locator('img.ranking-cover[src*="id=al-1"]')).toHaveCount(1);
 });

@@ -385,6 +385,7 @@ async def api_now_playing(
                     client_name=session.get("client_name"),
                     seconds_elapsed=seconds_elapsed,
                     source_name=session.get("source_name"),
+                    source_id=session.get("source_id"),
                     track_id=session.get("track_id"),
                 )
             )

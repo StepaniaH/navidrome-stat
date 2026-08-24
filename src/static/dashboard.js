@@ -1,5 +1,5 @@
 import { catalog, dashboardMessages } from './js/messages-dashboard.js';
-import { buildStatsQuery, escapeHtml, formatChangeText, validateCustomRange } from './js/format.js';
+import { buildStatsQuery, coverArtUrl, escapeHtml, formatChangeText, validateCustomRange } from './js/format.js';
 import { chartPalette, createThemeTokens } from './js/charts.js';
 import { onPreferenceChange } from './js/prefs.js';
 import { getFilters, setFilters } from './js/filters.js';
@@ -468,6 +468,23 @@ import { getFilters, setFilters } from './js/filters.js';
         return badge;
     }
 
+    function firstKnownSourceId() {
+        for (const id of knownSources.keys()) return id;
+        return '';
+    }
+
+    function createCoverImage({ sourceId, id, className }) {
+        if (!sourceId || !id) return null;
+        const img = document.createElement('img');
+        img.className = className;
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        img.alt = '';
+        img.src = coverArtUrl({ sourceId, id, size: 300 });
+        img.addEventListener('error', () => img.remove());
+        return img;
+    }
+
     function renderNowPlaying(items, showSources = !selectedSourceId) {
         const list = document.getElementById('nowPlayingList');
         const countEl = document.getElementById('nowPlayingCount');
@@ -497,11 +514,20 @@ import { getFilters, setFilters } from './js/filters.js';
             const li = document.createElement('li');
             li.className = 'now-playing-item';
 
-            const icon = document.createElement('span');
-            icon.className = 'now-playing-icon';
-            icon.setAttribute('aria-hidden', 'true');
-            icon.textContent = '♪';
-            li.appendChild(icon);
+            const cover = createCoverImage({
+                sourceId: item.source_id,
+                id: item.track_id,
+                className: 'now-playing-cover',
+            });
+            if (cover) {
+                li.appendChild(cover);
+            } else {
+                const icon = document.createElement('span');
+                icon.className = 'now-playing-icon';
+                icon.setAttribute('aria-hidden', 'true');
+                icon.textContent = '♪';
+                li.appendChild(icon);
+            }
 
             const meta = document.createElement('div');
             meta.className = 'now-playing-meta';
@@ -966,7 +992,7 @@ import { getFilters, setFilters } from './js/filters.js';
         }));
     }
 
-    function renderRankingList({ containerId, panel, data, labelKey, barClass, ariaLabel, metric }) {
+    function renderRankingList({ containerId, panel, data, labelKey, barClass, ariaLabel, metric, sourceId }) {
         const container = document.getElementById(containerId);
         container.replaceChildren();
         container.setAttribute('role', 'list');
@@ -1003,6 +1029,10 @@ import { getFilters, setFilters } from './js/filters.js';
             rankCell.setAttribute('aria-hidden', 'true');
             rankCell.textContent = String(idx + 1);
 
+            const cover = panel === 'albums'
+                ? createCoverImage({ sourceId, id: item.album_id, className: 'ranking-cover' })
+                : null;
+
             const labelCell = document.createElement('div');
             labelCell.className = 'ranking-label';
             labelCell.textContent = labelValue || '-';
@@ -1035,6 +1065,7 @@ import { getFilters, setFilters } from './js/filters.js';
             countCell.appendChild(secondary);
 
             row.appendChild(rankCell);
+            if (cover) row.appendChild(cover);
             row.appendChild(labelCell);
             row.appendChild(barCell);
             row.appendChild(countCell);
@@ -1056,6 +1087,7 @@ import { getFilters, setFilters } from './js/filters.js';
             barClass: 'ranking-bar-artists',
             ariaLabel: dashboardMessage(activeMetric === 'listen_time' ? 'aria.artistsByTime' : 'aria.artistsByPlays'),
             metric: activeMetric,
+            sourceId: selectedSourceId || firstKnownSourceId(),
         });
     }
 
@@ -1202,15 +1234,24 @@ import { getFilters, setFilters } from './js/filters.js';
 
             const titleTd = document.createElement('td');
             titleTd.className = 'history-cell history-cell-title';
+            const titleWrap = document.createElement('div');
+            titleWrap.className = 'history-title-wrap';
+            const trackCover = createCoverImage({
+                sourceId: item.source_id,
+                id: item.track_id,
+                className: 'history-cover',
+            });
+            if (trackCover) titleWrap.appendChild(trackCover);
             const titleDiv = document.createElement('div');
             titleDiv.className = 'history-primary';
             titleDiv.textContent = item.title || '-';
             titleDiv.title = item.title || '';
-            titleTd.appendChild(titleDiv);
+            titleWrap.appendChild(titleDiv);
             if (showSources) {
                 const sourceBadge = createSourceBadge(item);
-                if (sourceBadge) titleTd.appendChild(sourceBadge);
+                if (sourceBadge) titleWrap.appendChild(sourceBadge);
             }
+            titleTd.appendChild(titleWrap);
 
             const artistTd = document.createElement('td');
             artistTd.className = 'history-cell history-cell-artist';
@@ -1308,11 +1349,12 @@ import { getFilters, setFilters } from './js/filters.js';
             if (generation !== statsRequestGeneration || controller.signal.aborted) return;
             lastStatsSnapshot = snapshot;
             lastRankingMetric = requestState.metric;
-            renderStatPanels(snapshot);
+            // Sources feed the cover-art URLs, so refresh them before rendering.
             sourceSelectionReset = updateSourceOptions(
                 snapshot.available_servers,
                 snapshot.servers,
             );
+            renderStatPanels(snapshot);
             updateNewUserGuide(snapshot);
             window.requestAnimationFrame(resizeDashboardCharts);
 
