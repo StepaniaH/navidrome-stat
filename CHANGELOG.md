@@ -5,6 +5,10 @@ All notable user-facing changes are documented in this file. The format follows 
 ## [Unreleased]
 
 ### Added
+### Added
+
+- Dashboard filters persist across reloads and are shareable through URL parameters.
+- Dashboard charts recolor immediately when the theme preference changes in another tab.
 
 - Dashboard filters, custom date ranges, localized settings, and independent loading, empty, and error states.
 - Cross-server source labels, keyboard-complete filters, accessible login dialogs, and a first-run dashboard guide.
@@ -14,6 +18,12 @@ All notable user-facing changes are documented in this file. The format follows 
 - A concise project roadmap plus reproducible benchmark, dependency-lock, browser-test, and release guidance.
 
 ### Changed
+
+- Internal layout: application assembly, collectors, retention, statistics routes, privacy routes, and connection routes now live in dedicated modules; the SQLite layer is split into schema, time-window, persistence, query, and server-registry modules with one shared database-path setting.
+- Every playback write path goes through a single stats service that also invalidates the dashboard snapshot cache, so stale dashboard responses after writes are structurally prevented.
+- Domain validation failures surface as HTTP 422 through one shared handler instead of per-route translations.
+- Frontend pages load as ES modules sharing common HTTP, login-dialog, and preference modules; dashboard UI strings live in a catalog module guarded by Node unit tests against duplicate or missing translation keys.
+- Pure frontend helpers (formatting, query building, custom-range validation) run under `npm run test:unit`.
 
 - Release automation now runs only for `v*` tags and publishes the corresponding Docker image to Docker Hub.
 - Documentation was consolidated around deployment, architecture, privacy, contributing, and security guidance.
@@ -27,6 +37,8 @@ All notable user-facing changes are documented in this file. The format follows 
 - Import requests without a `Content-Length` header are limited while streaming and stop being consumed as soon as they exceed 5 MiB.
 
 ### Fixed
+
+- Cancelling a server change while collectors were reconciling could leave the saved row in place; the rollback now completes before the cancellation propagates.
 
 - Authentication handles non-ASCII token input as an authorization failure instead of a server error, and login forms clear submitted tokens after success.
 - Unauthorized API responses retain security headers, and unauthorized imports are rejected before their request body is read.

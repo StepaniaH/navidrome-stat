@@ -226,6 +226,7 @@ Frontend assets and browser tests use Node.js:
 
 ```bash
 npm ci
+npm run test:unit
 npx playwright install chromium
 npm run test:e2e
 ```
