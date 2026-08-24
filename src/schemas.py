@@ -324,3 +324,45 @@ class AboutResponse(BaseModel):
     features: list[str]
     license: str
     project_url: Optional[str] = None
+
+
+class ReviewMonthBucket(BaseModel):
+    month: str
+    count: int
+
+
+class ReviewHourBucket(BaseModel):
+    hour: int
+    count: int
+
+
+class ReviewWeekdayBucket(BaseModel):
+    weekday: int
+    count: int
+
+
+class ReviewTopItem(BaseModel):
+    name: Optional[str] = None
+    count: int
+    total_listen_sec: Optional[int] = None
+    value: Optional[int] = None
+    album_id: Optional[str] = None
+    track_id: Optional[str] = None
+
+
+class ReviewResponse(BaseModel):
+    year: int
+    total_plays: int
+    total_listen_sec: int
+    unique_tracks: int
+    active_days: int
+    longest_streak_days: int
+    first_played_at: Optional[str] = None
+    last_played_at: Optional[str] = None
+    biggest_month: Optional[str] = None
+    monthly: list[ReviewMonthBucket]
+    hourly: list[ReviewHourBucket]
+    weekday: list[ReviewWeekdayBucket]
+    top_artists: list[ReviewTopItem]
+    top_albums: list[ReviewTopItem]
+    top_tracks: list[ReviewTopItem]

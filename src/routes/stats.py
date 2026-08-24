@@ -47,6 +47,7 @@ from src.schemas import (
     HourlyStat,
     NowPlayingItem,
     PlayerStat,
+    ReviewResponse,
     ServerStat,
     ShortPlayStats,
     SourceStat,
@@ -416,4 +417,23 @@ async def api_playback_history(
             timezone_name=tz,
             **_source_kwargs(source_id),
         )
+    )
+
+
+@router.get("/api/stats/review", response_model=ReviewResponse)
+async def api_review(
+    year: int = Query(default=0, ge=0, le=9999),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
+):
+    """Return the year-in-review aggregation for one local calendar year."""
+    from datetime import datetime
+
+    tz = _validate_stats_timezone(timezone)
+    if year == 0:
+        year = datetime.now(resolve_timezone(tz)).year
+    if not 1970 <= year <= 2075:
+        raise HTTPException(status_code=422, detail="year must be between 1970 and 2075")
+    return await _query_stats(
+        lambda: stats_service.review(year=year, timezone_name=tz, source_id=source_id)
     )

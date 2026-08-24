@@ -18,6 +18,7 @@ from src.database import (
     delete_server,
     get_playback_history,
     get_player_stats,
+    get_review_summary,
     get_server_stats,
     get_summary,
     get_time_bucket_stats,
@@ -185,6 +186,21 @@ class StatsService:
                 start_date=start_date,
                 end_date=end_date,
             )
+
+        return await self._cache.get_or_create(key, build)
+
+    async def review(self, *, year: int, timezone_name: str, source_id: str | None = None):
+        key = ("review", year, timezone_name, source_id)
+
+        async def build() -> dict:
+            summary = await get_review_summary(
+                year, timezone_name, source_id=source_id
+            )
+            servers = await list_servers()
+            summary["top_albums"] = await self._attach_album_ids(
+                source_id, summary["top_albums"], servers
+            )
+            return summary
 
         return await self._cache.get_or_create(key, build)
 

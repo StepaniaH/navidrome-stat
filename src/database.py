@@ -32,6 +32,7 @@ from src.stats_queries import (  # noqa: F401
     get_hourly_stats,
     get_playback_history,
     get_player_stats,
+    get_review_summary,
     get_server_stats,
     get_short_play_stats,
     get_source_stats,
