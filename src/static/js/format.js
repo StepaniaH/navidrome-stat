@@ -60,3 +60,14 @@ export function coverArtUrl({ sourceId, id, size = 300 }) {
     });
     return `/api/coverart?${params.toString()}`;
 }
+
+/** Localized listening duration (hours/minutes/seconds buckets). */
+export function formatDuration(seconds, t) {
+    const total = Number(seconds) || 0;
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = Math.floor(total % 60);
+    if (hours > 0) return t('duration.hours', { hours, minutes });
+    if (minutes > 0) return t('duration.minutes', { minutes });
+    return t('duration.seconds', { seconds: secs });
+}

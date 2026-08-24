@@ -1,5 +1,5 @@
 import { catalog, dashboardMessages } from './js/messages-dashboard.js';
-import { buildStatsQuery, coverArtUrl, escapeHtml, formatChangeText, validateCustomRange } from './js/format.js';
+import { buildStatsQuery, coverArtUrl, escapeHtml, formatChangeText, formatDuration, validateCustomRange } from './js/format.js';
 import { chartPalette, createThemeTokens } from './js/charts.js';
 import { onPreferenceChange } from './js/prefs.js';
 import { getFilters, setFilters } from './js/filters.js';

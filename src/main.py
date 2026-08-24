@@ -166,6 +166,14 @@ async def root():
     return {"message": "Dashboard not found"}
 
 
+@app.get("/review")
+async def review_page():
+    review_file = os.path.join(STATIC_DIR, "review.html")
+    if os.path.exists(review_file):
+        return FileResponse(review_file)
+    raise HTTPException(status_code=404, detail="Review page not found")
+
+
 @app.get("/settings")
 async def settings_page():
     settings_file = os.path.join(STATIC_DIR, "settings.html")
