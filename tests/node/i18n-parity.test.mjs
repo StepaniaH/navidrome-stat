@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { dashboardMessages } from "../../src/static/js/messages-dashboard.js";
 import { settingsMessages } from "../../src/static/js/messages-settings.js";
 import { LOCALE_CODES } from "../../src/static/js/locales.js";
+import { reviewMessages } from "../../src/static/js/messages-review.js";
 
 function keySet(locale, entries) {
   const seen = new Set();
@@ -40,6 +41,16 @@ function assertCatalogConsistent(name, catalog) {
 
 assertCatalogConsistent("dashboard", dashboardMessages);
 assertCatalogConsistent("settings", settingsMessages);
+assertCatalogConsistent("review", reviewMessages);
+
+test("all catalog modules expose the same locale set", () => {
+  const sets = [
+    new Set(Object.keys(dashboardMessages)),
+    new Set(Object.keys(settingsMessages)),
+    new Set(Object.keys(reviewMessages)),
+  ];
+  for (const set of sets.slice(1)) assert.deepEqual([...set].sort(), [...sets[0]].sort());
+});
 
 test("settings catalogs cover every supported locale name", () => {
   for (const [locale, entries] of Object.entries(settingsMessages)) {
