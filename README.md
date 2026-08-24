@@ -2,14 +2,20 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.svg">
-  <img src="assets/icon.svg" alt="Navidrome Statistic" width="160">
+  <img src="assets/icon.svg" alt="Navidrome Statistic" width="140">
 </picture>
 
 # Navidrome Statistic
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Product Hunt](https://img.shields.io/badge/Product_Hunt-Visit-DA552F?logo=producthunt&logoColor=white)](https://www.producthunt.com/products/navidrome-stat)
+[![Docker Hub](https://img.shields.io/docker/v/stepaniah/navidrome-statistic/latest?label=Docker&logo=docker&logoColor=white)](https://hub.docker.com/r/stepaniah/navidrome-statistic)
+
+<img src="assets/screenshots/dashboard-frappe-top.png" alt="Playback statistics dashboard with now playing, totals, client and transcoding charts" width="920">
+
 </div>
 
-[简体中文](README.zh-CN.md)
+[简体中文](README.zh-CN.md) · [Product Hunt](https://www.producthunt.com/products/navidrome-stat)
 
 Navidrome Statistic collects playback activity reported by Navidrome and presents it in one dashboard. It provides a consistent view across Subsonic-compatible clients, browsers, phones, computers, and multiple Navidrome servers without requiring every client to implement its own statistics.
 
@@ -18,11 +24,22 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 ## Features
 
 - Aggregates current and historical playback across clients, devices, users, and Navidrome servers.
-- Shows listening time, play history, hourly and daily trends, client usage, transcoding, and artist or album rankings.
+- Shows listening time, play history, hourly and daily trends, a weekday × hour heatmap, client usage, transcoding, and artist, album, or track rankings.
+- A year-in-review page with totals, listening streaks, monthly and time-of-day charts, and top lists.
+- Cover art for history, rankings, and now playing through a cached, authenticated proxy.
+- Ten built-in themes (Catppuccin, Nord, Dracula, Tokyo Night, Gruvbox, Solarized) that apply instantly across tabs, plus six interface languages with an Apple-style language picker.
+- Dashboard filters persist in the URL, so views survive reloads and can be shared as links.
 - Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
 - Supports per-server filtering, connection management, retention settings, and per-user JSON export, import, and deletion.
 - Offers optional token authentication for dashboard data and APIs.
 - Serves pinned frontend assets locally and runs as a non-root user in the published container.
+
+## Screenshots
+
+| | |
+| --- | --- |
+| <img src="assets/screenshots/dashboard-frappe-charts.png" alt="Hourly, daily, and weekday-by-hour charts"> | <img src="assets/screenshots/dashboard-frappe-rankings.png" alt="Top artists and albums, server sources, recent plays"> |
+| <img src="assets/screenshots/dashboard-gruvbox.png" alt="The same dashboard in the Gruvbox theme"> | |
 
 ## Important limitations
 
