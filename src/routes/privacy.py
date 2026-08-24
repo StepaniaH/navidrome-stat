@@ -58,10 +58,7 @@ async def api_privacy_settings():
 
 @router.put("/api/privacy/settings", response_model=PrivacySettingsResponse)
 async def api_update_privacy_settings(body: PrivacySettingsUpdate):
-    try:
-        validate_retention_days(body.retention_days)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    validate_retention_days(body.retention_days)
     async with retention_policy_lock():
         await set_retention_days(body.retention_days)
     return _privacy_settings_response(body.retention_days)
@@ -76,11 +73,7 @@ async def api_privacy_storage():
 async def api_retention_preview(
     days: int | None = Query(default=None, ge=RETENTION_MIN_DAYS, le=RETENTION_MAX_DAYS),
 ):
-    try:
-        preview = await preview_retention_purge(days)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return preview
+    return await preview_retention_purge(days)
 
 
 @router.post("/api/privacy/retention/apply", response_model=RetentionApplyResponse)
@@ -143,8 +136,9 @@ async def api_import_user(username: str, body: UserImportRequest):
             body.payload,
             merge=body.merge,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError:
+        # Validation failures propagate to the shared 422 handler.
+        raise
     except Exception as exc:
         logger.error("User import failed")
         raise HTTPException(status_code=503, detail="Import failed") from exc

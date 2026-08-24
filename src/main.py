@@ -147,6 +147,12 @@ async def security_headers_middleware(request: Request, call_next):
     return _with_security_headers(response)
 
 
+@app.exception_handler(ValueError)
+async def validation_error_handler(_request: Request, exc: ValueError):
+    """Translate domain validation failures into client errors."""
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

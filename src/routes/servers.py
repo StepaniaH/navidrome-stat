@@ -55,10 +55,7 @@ async def api_source_config_get():
 async def api_source_config_put(body: SourceConfigUpdate):
     """Save fallback source settings; environment variables retain priority."""
     if body.url is not None:
-        try:
-            body.url = validate_source_url(body.url)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        body.url = validate_source_url(body.url)
     if body.username is not None and not body.username.strip():
         raise HTTPException(status_code=422, detail="username must not be empty")
 
@@ -165,10 +162,7 @@ async def api_servers_get():
 async def api_servers_create(body: ServerRequest):
     if not body.display_name.strip() or not body.username.strip():
         raise HTTPException(status_code=422, detail="display_name and username are required")
-    try:
-        url = validate_source_url(body.url)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    url = validate_source_url(body.url)
     if not body.password:
         raise HTTPException(status_code=422, detail="password is required")
     server = {"id": uuid.uuid4().hex, "display_name": body.display_name.strip(), "url": url,
@@ -194,10 +188,7 @@ async def api_servers_update(server_id: str, body: ServerRequest):
             status_code=422,
             detail="display_name and username are required",
         )
-    try:
-        url = validate_source_url(body.url)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    url = validate_source_url(body.url)
     async with server_mutation_lock():
         existing = await get_server(server_id)
         if existing is None:
@@ -248,10 +239,7 @@ async def api_servers_test(server_id: str, body: ServerRequest | None = None):
     )
     if not config.username.strip():
         raise HTTPException(status_code=422, detail="username is required")
-    try:
-        url = validate_source_url(config.url)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    url = validate_source_url(config.url)
     password = config.password or server["password"]
     test_client = NavidromeClient(
         url=url,
@@ -265,7 +253,10 @@ async def api_servers_test(server_id: str, body: ServerRequest | None = None):
     except Exception:
         return ServerTestResponse(ok=False, message="无法连接到上游 Navidrome")
     finally:
-        await test_client.close()
+        try:
+            await test_client.close()
+        except Exception:
+            logger.error("Failed to close test NavidromeClient")
     return ServerTestResponse(ok=True, message="连接成功")
 
 
