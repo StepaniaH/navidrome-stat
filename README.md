@@ -245,6 +245,7 @@ Tests use temporary databases and synthetic API data; they do not require a live
 ## Project information
 
 - [Architecture](docs/architecture.md)
+- [Compatibility policy](docs/compat.md)
 - [Roadmap](docs/roadmap.md)
 - [Privacy](docs/privacy.md)
 - [Contributing](CONTRIBUTING.md)

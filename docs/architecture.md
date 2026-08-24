@@ -73,3 +73,5 @@ Pure frontend logic is covered by Node unit tests (`npm run test:unit`); page be
 - Health endpoints report process, database, collector, and upstream state. They are not a replacement for deployment-level monitoring or backups.
 
 FastAPI exposes the current HTTP schema at `/openapi.json` and a same-origin searchable reference at `/docs` (also served at `/redoc`) unless OpenAPI routes are disabled with `OPENAPI_ENABLED=false`.
+
+Cross-release stability promises are recorded in the [compatibility policy](compat.md).
