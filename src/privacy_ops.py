@@ -10,9 +10,9 @@ from typing import Any, Optional
 import aiosqlite
 
 from src import config
-from src.database import _format_utc
 from src.schema import PAYLOAD_BYTES_SQL, get_meta_value, set_meta_value
 from src.sqlite import connect_db
+from src.windows import utc_instant
 
 
 def _path(db_path: str | None = None) -> str:
@@ -69,7 +69,7 @@ _RETENTION_BEFORE_SQL = "datetime(played_at) < datetime(?)"
 
 def _retention_cutoff_sql(days: int) -> str:
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    return _format_utc(cutoff)
+    return utc_instant(cutoff)
 
 
 def _estimate_database_bytes_after_purge(

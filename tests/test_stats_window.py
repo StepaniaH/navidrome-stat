@@ -9,7 +9,6 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from src.database import (
-    _format_utc,
     _previous_window_bounds,
     _window_bounds,
     get_daily_stats,
@@ -23,6 +22,7 @@ from src.database import (
     get_transcoding_stats,
     init_db,
     save_play_session,
+    utc_instant,
 )
 from src.main import app
 
@@ -138,7 +138,7 @@ def test_get_summary_zero_previous_window_yields_null_pct(db_path):
 
 def test_previous_window_uses_local_calendar_days_across_dst(monkeypatch, db_path):
     """Preset previous windows follow local midnights, not UTC-span subtraction."""
-    import src.database as database
+    import src.windows
 
     tz = ZoneInfo("America/New_York")
     frozen = datetime(2024, 3, 12, 15, 0, tzinfo=tz)
@@ -150,11 +150,11 @@ def test_previous_window_uses_local_calendar_days_across_dst(monkeypatch, db_pat
                 return frozen.astimezone(timezone.utc).replace(tzinfo=None)
             return frozen.astimezone(tz)
 
-    monkeypatch.setattr(database, "datetime", FrozenDateTime)
+    monkeypatch.setattr(src.windows, "datetime", FrozenDateTime)
 
     start, end = _previous_window_bounds(7, tz)
-    expected_start = _format_utc(datetime(2024, 2, 28, 0, 0, tzinfo=tz))
-    expected_end = _format_utc(datetime(2024, 3, 6, 0, 0, tzinfo=tz))
+    expected_start = utc_instant(datetime(2024, 2, 28, 0, 0, tzinfo=tz))
+    expected_end = utc_instant(datetime(2024, 3, 6, 0, 0, tzinfo=tz))
     assert (start, end) == (expected_start, expected_end)
 
     current_start, current_end = _window_bounds(7, tz)
@@ -164,7 +164,7 @@ def test_previous_window_uses_local_calendar_days_across_dst(monkeypatch, db_pat
     naive_previous_start = datetime.fromisoformat(
         current_start.replace(" ", "T") + "+00:00"
     ) - utc_span
-    assert _format_utc(naive_previous_start) != start
+    assert utc_instant(naive_previous_start) != start
 
     asyncio.run(init_db(db_path))
     # 2024-02-28 00:30 EST is inside the local previous window, but would sit
