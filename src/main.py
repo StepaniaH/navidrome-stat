@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from weakref import WeakKeyDictionary
 
+import anyio
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -523,7 +524,11 @@ async def _apply_collector_runtime_or_rollback(restore) -> None:
     try:
         await _reconcile_collectors()
     except asyncio.CancelledError:
-        await _compensate_collector_config_mutation(restore)
+        # ASGI cancellation is delivered repeatedly inside the request's cancel
+        # scope, which would kill the rollback at its first await. Shielding
+        # lets the compensation finish before the error propagates.
+        with anyio.CancelScope(shield=True):
+            await _compensate_collector_config_mutation(restore)
         raise
     except Exception as exc:
         logger.error("Saved collector configuration could not be applied")
