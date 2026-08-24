@@ -1,4 +1,13 @@
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.svg">
+  <img src="assets/icon.svg" alt="Navidrome Statistic" width="160">
+</picture>
+
 # Navidrome Statistic
+
+</div>
 
 [简体中文](README.zh-CN.md)
 
