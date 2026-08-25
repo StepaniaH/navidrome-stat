@@ -804,15 +804,6 @@
 
         .review-subtitle { color: var(--app-muted); font-size: 0.9rem; margin: 0.25rem 0 1rem; }
 
-        .review-year-select {
-            color: var(--app-text);
-            background: var(--app-field);
-            border: 1px solid var(--app-border);
-            border-radius: 8px;
-            padding: 6px 10px;
-            font-size: 0.85rem;
-        }
-
         .review-hero {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

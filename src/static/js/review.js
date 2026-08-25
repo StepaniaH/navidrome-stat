@@ -7,6 +7,7 @@ import { catalog, dashboardMessages } from './messages-dashboard.js';
 import { catalog as reviewCatalog, reviewMessages } from './messages-review.js';
 import { chartPalette, createThemeTokens } from './charts.js';
 import { formatDuration } from './format.js';
+import { createListbox } from './listbox.js';
 
 const messages = {
     'zh-CN': { ...catalog(dashboardMessages.zhCN), ...reviewCatalog(reviewMessages.zhCN) },
@@ -170,16 +171,42 @@ function renderReview(review, sourceId) {
     renderTopList('reviewTopTracks', review.top_tracks, { coverId: 'track_id', sourceId });
 }
 
+let yearListbox = null;
+
 function fillYearSelect() {
-    const select = document.getElementById('reviewYear');
+    const menu = document.getElementById('reviewYearMenu');
+    const label = document.getElementById('reviewYearButtonLabel');
     const current = new Date().getFullYear();
+    const fragment = document.createDocumentFragment();
     for (let year = current; year >= current - 5; year -= 1) {
-        const option = document.createElement('option');
-        option.value = String(year);
-        option.textContent = String(year);
-        select.appendChild(option);
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.setAttribute('role', 'option');
+        option.className = 'filter-option review-year-option';
+        option.dataset.value = String(year);
+        const text = document.createElement('span');
+        text.textContent = String(year);
+        const check = document.createElement('span');
+        check.className = 'option-check';
+        check.setAttribute('aria-hidden', 'true');
+        check.textContent = '✓';
+        option.append(text, check);
+        fragment.appendChild(option);
     }
-    select.value = String(currentYear);
+    menu.replaceChildren(fragment);
+    label.textContent = String(currentYear);
+    yearListbox = createListbox({
+        trigger: document.getElementById('reviewYearButton'),
+        menu,
+        onSelect: (option) => {
+            const year = Number(option.dataset.value);
+            if (!Number.isFinite(year) || year === currentYear) return;
+            currentYear = year;
+            label.textContent = String(currentYear);
+            loadReview();
+        },
+    });
+    yearListbox.setSelected(String(currentYear));
 }
 
 async function loadReview() {
@@ -239,10 +266,6 @@ async function bootstrap() {
     localize();
     fillYearSelect();
     initCharts();
-    document.getElementById('reviewYear').addEventListener('change', (event) => {
-        currentYear = Number(event.target.value);
-        loadReview();
-    });
     window.addEventListener('resize', () => {
         [monthlyChart, hourlyChart, weekdayChart].forEach((chart) => chart && chart.resize());
     });

@@ -24,9 +24,16 @@
                     <h1 class="dashboard-title" data-i18n="review.title">Year in Review</h1>
                 </div>
                 <div class="dashboard-filters">
-                    <div class="filter-control window">
-                        <label class="visually-hidden" for="reviewYear" data-i18n="review.year">Year</label>
-                        <select id="reviewYear" class="review-year-select"></select>
+                    <div class="filter-control window" id="reviewYearControl">
+                        <button id="reviewYearButton" type="button" class="filter-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="reviewYearMenu">
+                            <svg class="filter-trigger-icon window" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3M5 11h14M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>
+                            <span class="filter-trigger-copy">
+                                <span class="visually-hidden" data-i18n="review.yearSelector">Select year</span>
+                                <span id="reviewYearButtonLabel" class="filter-trigger-value">2026</span>
+                            </span>
+                            <svg class="filter-trigger-chevron" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div id="reviewYearMenu" class="filter-popover hidden" role="listbox" aria-label="Year" data-i18n-attr="aria-label:review.year"></div>
                     </div>
                 </div>
             </div>
