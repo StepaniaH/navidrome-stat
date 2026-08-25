@@ -617,7 +617,10 @@ const messages = {
             const detailLine = document.createElement('div');
             detailLine.className = 'server-detail-line';
             detailLine.append(url, statusBadge);
-            identity.append(name, detailLine);
+            const testStatus = document.createElement('span');
+            testStatus.className = 'server-test-status';
+            testStatus.hidden = true;
+            identity.append(name, detailLine, testStatus);
 
             const actions = document.createElement('div');
             actions.className = 'row-actions';
@@ -626,16 +629,22 @@ const messages = {
             testButton.className = 'text-button';
             testButton.textContent = t('common.test');
             testButton.addEventListener('click', async () => {
-                setSourceMessage('source.testing');
+                testStatus.hidden = false;
+                testStatus.dataset.kind = 'info';
+                testStatus.textContent = t('source.testing');
                 try {
                     const testResponse = await apiFetch(`/api/servers/${encodeURIComponent(server.id)}/test`, {
                         method: 'POST',
                     });
                     if (!isResponseOk(testResponse)) throw new Error('server test failed');
                     const result = await testResponse.json();
-                    setSourceMessage(result.ok ? 'source.testSuccess' : 'source.testFailure', result.ok ? 'success' : 'error');
+                    testStatus.dataset.kind = result.ok ? 'success' : 'error';
+                    testStatus.textContent = t(result.ok ? 'source.testSuccess' : 'source.testFailure');
                 } catch (error) {
-                    if (error.message !== 'unauthorized') setSourceMessage('source.testFailed', 'error');
+                    if (error.message !== 'unauthorized') {
+                        testStatus.dataset.kind = 'error';
+                        testStatus.textContent = t('source.testFailed');
+                    }
                 }
             });
             const editButton = document.createElement('button');

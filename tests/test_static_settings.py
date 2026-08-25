@@ -242,3 +242,10 @@ def test_settings_runtime_fills_version_from_about_endpoint():
     js = _read(SETTINGS_JS)
     assert "applyAppVersion" in js
     assert '"/api/about"' not in js  # fetched via js/app-info.js, not inline
+
+
+def test_server_row_test_result_renders_inline_not_in_form():
+    js = _read(SETTINGS_JS)
+    assert "server-test-status" in js
+    html = _read(SETTINGS_HTML)
+    assert ".server-test-status" in html
