@@ -48,26 +48,31 @@ function initCharts() {
     weekdayChart = mount('reviewWeekdayChart');
 }
 
-function barOption(categories, values, { horizontal = false } = {}) {
+function barOption(categories, values, { horizontal = false, categoryInterval = 0 } = {}) {
     const categoryAxis = {
         type: 'category',
         data: categories,
         axisLine: { lineStyle: { color: 'rgba(128,128,140,0.25)' } },
-        axisLabel: { color: chartBase().textStyle.color, fontSize: 11 },
+        axisLabel: {
+            color: chartBase().textStyle.color,
+            fontSize: 11,
+            hideOverlap: true,
+            interval: categoryInterval,
+        },
         axisTick: { show: false },
     };
     const valueAxis = {
         type: 'value',
-        axisLabel: { color: chartBase().textStyle.color, fontSize: 11 },
+        axisLabel: { color: chartBase().textStyle.color, fontSize: 11, hideOverlap: true },
         splitLine: { lineStyle: { color: 'rgba(128,128,140,0.15)' } },
     };
     return {
         backgroundColor: 'transparent',
         textStyle: chartBase().textStyle,
         tooltip: { ...chartBase().tooltip, trigger: 'axis' },
-        grid: { left: 40, right: 16, top: 16, bottom: 28 },
+        grid: { left: 8, right: 20, top: 16, bottom: 8, containLabel: true },
         ...(horizontal
-            ? { xAxis: valueAxis, yAxis: categoryAxis }
+            ? { xAxis: { ...valueAxis, splitNumber: 4 }, yAxis: categoryAxis }
             : { xAxis: categoryAxis, yAxis: valueAxis }),
         series: [{
             type: 'bar',
@@ -86,6 +91,7 @@ function renderCharts(review) {
     hourlyChart.setOption(barOption(
         review.hourly.map((entry) => String(entry.hour)),
         review.hourly.map((entry) => entry.count),
+        { categoryInterval: 2 },
     ));
     weekdayChart.setOption(barOption(
         review.weekday.map((entry) => t(`weekday.${['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][entry.weekday]}`)),

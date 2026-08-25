@@ -15,3 +15,15 @@ def test_year_selector_uses_custom_listbox_not_native_select():
     assert "<select" not in _read(REVIEW_HTML)
     assert 'id="reviewYearMenu"' in _read(REVIEW_HTML)
     assert "createListbox" in _read(REVIEW_JS)
+
+
+def test_review_charts_prevent_axis_label_overlap():
+    js = _read(REVIEW_JS)
+    assert "hideOverlap: true" in js
+    assert "categoryInterval" in js
+    assert "containLabel: true" in js
+
+def test_review_chart_heights_increased():
+    css = _read(ROOT / "src" / "static" / "dashboard.css")
+    assert ".review-chart { width: 100%; height: 260px; }" in css
+    assert ".review-chart-tall { height: 300px; }" in css
