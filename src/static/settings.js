@@ -629,6 +629,7 @@ const messages = {
             testButton.className = 'text-button';
             testButton.textContent = t('common.test');
             testButton.addEventListener('click', async () => {
+                testButton.disabled = true;
                 testStatus.hidden = false;
                 testStatus.dataset.kind = 'info';
                 testStatus.textContent = t('source.testing');
@@ -641,10 +642,14 @@ const messages = {
                     testStatus.dataset.kind = result.ok ? 'success' : 'error';
                     testStatus.textContent = t(result.ok ? 'source.testSuccess' : 'source.testFailure');
                 } catch (error) {
-                    if (error.message !== 'unauthorized') {
+                    if (error.message === 'unauthorized') {
+                        testStatus.hidden = true;
+                    } else {
                         testStatus.dataset.kind = 'error';
                         testStatus.textContent = t('source.testFailed');
                     }
+                } finally {
+                    testButton.disabled = false;
                 }
             });
             const editButton = document.createElement('button');

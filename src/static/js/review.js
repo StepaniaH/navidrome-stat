@@ -182,8 +182,6 @@ function renderReview(review, sourceId) {
     renderTopList('reviewTopTracks', review.top_tracks, { coverId: 'track_id', sourceId });
 }
 
-let yearListbox = null;
-
 function fillYearSelect() {
     const menu = document.getElementById('reviewYearMenu');
     const label = document.getElementById('reviewYearButtonLabel');
@@ -206,7 +204,7 @@ function fillYearSelect() {
     }
     menu.replaceChildren(fragment);
     label.textContent = String(currentYear);
-    yearListbox = createListbox({
+    const yearListbox = createListbox({
         trigger: document.getElementById('reviewYearButton'),
         menu,
         onSelect: (option) => {
