@@ -12,3 +12,4 @@ playwright-report/
 
 # Local cover art disk cache
 coverart-cache/
+.openchamber/
