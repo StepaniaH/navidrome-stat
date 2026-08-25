@@ -4,9 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from src.database import get_review_summary, init_db, save_play_session
-
 import src.stats_service as stats_service_module
+from src.database import get_review_summary, init_db, save_play_session
 
 
 class FakeCache:
