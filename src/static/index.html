@@ -344,7 +344,15 @@
         <!-- Recent plays -->
         <section class="history-section rounded-2xl bg-ink-900/80 shadow-card border border-white/5 overflow-hidden" role="region" aria-label="播放历史" data-i18n-attr="aria-label:dashboard.history">
             <div class="px-5 sm:px-6 py-5 border-b border-white/5">
-                <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.history">最近播放</h2>
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.history">最近播放</h2>
+                    <div class="filter-control columns" id="historyColumnsControl">
+                        <button id="historyColumnsButton" type="button" class="header-icon-button" aria-haspopup="true" aria-expanded="false" aria-controls="historyColumnsPanel" data-i18n-attr="aria-label:history.columns,title:history.columns" aria-label="列设置" title="列设置">
+                            <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 6h18M3 12h18M3 18h18"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 3v18"/></svg>
+                        </button>
+                        <div id="historyColumnsPanel" class="filter-popover hidden" role="group" aria-label="列设置" data-i18n-attr="aria-label:history.columns"></div>
+                    </div>
+                </div>
                 <p class="text-xs text-slate-600 mt-0.5" data-i18n="subtitle.history">按最近播放时间排序，重复收听会累加 Plays</p>
             </div>
             <div id="historyTableWrap" class="history-table-wrap relative">
@@ -360,12 +368,12 @@
                     </colgroup>
                     <thead>
                         <tr class="text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-ink-800/50">
-                            <th scope="col" data-i18n="history.user">用户</th>
-                            <th scope="col" data-i18n="history.track">曲目</th>
-                            <th scope="col" data-i18n="history.artist">艺人</th>
-                            <th scope="col" data-i18n="history.album">专辑</th>
-                            <th scope="col" data-i18n="history.lastPlayed">最近播放</th>
-                            <th scope="col" class="text-right" data-i18n="history.plays">播放次数</th>
+                            <th scope="col" class="history-cell-user" data-i18n="history.user">用户</th>
+                            <th scope="col" class="history-cell-title" data-i18n="history.track">曲目</th>
+                            <th scope="col" class="history-cell-artist" data-i18n="history.artist">艺人</th>
+                            <th scope="col" class="history-cell-album" data-i18n="history.album">专辑</th>
+                            <th scope="col" class="history-cell-played" data-i18n="history.lastPlayed">最近播放</th>
+                            <th scope="col" class="history-cell-count text-right" data-i18n="history.plays">播放次数</th>
                         </tr>
                     </thead>
                     <tbody id="historyTable">

@@ -712,3 +712,13 @@ def test_ranking_uses_list_semantics(source):
 def test_history_server_label_lives_in_user_column(source):
     assert "history-user-source" in source
     assert "history-user-meta" in source
+
+
+def test_history_column_visibility_persisted_with_min_one_rule(source):
+    assert "navidrome-history-columns" in source
+    assert "columns.size === 1" in source
+    assert "column-hidden" in source
+
+
+def test_history_column_menu_messages_exist_in_all_locales(catalog_source):
+    assert catalog_source.count("['history.columns'") == 5

@@ -530,6 +530,12 @@
         }
         .option-check { opacity: 0; }
         .filter-option[aria-selected="true"] .option-check { opacity: 1; }
+        .columns-menu { display: flex; flex-direction: column; min-width: 10rem; }
+        .column-option-off .option-check { visibility: hidden; }
+        @media (min-width: 481px) {
+            .history-table .column-hidden { display: none; }
+            .history-table col.column-hidden { visibility: collapse; }
+        }
         .custom-range-panel {
             margin-top: 0.25rem;
             padding: 0.75rem 0.5rem 0.5rem;

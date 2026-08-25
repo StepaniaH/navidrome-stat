@@ -1,7 +1,8 @@
 import { catalog, dashboardMessages } from './js/messages-dashboard.js';
 import { buildStatsQuery, coverArtUrl, escapeHtml, formatChangeText, formatDuration, validateCustomRange } from './js/format.js';
 import { chartPalette, createThemeTokens } from './js/charts.js';
-import { onPreferenceChange } from './js/prefs.js';
+import { onPreferenceChange, readPreference, writePreference } from './js/prefs.js';
+import { attachPopover } from './js/listbox.js';
 import { getFilters, setFilters } from './js/filters.js';
 
 
@@ -30,6 +31,81 @@ import { getFilters, setFilters } from './js/filters.js';
         'weekday.fri', 'weekday.sat', 'weekday.sun',
     ];
     const HOUR_LABELS = Array.from({ length: 24 }, (_, h) => String(h));
+
+    const HISTORY_COLUMNS_KEY = 'navidrome-history-columns';
+    const HISTORY_COLUMNS = [
+        { id: 'user', label: 'history.user', cell: 'history-cell-user', col: 'history-col-user' },
+        { id: 'track', label: 'history.track', cell: 'history-cell-title', col: 'history-col-track' },
+        { id: 'artist', label: 'history.artist', cell: 'history-cell-artist', col: 'history-col-artist' },
+        { id: 'album', label: 'history.album', cell: 'history-cell-album', col: 'history-col-album' },
+        { id: 'played', label: 'history.lastPlayed', cell: 'history-cell-played', col: 'history-col-played' },
+        { id: 'count', label: 'history.plays', cell: 'history-cell-count', col: 'history-col-count' },
+    ];
+
+    function allHistoryColumns() {
+        return new Set(HISTORY_COLUMNS.map((column) => column.id));
+    }
+
+    function readHistoryColumns() {
+        const raw = readPreference(HISTORY_COLUMNS_KEY, '');
+        if (!raw) return allHistoryColumns();
+        const saved = new Set(raw.split(',')
+            .filter((id) => HISTORY_COLUMNS.some((column) => column.id === id)));
+        return saved.size ? saved : allHistoryColumns();
+    }
+
+    function applyHistoryColumns(columns) {
+        for (const column of HISTORY_COLUMNS) {
+            const visible = columns.has(column.id);
+            document.querySelectorAll(`.history-table .${column.cell}, .history-table col.${column.col}`)
+                .forEach((element) => element.classList.toggle('column-hidden', !visible));
+        }
+    }
+
+    function setupHistoryColumns() {
+        const button = document.getElementById('historyColumnsButton');
+        const panel = document.getElementById('historyColumnsPanel');
+        attachPopover({ trigger: button, panel });
+        let columns = readHistoryColumns();
+
+        function renderPanel() {
+            const list = document.createElement('div');
+            list.className = 'columns-menu';
+            for (const column of HISTORY_COLUMNS) {
+                const option = document.createElement('button');
+                option.type = 'button';
+                option.className = 'filter-option column-option';
+                const text = document.createElement('span');
+                text.textContent = dashboardMessage(column.label);
+                const check = document.createElement('span');
+                check.className = 'option-check';
+                check.setAttribute('aria-hidden', 'true');
+                check.textContent = '✓';
+                option.append(text, check);
+                option.setAttribute('aria-pressed', columns.has(column.id) ? 'true' : 'false');
+                option.classList.toggle('column-option-off', !columns.has(column.id));
+                option.disabled = columns.has(column.id) && columns.size === 1;
+                option.addEventListener('click', () => {
+                    if (columns.has(column.id)) columns.delete(column.id);
+                    else columns.add(column.id);
+                    writePreference(HISTORY_COLUMNS_KEY, [...columns].join(','));
+                    columns = readHistoryColumns();
+                    renderPanel();
+                    applyHistoryColumns(columns);
+                });
+                list.appendChild(option);
+            }
+            panel.replaceChildren(list);
+        }
+
+        renderPanel();
+        applyHistoryColumns(columns);
+        onPreferenceChange(HISTORY_COLUMNS_KEY, () => {
+            columns = readHistoryColumns();
+            renderPanel();
+            applyHistoryColumns(columns);
+        });
+    }
 
     let statsRequestController = null;
     let nowPlayingRequestController = null;
@@ -1655,6 +1731,7 @@ import { getFilters, setFilters } from './js/filters.js';
         }
     });
     setActiveStatsWindowButton(statsDays);
+    setupHistoryColumns();
     updateSourceOptions([]);
 
     document.querySelectorAll('.ranking-metric-btn').forEach((btn) => {
