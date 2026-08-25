@@ -14,6 +14,8 @@ The SQLite database can contain:
 - counted plays and below-threshold playback attempts;
 - retention settings and internal session checkpoints.
 
+Cover art requested through the application is cached on disk inside the container or host volume, in a size-capped directory. The cache holds only artwork fetched for the dashboard and can be cleared by removing that directory; it is not part of the SQLite database or its backups.
+
 These fields can reveal personal listening habits when combined, even when the media metadata is otherwise public.
 
 ## Navidrome credentials

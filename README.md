@@ -31,6 +31,7 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.
 - Ten built-in themes (Catppuccin, Nord, Dracula, Tokyo Night, Gruvbox, Solarized) that apply instantly across tabs, plus six interface languages with an Apple-style language picker.
 - Dashboard filters persist in the URL, so views survive reloads and can be shared as links.
+- The recent-plays table has configurable column visibility, saved per browser.
 - Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
 - Supports per-server filtering, connection management, retention settings, and per-user JSON export, import, and deletion.
 - Offers optional token authentication for dashboard data and APIs.

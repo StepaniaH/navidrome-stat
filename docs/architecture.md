@@ -59,6 +59,8 @@ The dashboard, settings, and API reference pages are plain ES modules served und
 | `js/messages-dashboard.js`, catalogs | UI strings as `[key, value]` entries so tests can guard key parity |
 | `js/format.js` | Pure formatting, query-string building, and range validation helpers |
 | `js/filters.js` | Dashboard filter state persisted to shareable URL parameters |
+| `js/listbox.js` | Shared popover listbox and panel controls (review year picker, recent-plays column menu) |
+| `js/app-info.js` | Application metadata from `/api/about`; fills `[data-app-version]` elements |
 | `js/charts.js` | ECharts theme tokens; charts re-color when the theme preference changes |
 
 Pure frontend logic is covered by Node unit tests (`npm run test:unit`); page behavior is covered by Playwright end-to-end tests.

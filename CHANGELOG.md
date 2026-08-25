@@ -2,21 +2,39 @@
 
 All notable user-facing changes are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
-## [0.8.0] - 2026-08-24
-
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-25
+
 ### Added
+
+- Configurable column visibility for the recent-plays table, persisted per browser with at least one column always enabled.
+- The dashboard header shows the application version beside the brand, and the About panel lists it; both read `/api/about` instead of hardcoded strings.
+
+### Changed
+
+- The dashboard header shows the project brand name instead of a generic localized title.
+- The year-in-review year picker uses the same popover style as the dashboard filters.
+- The recent-plays server label appears under the username instead of beside the track title.
+
+### Fixed
+
+- Year-in-review charts render at full size on first load and no longer collide axis labels.
+- Year-in-review top albums and tracks resolve cover art per source and fall back to letter tiles when unavailable.
+- Server connection test results render in their own row instead of the connection form.
+- The brand icon matches the reference artwork: circular note head, sound arcs clear of the outer ring, and a flush flag.
+
+## [0.8.0] - 2026-08-24
+
+### Added
+
 - Cover art for play history, album rankings, and now-playing through an authenticated proxy with a size-capped disk cache; album names are resolved to Navidrome album IDs via `search3` with a 24-hour negative cache.
 - A year-in-review page at `/review` with totals, streaks, monthly/hourly/weekday charts, and top artists, albums, and tracks.
 - A `getSongHistory` capability probe per server, surfaced through the connections API ahead of an upstream read API.
 - A pre-1.0 compatibility policy (docs/compat.md).
 - German interface localization.
-### Added
-
 - Dashboard filters persist across reloads and are shareable through URL parameters.
 - Dashboard charts recolor immediately when the theme preference changes in another tab.
-
 - Dashboard filters, custom date ranges, localized settings, and independent loading, empty, and error states.
 - Cross-server source labels, keyboard-complete filters, accessible login dialogs, and a first-run dashboard guide.
 - Optional authentication for `/metrics` through `STATS_METRICS_AUTH`.
@@ -116,7 +134,9 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/StepaniaH/navidrome-stat/tree/v0.8.0
 [0.7.0]: https://github.com/StepaniaH/navidrome-stat/tree/v0.7.0
 [0.6.0]: https://github.com/StepaniaH/navidrome-stat/tree/v0.6.0
 [0.5.4]: https://github.com/StepaniaH/navidrome-stat/tree/v0.5.4
