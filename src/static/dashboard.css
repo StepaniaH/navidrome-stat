@@ -538,6 +538,7 @@
         .option-check { opacity: 0; }
         .filter-option[aria-selected="true"] .option-check { opacity: 1; }
         .columns-menu { display: flex; flex-direction: column; min-width: 10rem; }
+        .filter-control.columns .filter-popover { left: auto; right: 0; width: 11rem; }
         .column-option-off .option-check { visibility: hidden; }
         .column-option[aria-pressed="true"] .option-check { opacity: 1; }
         @media (min-width: 641px) {
