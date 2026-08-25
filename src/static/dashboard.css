@@ -532,7 +532,8 @@
         .filter-option[aria-selected="true"] .option-check { opacity: 1; }
         .columns-menu { display: flex; flex-direction: column; min-width: 10rem; }
         .column-option-off .option-check { visibility: hidden; }
-        @media (min-width: 481px) {
+        .column-option[aria-pressed="true"] .option-check { opacity: 1; }
+        @media (min-width: 641px) {
             .history-table .column-hidden { display: none; }
             .history-table col.column-hidden { visibility: collapse; }
         }
