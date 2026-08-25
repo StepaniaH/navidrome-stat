@@ -230,3 +230,15 @@ def test_settings_login_is_an_accessible_dialog():
     assert "requestAnimationFrame" in auth_js
     assert "event.key" in _read(ROOT / "src/static/js/auth.js")
     assert "tokenInput.value = ''" in script
+
+
+def test_about_panel_has_version_row_served_by_api():
+    html = _read(SETTINGS_HTML)
+    assert 'data-i18n="about.version"' in html
+    assert "data-app-version" in html
+
+
+def test_settings_runtime_fills_version_from_about_endpoint():
+    js = _read(SETTINGS_JS)
+    assert "applyAppVersion" in js
+    assert '"/api/about"' not in js  # fetched via js/app-info.js, not inline

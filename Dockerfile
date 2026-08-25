@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.lock
 
 FROM python:3.11-slim AS runner
 
-ARG APP_VERSION=0.7.0-dev
+ARG APP_VERSION=0.8.0-dev
 ENV APP_VERSION=${APP_VERSION}
 
 WORKDIR /app

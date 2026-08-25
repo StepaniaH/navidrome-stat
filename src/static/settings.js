@@ -5,6 +5,7 @@ import { readPreference, removePreference, writePreference } from './js/prefs.js
 import { createI18n } from './localization.js';
 import { DEFAULT_THEME, THEMES, resolveTheme, themeScheme } from './js/themes.js';
 import { SUPPORTED_LOCALES } from './js/locales.js';
+import { applyAppVersion } from './js/app-info.js';
 import { catalog, settingsMessages } from './js/messages-settings.js';
 
     const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
@@ -1128,6 +1129,7 @@ const messages = {
             const tokenInput = document.getElementById('loginToken');
             try {
                 await submitLogin(tokenInput.value);
+                applyAppVersion();
                 tokenInput.value = '';
             } catch (_error) {
                 const error = document.getElementById('loginError');
@@ -1139,6 +1141,7 @@ const messages = {
 
     async function bootstrapData() {
         hideBanner();
+        applyAppVersion();
         try {
             const statusResponse = await apiFetch('/api/auth/status');
             if (statusResponse.ok) {
