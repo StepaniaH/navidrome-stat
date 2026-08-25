@@ -100,8 +100,15 @@ function renderCharts(review) {
     ));
 }
 
-function coverImage(sourceId, id, className) {
-    if (!sourceId || !id) return null;
+function letterFallback(text) {
+    const placeholder = document.createElement('span');
+    placeholder.className = 'review-top-cover review-top-cover-fallback';
+    placeholder.textContent = String(text || '?').charAt(0).toUpperCase();
+    return placeholder;
+}
+
+function coverImage(sourceId, id, className, fallbackText) {
+    if (!sourceId || !id) return letterFallback(fallbackText);
     const img = document.createElement('img');
     img.className = className;
     img.loading = 'lazy';
@@ -109,7 +116,7 @@ function coverImage(sourceId, id, className) {
     img.alt = '';
     const params = new URLSearchParams({ source_id: sourceId, id, size: '300' });
     img.src = `/api/coverart?${params.toString()}`;
-    img.addEventListener('error', () => img.remove());
+    img.addEventListener('error', () => img.replaceWith(letterFallback(fallbackText)));
     return img;
 }
 
@@ -126,14 +133,7 @@ function renderTopList(listId, entries, { coverId, sourceId }) {
         li.appendChild(rank);
 
         const id = coverId === 'album_id' ? entry.album_id : entry.track_id;
-        const cover = coverImage(sourceId, id, 'review-top-cover');
-        if (cover) li.appendChild(cover);
-        else {
-            const placeholder = document.createElement('span');
-            placeholder.className = 'review-top-cover review-top-cover-fallback';
-            placeholder.textContent = String(entry.name || '?').charAt(0).toUpperCase();
-            li.appendChild(placeholder);
-        }
+        li.appendChild(coverImage(entry.source_id || sourceId, id, 'review-top-cover', entry.name));
 
         const meta = document.createElement('span');
         meta.className = 'review-top-meta';

@@ -886,7 +886,7 @@
             text-align: right;
         }
 
-        .review-top-cover { width: 38px; height: 38px; border-radius: 5px; object-fit: cover; }
+        .review-top-cover { width: 38px; height: 38px; border-radius: 5px; object-fit: cover; flex: 0 0 auto; }
 
         .review-top-cover-fallback {
             display: inline-flex;

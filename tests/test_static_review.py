@@ -27,3 +27,9 @@ def test_review_chart_heights_increased():
     css = _read(ROOT / "src" / "static" / "dashboard.css")
     assert ".review-chart { width: 100%; height: 260px; }" in css
     assert ".review-chart-tall { height: 300px; }" in css
+
+
+def test_review_covers_use_per_item_source_with_letter_fallback():
+    js = _read(REVIEW_JS)
+    assert "entry.source_id || sourceId" in js
+    assert "review-top-cover-fallback" in js
