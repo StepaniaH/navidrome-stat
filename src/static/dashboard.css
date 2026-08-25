@@ -353,6 +353,13 @@
             letter-spacing: -0.01em;
             white-space: nowrap;
         }
+        .brand-version {
+            color: var(--app-dim);
+            font-family: "SF Mono", ui-monospace, monospace;
+            font-size: 0.7rem;
+            margin-left: 2px;
+            white-space: nowrap;
+        }
         .dashboard-filters {
             display: flex;
             min-width: 0;

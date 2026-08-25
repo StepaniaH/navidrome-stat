@@ -722,3 +722,15 @@ def test_history_column_visibility_persisted_with_min_one_rule(source):
 
 def test_history_column_menu_messages_exist_in_all_locales(catalog_source):
     assert catalog_source.count("['history.columns'") == 5
+
+
+def test_header_shows_brand_name_and_live_version(source):
+    assert ">Navidrome Stat</h1>" in source
+    assert "data-app-version" in source
+    assert 'data-i18n="dashboard.title"' not in source
+
+
+def test_no_hardcoded_versions_in_frontend():
+    for path in (INDEX_HTML, DASHBOARD_JS):
+        text = path.read_text(encoding="utf-8")
+        assert "0.8." not in text, path

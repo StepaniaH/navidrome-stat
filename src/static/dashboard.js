@@ -1,4 +1,5 @@
 import { catalog, dashboardMessages } from './js/messages-dashboard.js';
+import { applyAppVersion } from './js/app-info.js';
 import { buildStatsQuery, coverArtUrl, escapeHtml, formatChangeText, formatDuration, validateCustomRange } from './js/format.js';
 import { chartPalette, createThemeTokens } from './js/charts.js';
 import { onPreferenceChange, readPreference, writePreference } from './js/prefs.js';
@@ -234,6 +235,7 @@ import { getFilters, setFilters } from './js/filters.js';
             throw new Error('invalid token');
         }
         hideLogin();
+        applyAppVersion();
         await Promise.all([fetchStats(), fetchNowPlaying()]);
         if (document.getElementById('loginOverlay').classList.contains('hidden')) {
             scheduleRefresh();
@@ -1801,6 +1803,7 @@ import { getFilters, setFilters } from './js/filters.js';
 
     async function bootstrap() {
         try {
+            applyAppVersion();
             const statusRes = await fetch('/api/auth/status', fetchOptions);
             if (statusRes.ok) {
                 const statusData = await statusRes.json();
