@@ -33,3 +33,8 @@ def test_review_covers_use_per_item_source_with_letter_fallback():
     js = _read(REVIEW_JS)
     assert "entry.source_id || sourceId" in js
     assert "review-top-cover-fallback" in js
+
+
+def test_review_charts_resize_after_render():
+    js = _read(REVIEW_JS)
+    assert "resizeCharts()" in js

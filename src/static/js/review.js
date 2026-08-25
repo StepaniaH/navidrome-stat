@@ -98,6 +98,11 @@ function renderCharts(review) {
         review.weekday.map((entry) => entry.count),
         { horizontal: true },
     ));
+    resizeCharts();
+}
+
+function resizeCharts() {
+    [monthlyChart, hourlyChart, weekdayChart].forEach((chart) => chart && chart.resize());
 }
 
 function letterFallback(text) {
