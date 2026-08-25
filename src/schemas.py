@@ -347,6 +347,7 @@ class ReviewTopItem(BaseModel):
     count: int
     total_listen_sec: Optional[int] = None
     value: Optional[int] = None
+    source_id: Optional[str] = None
     album_id: Optional[str] = None
     track_id: Optional[str] = None
 

@@ -6,6 +6,16 @@ import pytest
 
 from src.database import get_review_summary, init_db, save_play_session
 
+import src.stats_service as stats_service_module
+
+
+class FakeCache:
+    async def invalidate(self):
+        pass
+
+    async def get_or_create(self, _key, factory):
+        return await factory()
+
 
 def session(days_ago, hour, *, track="t-1", title="Song", artist="Artist", album="Album",
             duration=200, tz_offset_hours=0):
@@ -126,3 +136,25 @@ async def test_review_endpoint_is_cached(seeded_db, isolated_db, monkeypatch):
     await service.review(year=seeded_db, timezone_name="UTC", source_id=None)
     await service.review(year=seeded_db, timezone_name="UTC", source_id=None)
     assert builds["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_review_top_tracks_carry_source_id(seeded_db, isolated_db):
+    year = seeded_db
+    review = await get_review_summary(year, "UTC", db_path=isolated_db)
+    tracks = {entry["name"]: entry for entry in review["top_tracks"]}
+    assert tracks["Morning Song"]["source_id"] == "legacy"
+    assert tracks["Morning Song"]["track_id"] == "t-1"
+
+
+@pytest.mark.asyncio
+async def test_review_albums_stamp_single_server_source(seeded_db, isolated_db, monkeypatch):
+    year = seeded_db
+    async def fake_list_servers():
+        return [{"id": "srv-1", "display_name": "Main"}]
+    monkeypatch.setattr(stats_service_module, "list_servers", fake_list_servers)
+    service = stats_service_module.StatsService(cache=FakeCache(), retry_attempts=1)
+    review = await service.review(year=year, timezone_name="UTC", source_id=None)
+    assert review["top_albums"]
+    for entry in review["top_albums"]:
+        assert entry["source_id"] == "srv-1"

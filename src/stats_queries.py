@@ -749,6 +749,7 @@ async def get_review_summary(
     top_tracks = [
         {
             "name": row["name"] or "-",
+            "source_id": row["track_key"].split("\x1f", 1)[0],
             "track_id": row["track_key"].split("\x1f", 1)[1] if "\x1f" in row["track_key"] else row["track_key"],
             "count": int(row["count"] or 0),
             "total_listen_sec": int(row["value"] or 0),

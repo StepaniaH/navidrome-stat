@@ -197,9 +197,14 @@ class StatsService:
                 year, timezone_name, source_id=source_id
             )
             servers = await list_servers()
+            effective_source = source_id
+            if effective_source is None and len(servers) == 1:
+                effective_source = servers[0].get("id")
             summary["top_albums"] = await self._attach_album_ids(
                 source_id, summary["top_albums"], servers
             )
+            for entry in summary["top_albums"]:
+                entry["source_id"] = effective_source
             return summary
 
         return await self._cache.get_or_create(key, build)
