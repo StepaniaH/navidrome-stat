@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="signal" gradientUnits="userSpaceOnUse" x1="24" y1="26" x2="56" y2="76">
+    <linearGradient id="wave" gradientUnits="userSpaceOnUse" x1="50" y1="46" x2="38" y2="74">
       <stop offset="0" stop-color="#F97316"/>
-      <stop offset="0.55" stop-color="#84CC16"/>
+      <stop offset="0.5" stop-color="#84CC16"/>
       <stop offset="1" stop-color="#22D3EE"/>
     </linearGradient>
     <linearGradient id="trend" gradientUnits="userSpaceOnUse" x1="66" y1="90" x2="102" y2="56">
@@ -11,20 +11,20 @@
       <stop offset="1" stop-color="#38BDF8"/>
     </linearGradient>
   </defs>
-  <path d="M 104.3 47.9 A 44.0 44.0 0 1 0 86.6 96.5" fill="none" stroke="#C6D0F5" stroke-width="5.0" stroke-linecap="round"/>
-  <path d="M 36.6 69.6 A 16 16 0 0 1 49.8 58.2" fill="none" stroke="url(#signal)" stroke-width="5" stroke-linecap="round"/>
-  <path d="M 27.0 66.8 A 26 26 0 0 1 48.4 48.3" fill="none" stroke="url(#signal)" stroke-width="5" stroke-linecap="round"/>
-  <path d="M 17.4 64.1 A 36 36 0 0 1 47.0 38.4" fill="none" stroke="url(#signal)" stroke-width="5" stroke-linecap="round"/>
-  <ellipse cx="52" cy="74" rx="10.5" ry="7.5" transform="rotate(-18 52 74)" fill="#1E2030" stroke="#C6D0F5" stroke-width="5.0"/>
-  <circle cx="52" cy="74" r="2.6" fill="#C6D0F5"/>
-  <path d="M 61.8 71.5 V 30" stroke="#C6D0F5" stroke-width="5.0" stroke-linecap="round"/>
-  <path d="M 61.8 30 L 83 39.5 V 55.5 L 61.8 46 Z" fill="#1E2030" stroke="#C6D0F5" stroke-width="5.0" stroke-linejoin="round"/>
-  <path d="M 66 102 H 110" stroke="#C6D0F5" stroke-width="4.5" stroke-linecap="round"/>
-  <rect x="71" y="90" width="9" height="12" rx="1.5" fill="#1E2030" stroke="#C6D0F5" stroke-width="4.5" stroke-linejoin="round"/>
-  <rect x="83" y="82" width="9" height="20" rx="1.5" fill="#1E2030" stroke="#C6D0F5" stroke-width="4.5" stroke-linejoin="round"/>
-  <rect x="95" y="71" width="9" height="31" rx="1.5" fill="#1E2030" stroke="#C6D0F5" stroke-width="4.5" stroke-linejoin="round"/>
-  <path d="M 68 88 L 86 73 L 100 58" fill="none" stroke="url(#trend)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="68" cy="88" r="4.5" fill="#1E2030" stroke="#F97316" stroke-width="4"/>
-  <circle cx="86" cy="73" r="4.5" fill="#1E2030" stroke="#84CC16" stroke-width="4"/>
-  <circle cx="100" cy="58" r="6" fill="#1E2030" stroke="#38BDF8" stroke-width="4.5"/>
+  <path d="M 100.1 56.9 A 36.5 36.5 0 1 0 87.5 90" fill="none" stroke="#C6D0F5" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 50.69 60.36 A 13.5 13.5 0 0 0 45.55 72.18" fill="none" stroke="url(#wave)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 46.69 55.24 A 20 20 0 0 0 39.08 72.74" fill="none" stroke="url(#wave)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 42.68 50.12 A 26.5 26.5 0 0 0 32.60 73.31" fill="none" stroke="url(#wave)" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="59" cy="71" r="8" fill="#1E2030" stroke="#C6D0F5" stroke-width="5"/>
+  <circle cx="59" cy="71" r="2.2" fill="#C6D0F5"/>
+  <path d="M 67 71 V 39.5" fill="none" stroke="#C6D0F5" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 67 39.5 L 82 45.5 V 56.5 L 67 50.5 Z" fill="#1E2030" stroke="#C6D0F5" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 69 98.5 H 103" fill="none" stroke="#C6D0F5" stroke-width="4.5" stroke-linecap="round"/>
+  <rect x="70.5" y="89.5" width="7" height="9" rx="1.5" fill="#1E2030" stroke="#C6D0F5" stroke-width="4.5" stroke-linejoin="round"/>
+  <rect x="82" y="82" width="7" height="16.5" rx="1.5" fill="#1E2030" stroke="#C6D0F5" stroke-width="4.5" stroke-linejoin="round"/>
+  <rect x="93.5" y="75.5" width="7" height="23" rx="1.5" fill="#1E2030" stroke="#C6D0F5" stroke-width="4.5" stroke-linejoin="round"/>
+  <path d="M 70.5 86.5 L 81 77.5 L 96.5 66.5" fill="none" stroke="url(#trend)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="70.5" cy="86.5" r="2.6" fill="#1E2030" stroke="#F97316" stroke-width="3.5"/>
+  <circle cx="81" cy="77.5" r="2.6" fill="#1E2030" stroke="#84CC16" stroke-width="3.5"/>
+  <circle cx="96.5" cy="66.5" r="4.5" fill="#1E2030" stroke="#38BDF8" stroke-width="4"/>
 </svg>
