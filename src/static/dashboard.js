@@ -468,6 +468,16 @@ import { getFilters, setFilters } from './js/filters.js';
         return badge;
     }
 
+    function createSourceLabel(item) {
+        const sourceName = item && (item.source_name || item.source_id);
+        if (!sourceName) return null;
+        const label = document.createElement('span');
+        label.className = 'history-user-source';
+        label.textContent = String(sourceName);
+        label.title = dashboardMessage('label.source', { name: sourceName });
+        return label;
+    }
+
     function firstKnownSourceId() {
         for (const id of knownSources.keys()) return id;
         return '';
@@ -1225,11 +1235,18 @@ import { getFilters, setFilters } from './js/filters.js';
             avatar.className = 'history-avatar';
             avatar.textContent = String(item.username || '?').charAt(0).toUpperCase();
             avatar.setAttribute('aria-hidden', 'true');
+            const userMeta = document.createElement('div');
+            userMeta.className = 'history-user-meta';
             const userLabel = document.createElement('span');
             userLabel.className = 'history-user-label';
             userLabel.textContent = item.username || '-';
+            userMeta.appendChild(userLabel);
+            if (showSources) {
+                const sourceLabel = createSourceLabel(item);
+                if (sourceLabel) userMeta.appendChild(sourceLabel);
+            }
             userSpan.appendChild(avatar);
-            userSpan.appendChild(userLabel);
+            userSpan.appendChild(userMeta);
             userTd.appendChild(userSpan);
 
             const titleTd = document.createElement('td');
@@ -1247,10 +1264,6 @@ import { getFilters, setFilters } from './js/filters.js';
             titleDiv.textContent = item.title || '-';
             titleDiv.title = item.title || '';
             titleWrap.appendChild(titleDiv);
-            if (showSources) {
-                const sourceBadge = createSourceBadge(item);
-                if (sourceBadge) titleWrap.appendChild(sourceBadge);
-            }
             titleTd.appendChild(titleWrap);
 
             const artistTd = document.createElement('td');

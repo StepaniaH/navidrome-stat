@@ -655,7 +655,7 @@ def test_all_server_rows_render_source_badges_safely(source):
     assert "showSources" in now_playing
     assert "createSourceBadge(item)" in now_playing
     assert "showSources" in history
-    assert "createSourceBadge(item)" in history
+    assert "createSourceLabel(item)" in history
     assert "textContent" in badge
     assert "innerHTML" not in badge
 
@@ -707,3 +707,8 @@ def test_ranking_uses_list_semantics(source):
     assert "container.setAttribute('role', 'list')" in block
     assert "row.setAttribute('role', 'listitem')" in block
     assert "role', 'cell'" not in block
+
+
+def test_history_server_label_lives_in_user_column(source):
+    assert "history-user-source" in source
+    assert "history-user-meta" in source

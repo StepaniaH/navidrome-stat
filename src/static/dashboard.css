@@ -627,6 +627,15 @@
             white-space: nowrap;
         }
         .history-user-label { min-width: 0; }
+        .history-user-meta { display: flex; flex-direction: column; min-width: 0; }
+        .history-user-source {
+            color: var(--app-dim);
+            font-size: 0.7rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 9rem;
+        }
         .history-primary { color: var(--app-text); font-weight: 500; }
         .history-cell-artist { color: var(--app-muted); }
         .history-cell-album { color: var(--app-dim); }
