@@ -157,3 +157,20 @@ async def test_review_albums_stamp_single_server_source(seeded_db, isolated_db, 
     assert review["top_albums"]
     for entry in review["top_albums"]:
         assert entry["source_id"] == "srv-1"
+
+
+@pytest.mark.asyncio
+async def test_review_albums_source_id_null_without_effective_source(seeded_db, isolated_db, monkeypatch):
+    year = seeded_db
+    async def fake_list_servers():
+        return [
+            {"id": "srv-1", "display_name": "Main"},
+            {"id": "srv-2", "display_name": "Second"},
+        ]
+    monkeypatch.setattr(stats_service_module, "list_servers", fake_list_servers)
+    service = stats_service_module.StatsService(cache=FakeCache(), retry_attempts=1)
+    review = await service.review(year=year, timezone_name="UTC", source_id=None)
+    assert review["top_albums"]
+    for entry in review["top_albums"]:
+        assert entry["source_id"] is None
+        assert entry["album_id"] is None

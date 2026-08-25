@@ -716,7 +716,7 @@ def test_history_server_label_lives_in_user_column(source):
 
 def test_history_column_visibility_persisted_with_min_one_rule(source):
     assert "navidrome-history-columns" in source
-    assert "columns.size === 1" in source
+    assert "historyColumns.size === 1" in source
     assert "column-hidden" in source
 
 
@@ -734,3 +734,21 @@ def test_no_hardcoded_versions_in_frontend():
     for path in (INDEX_HTML, DASHBOARD_JS):
         text = path.read_text(encoding="utf-8")
         assert "0.8." not in text, path
+
+
+def test_history_column_visibility_reapplied_after_render(source):
+    # Column hiding must survive every table rebuild (auto-refresh rebuilds
+    # all <td>s): a single live Set is re-applied after each render, not just
+    # during setup or preference changes.
+    assert "let historyColumns = readHistoryColumns();" in source
+    block = _function_block(source, "renderHistoryTable")
+    assert "applyHistoryColumns(historyColumns)" in block
+    setup = _function_block(source, "setupHistoryColumns")
+    assert "let columns" not in setup
+    assert "historyColumns = readHistoryColumns();" in setup
+
+
+def test_column_menu_fixes_are_pinned():
+    css = DASHBOARD_CSS.read_text(encoding="utf-8")
+    assert '.column-option[aria-pressed="true"] .option-check { opacity: 1; }' in css
+    assert "@media (min-width: 641px)" in css

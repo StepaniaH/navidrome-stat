@@ -55,6 +55,8 @@ import { getFilters, setFilters } from './js/filters.js';
         return saved.size ? saved : allHistoryColumns();
     }
 
+    let historyColumns = readHistoryColumns();
+
     function applyHistoryColumns(columns) {
         for (const column of HISTORY_COLUMNS) {
             const visible = columns.has(column.id);
@@ -67,7 +69,6 @@ import { getFilters, setFilters } from './js/filters.js';
         const button = document.getElementById('historyColumnsButton');
         const panel = document.getElementById('historyColumnsPanel');
         attachPopover({ trigger: button, panel });
-        let columns = readHistoryColumns();
 
         function renderPanel() {
             const list = document.createElement('div');
@@ -83,16 +84,16 @@ import { getFilters, setFilters } from './js/filters.js';
                 check.setAttribute('aria-hidden', 'true');
                 check.textContent = '✓';
                 option.append(text, check);
-                option.setAttribute('aria-pressed', columns.has(column.id) ? 'true' : 'false');
-                option.classList.toggle('column-option-off', !columns.has(column.id));
-                option.disabled = columns.has(column.id) && columns.size === 1;
+                option.setAttribute('aria-pressed', historyColumns.has(column.id) ? 'true' : 'false');
+                option.classList.toggle('column-option-off', !historyColumns.has(column.id));
+                option.disabled = historyColumns.has(column.id) && historyColumns.size === 1;
                 option.addEventListener('click', () => {
-                    if (columns.has(column.id)) columns.delete(column.id);
-                    else columns.add(column.id);
-                    writePreference(HISTORY_COLUMNS_KEY, [...columns].join(','));
-                    columns = readHistoryColumns();
+                    if (historyColumns.has(column.id)) historyColumns.delete(column.id);
+                    else historyColumns.add(column.id);
+                    writePreference(HISTORY_COLUMNS_KEY, [...historyColumns].join(','));
+                    historyColumns = readHistoryColumns();
                     renderPanel();
-                    applyHistoryColumns(columns);
+                    applyHistoryColumns(historyColumns);
                 });
                 list.appendChild(option);
             }
@@ -100,11 +101,11 @@ import { getFilters, setFilters } from './js/filters.js';
         }
 
         renderPanel();
-        applyHistoryColumns(columns);
+        applyHistoryColumns(historyColumns);
         onPreferenceChange(HISTORY_COLUMNS_KEY, () => {
-            columns = readHistoryColumns();
+            historyColumns = readHistoryColumns();
             renderPanel();
-            applyHistoryColumns(columns);
+            applyHistoryColumns(historyColumns);
         });
     }
 
@@ -1376,6 +1377,7 @@ import { getFilters, setFilters } from './js/filters.js';
         setPanelSummary('history', dashboardMessage('aria.historySummary', {
             count: dashboardNumber(rows.length),
         }));
+        applyHistoryColumns(historyColumns);
     }
 
     function updateNewUserGuide(snapshot) {
