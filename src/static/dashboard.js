@@ -558,7 +558,15 @@ import { getFilters, setFilters } from './js/filters.js';
         return '';
     }
 
-    function createCoverImage({ sourceId, id, className }) {
+    function createRankingFallback(text) {
+        const span = document.createElement('span');
+        span.className = 'ranking-cover ranking-cover-fallback';
+        span.setAttribute('aria-hidden', 'true');
+        span.textContent = String(text || '?').trim().charAt(0).toUpperCase() || '?';
+        return span;
+    }
+
+    function createCoverImage({ sourceId, id, className, onError }) {
         if (!sourceId || !id) return null;
         const img = document.createElement('img');
         img.className = className;
@@ -566,7 +574,7 @@ import { getFilters, setFilters } from './js/filters.js';
         img.decoding = 'async';
         img.alt = '';
         img.src = coverArtUrl({ sourceId, id, size: 300 });
-        img.addEventListener('error', () => img.remove());
+        img.addEventListener('error', onError ? () => onError(img) : (() => img.remove()));
         return img;
     }
 
@@ -801,6 +809,9 @@ import { getFilters, setFilters } from './js/filters.js';
 
         playerChart.setOption({
             ...chartBase,
+            animationDurationUpdate: 450,
+            animationEasingUpdate: 'cubicInOut',
+            animationTypeUpdate: 'transition',
             color: colorPalette,
             legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
             tooltip: {
@@ -822,7 +833,7 @@ import { getFilters, setFilters } from './js/filters.js';
                     value: item.count,
                 })),
             }],
-        }, true);
+        });
         setPanelSummary('players', dashboardMessage('aria.clientsSummary', {
             count: dashboardNumber(rows.length),
             top: rows[0].client_name || dashboardMessage('source.unknown'),
@@ -851,6 +862,9 @@ import { getFilters, setFilters } from './js/filters.js';
 
         transcodingChart.setOption({
             ...chartBase,
+            animationDurationUpdate: 450,
+            animationEasingUpdate: 'cubicInOut',
+            animationTypeUpdate: 'transition',
             color: ['#34d399', '#f472b6'],
             legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 } },
             tooltip: {
@@ -869,7 +883,7 @@ import { getFilters, setFilters } from './js/filters.js';
                 label: { color: '#94a3b8', fontSize: 11 },
                 data: transformed,
             }],
-        }, true);
+        });
         const directCount = rows.find(t => !t.is_transcoding)?.count || 0;
         const transcodedCount = rows.find(t => t.is_transcoding)?.count || 0;
         setPanelSummary('transcoding', dashboardMessage('aria.transcodingSummary', {
@@ -894,6 +908,8 @@ import { getFilters, setFilters } from './js/filters.js';
 
         hourlyChart.setOption({
             ...chartBase,
+            animationDurationUpdate: 450,
+            animationEasingUpdate: 'cubicInOut',
             color: ['#a78bfa'],
             grid: { left: 40, right: 16, top: 16, bottom: 32 },
             tooltip: {
@@ -933,7 +949,7 @@ import { getFilters, setFilters } from './js/filters.js';
                     },
                 },
             }],
-        }, true);
+        });
         const peakHour = buckets.reduce((best, b) => b.count > best.count ? b : best, buckets[0]);
         setPanelSummary('hourly', dashboardMessage('aria.hourlySummary', {
             hour: dashboardNumber(peakHour.hour),
@@ -956,6 +972,8 @@ import { getFilters, setFilters } from './js/filters.js';
 
         dailyChart.setOption({
             ...chartBase,
+            animationDurationUpdate: 450,
+            animationEasingUpdate: 'cubicInOut',
             color: ['#34d399'],
             grid: { left: 40, right: 16, top: 16, bottom: 32 },
             tooltip: {
@@ -998,12 +1016,19 @@ import { getFilters, setFilters } from './js/filters.js';
                     },
                 },
             }],
-        }, true);
+        });
         const activeDays = sorted.filter(d => Number(d.count) > 0).length;
         setPanelSummary('daily', dashboardMessage('aria.dailySummary', {
             days: dashboardNumber(activeDays),
             plays: dashboardNumber(Math.max(0, ...counts)),
         }));
+    }
+
+    function heatmapRamp() {
+        const light = document.documentElement.dataset.scheme === 'light';
+        return light
+            ? ['rgba(124,95,212,0.10)', '#8b72e0', '#4c3a9e']
+            : ['rgba(167,139,250,0.07)', '#7c5fd4', '#ddd4ff'];
     }
 
     function renderWeekdayHourChart(data) {
@@ -1025,6 +1050,8 @@ import { getFilters, setFilters } from './js/filters.js';
 
         weekdayHourChart.setOption({
             ...chartBase,
+            animationDurationUpdate: 450,
+            animationEasingUpdate: 'cubicInOut',
             tooltip: {
                 ...chartBase.tooltip,
                 formatter: (params) => {
@@ -1032,11 +1059,11 @@ import { getFilters, setFilters } from './js/filters.js';
                     return `${weekdayLabels[w] || '?'} ${h} ${dashboardMessage('label.hour')}<br/>${dashboardMessage('label.play')} ${dashboardPlays(c)}`;
                 },
             },
-            grid: { left: 48, right: 16, top: 16, bottom: 56 },
+            grid: { left: 48, right: 16, top: 16, bottom: 80 },
             xAxis: {
                 type: 'category',
                 data: HOUR_LABELS,
-                splitArea: { show: true },
+                splitArea: { show: false },
                 axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
                 axisLabel: { color: '#64748b', fontSize: 11 },
                 axisTick: { show: false },
@@ -1044,7 +1071,8 @@ import { getFilters, setFilters } from './js/filters.js';
             yAxis: {
                 type: 'category',
                 data: weekdayLabels,
-                splitArea: { show: true },
+                inverse: true,
+                splitArea: { show: false },
                 axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
                 axisLabel: { color: '#64748b', fontSize: 11 },
                 axisTick: { show: false },
@@ -1056,17 +1084,19 @@ import { getFilters, setFilters } from './js/filters.js';
                 orient: 'horizontal',
                 left: 'center',
                 bottom: 0,
+                itemWidth: 12,
                 textStyle: { color: '#64748b', fontSize: 11 },
-                inRange: { color: ['#1a1a26', '#7c5fd4', '#c4b5fd'] },
+                inRange: { color: heatmapRamp() },
             },
             series: [{
                 name: dashboardMessage('metric.plays'),
                 type: 'heatmap',
                 data: points,
                 label: { show: false },
-                emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } },
+                itemStyle: { borderRadius: 3, borderWidth: 2, borderColor: 'transparent' },
+                emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.4)' } },
             }],
-        }, true);
+        });
         const peak = rows.reduce((best, item) => (
             Number(item.count) > Number(best.count) ? item : best
         ), rows[0]);
@@ -1114,14 +1144,19 @@ import { getFilters, setFilters } from './js/filters.js';
             rankCell.setAttribute('aria-hidden', 'true');
             rankCell.textContent = String(idx + 1);
 
-            const cover = panel === 'albums'
-                ? createCoverImage({ sourceId, id: item.album_id, className: 'ranking-cover' })
-                : null;
-
             const labelCell = document.createElement('div');
             labelCell.className = 'ranking-label';
             labelCell.textContent = labelValue || '-';
             labelCell.title = labelValue;
+
+            const cover = panel === 'albums'
+                ? createCoverImage({
+                    sourceId,
+                    id: item.album_id,
+                    className: 'ranking-cover',
+                    onError: (image) => image.replaceWith(createRankingFallback(labelValue)),
+                })
+                : null;
 
             const barCell = document.createElement('div');
             barCell.className = 'ranking-bar-cell';
@@ -1151,6 +1186,7 @@ import { getFilters, setFilters } from './js/filters.js';
 
             row.appendChild(rankCell);
             if (cover) row.appendChild(cover);
+            else row.appendChild(createRankingFallback(labelValue));
             row.appendChild(labelCell);
             row.appendChild(barCell);
             row.appendChild(countCell);

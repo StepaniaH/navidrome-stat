@@ -81,10 +81,11 @@ def test_top_render_wrappers_delegate_to_helper(source, fn_name, label_key):
     assert f"labelKey: '{label_key}'" in block
 
 
-def test_ranking_row_grid_template_reserves_label_and_bar_columns(source):
+def test_ranking_row_grid_template_reserves_tile_label_and_bar_columns(source):
     css = source[source.index(".ranking-row {") : source.index(".ranking-row +")]
     assert "grid-template-columns:" in css
-    assert "minmax(0, 42%)" in css
+    assert "1.75rem 2rem" in css
+    assert "minmax(0, 38%)" in css
     assert "minmax(0, 1fr)" in css
     assert "auto" in css
 
@@ -93,6 +94,15 @@ def test_ranking_table_is_not_locked_to_chart_height(source):
     css = source[source.index(".chart-container.ranking-table") : source.index(".pulse-dot")]
     assert "height: auto" in css
     assert "min-height" in css
+
+
+def test_ranking_rows_always_reserve_a_cover_slot(source):
+    block = _function_block(source, "renderRankingList")
+    assert "createRankingFallback(" in block
+    assert "else row.appendChild(createRankingFallback(labelValue))" in block
+    fallback = _function_block(source, "createRankingFallback")
+    assert "ranking-cover-fallback" in fallback
+    assert "onError: (image) => image.replaceWith(createRankingFallback(labelValue))" in block
 
 
 def test_ranking_bar_gradients_preserved(source):

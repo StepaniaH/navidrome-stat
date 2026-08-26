@@ -370,6 +370,11 @@ def test_heatmap_render_function_exists(source):
     assert "Number(item.weekday)" in block
     assert "Number(item.count)" in block
     assert "weekdayHourChart.setOption" in block
+    # The color slider sits below the hour axis without colliding with labels.
+    assert "bottom: 80" in block
+    assert "heatmapRamp()" in block
+    assert "inverse: true" in block
+    assert "borderRadius: 3, borderWidth: 2, borderColor: 'transparent'" in block
     assert "beginArrayPanel" in block
     # No raw HTML injection in the heatmap renderer.
     assert "innerHTML" not in block

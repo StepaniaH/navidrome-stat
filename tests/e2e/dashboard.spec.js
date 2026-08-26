@@ -116,6 +116,7 @@ test("renders synthetic statistics without executing metadata", async ({ page })
   );
   await expect(page.locator("#topArtistsChart")).toHaveAttribute("role", "list");
   await expect(page.locator("#topArtistsChart [role=listitem]")).toHaveCount(1);
+  await expect(page.locator("#topArtistsChart .ranking-cover-fallback").first()).toHaveText("S");
   expect(await page.evaluate(() => window.__injected)).toBeUndefined();
   await page.locator("#statsSourceButton").click();
   await expect(page.locator(".stats-source-option")).toHaveCount(2);
