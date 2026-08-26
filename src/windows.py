@@ -142,6 +142,21 @@ def _source_predicate(
     )
 
 
+def _username_predicate(
+    predicate: str,
+    params: list,
+    username: str | None,
+    *,
+    column: str = "username",
+) -> tuple[str, list]:
+    if username is None:
+        return predicate, params
+    return (
+        f"({predicate}) AND {column} = ?",
+        [*params, username],
+    )
+
+
 def _played_at_to_local_datetime(
     played_at: str,
     tz: ZoneInfo,

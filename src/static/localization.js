@@ -141,17 +141,3 @@ export function createI18n({
         translate,
     });
 }
-
-// Classic scripts such as theme-bootstrap still read this global.
-if (typeof window !== 'undefined') {
-    window.NavidromeI18n = Object.freeze({
-        DEFAULT_LOCALE,
-        LANGUAGE_STORAGE_KEY,
-        createI18n,
-        interpolate,
-        normalizeLocale,
-        readPreference,
-        removePreference,
-        writePreference,
-    });
-}

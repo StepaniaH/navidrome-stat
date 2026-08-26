@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from src.dashboard_cache import dashboard_snapshot_cache
 from src.database import (
     _previous_window_bounds,
     _window_bounds,
@@ -15,12 +16,14 @@ from src.database import (
     get_hourly_stats,
     get_playback_history,
     get_player_stats,
+    get_short_play_stats,
     get_summary,
     get_time_bucket_stats,
     get_top_albums,
     get_top_artists,
     get_transcoding_stats,
     init_db,
+    save_play_attempt,
     save_play_session,
     utc_instant,
 )
@@ -134,6 +137,69 @@ def test_get_summary_zero_previous_window_yields_null_pct(db_path):
     assert summary["previous_total_listen_sec"] == 0
     assert summary["plays_change_pct"] is None
     assert summary["listen_change_pct"] is None
+
+
+def test_get_summary_filters_by_username(db_path):
+    asyncio.run(init_db(db_path))
+    now = _now()
+    ts = _iso(now - timedelta(days=1))
+    asyncio.run(
+        save_play_session(
+            _session(ts, track_id="a1", username="alice", duration_sec=30),
+            db_path=db_path,
+        )
+    )
+    asyncio.run(
+        save_play_session(
+            _session(ts, track_id="b1", username="bob", duration_sec=90),
+            db_path=db_path,
+        )
+    )
+
+    summary = asyncio.run(get_summary(days=7, username="alice", db_path=db_path))
+    assert summary["total_plays"] == 1
+    assert summary["total_listen_sec"] == 30
+
+
+def test_get_short_play_stats_filters_username_across_tables(db_path):
+    asyncio.run(init_db(db_path))
+    now = _now()
+    ts = _iso(now - timedelta(days=1))
+    for username in ("alice", "bob"):
+        asyncio.run(
+            save_play_attempt(
+                {
+                    "last_seen_at": ts,
+                    "username": username,
+                    "client_name": "Web",
+                    "track_id": f"s-{username}",
+                    "title": "Skipped",
+                    "artist": "Artist",
+                    "album": "Album",
+                    "is_transcoding": 0,
+                    "duration_sec": 5,
+                    "outcome": "short_play",
+                },
+                db_path=db_path,
+            )
+        )
+    asyncio.run(
+        save_play_session(
+            _session(ts, track_id="a1", username="alice", duration_sec=40),
+            db_path=db_path,
+        )
+    )
+    asyncio.run(
+        save_play_session(
+            _session(ts, track_id="b1", username="bob", duration_sec=40),
+            db_path=db_path,
+        )
+    )
+
+    stats = asyncio.run(get_short_play_stats(days=7, username="alice", db_path=db_path))
+    assert stats["short_count"] == 1
+    assert stats["counted_count"] == 1
+    assert stats["attempt_count"] == 2
 
 
 def test_previous_window_uses_local_calendar_days_across_dst(monkeypatch, db_path):
@@ -547,3 +613,173 @@ async def test_historical_endpoints_reject_invalid_timezone(endpoint):
         response = await ac.get(endpoint)
     assert response.status_code == 422, endpoint
     assert response.json()["detail"] == "timezone must be a valid IANA timezone name"
+
+
+def _username_mock_return(target):
+    if target == "get_summary":
+        return {
+            "total_plays": 0,
+            "total_listen_sec": 0,
+            "unique_tracks": 0,
+            "client_count": 0,
+            "active_days": 0,
+            "average_daily_plays": 0.0,
+            "average_daily_listen_sec": 0.0,
+            "previous_total_plays": None,
+            "previous_total_listen_sec": None,
+            "plays_change_pct": None,
+            "listen_change_pct": None,
+            "window_days": None,
+        }
+    if target == "get_short_play_stats":
+        return {
+            "short_count": 0,
+            "counted_count": 0,
+            "attempt_count": 0,
+            "short_listen_sec": 0,
+            "short_play_rate_pct": 0.0,
+        }
+    return []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "endpoint,target,mock_path,kwargs",
+    [
+        (
+            "/api/stats/summary?days=30&username=alice",
+            "get_summary",
+            "src.routes.stats.get_summary",
+            {"days": 30, "timezone_name": "UTC", "username": "alice"},
+        ),
+        (
+            "/api/stats/players?days=30&username=alice",
+            "get_player_stats",
+            "src.routes.stats.get_player_stats",
+            {"days": 30, "timezone_name": "UTC", "username": "alice"},
+        ),
+        (
+            "/api/stats/transcoding?days=30&username=alice",
+            "get_transcoding_stats",
+            "src.routes.stats.get_transcoding_stats",
+            {"days": 30, "timezone_name": "UTC", "username": "alice"},
+        ),
+        (
+            "/api/stats/short-plays?days=30&username=alice",
+            "get_short_play_stats",
+            "src.routes.stats.get_short_play_stats",
+            {"days": 30, "timezone_name": "UTC", "username": "alice"},
+        ),
+        (
+            "/api/stats/hourly?days=30&username=alice",
+            "get_hourly_stats",
+            "src.routes.stats.get_hourly_stats",
+            {"days": 30, "timezone_name": "UTC", "username": "alice"},
+        ),
+        (
+            "/api/stats/daily?days=30&username=alice",
+            "get_daily_stats",
+            "src.routes.stats.get_daily_stats",
+            {"days": 30, "timezone_name": "UTC", "username": "alice"},
+        ),
+        (
+            "/api/stats/heatmap?days=30&username=alice",
+            "get_weekday_hour_stats",
+            "src.routes.stats.get_weekday_hour_stats",
+            {"days": 30, "timezone_name": "UTC", "username": "alice"},
+        ),
+        (
+            "/api/stats/history?limit=10&days=30&username=alice",
+            "get_playback_history",
+            "src.routes.stats.get_playback_history",
+            {"limit": 10, "days": 30, "timezone_name": "UTC", "username": "alice"},
+        ),
+        (
+            "/api/stats/top-artists?limit=10&days=30&username=alice",
+            "get_top_artists",
+            "src.routes.stats.get_top_artists",
+            {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays", "username": "alice"},
+        ),
+        (
+            "/api/stats/top-albums?limit=10&days=30&username=alice",
+            "get_top_albums",
+            "src.routes.stats.get_top_albums",
+            {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays", "username": "alice"},
+        ),
+    ],
+)
+async def test_historical_endpoints_propagate_username(endpoint, target, mock_path, kwargs):
+    mock = AsyncMock()
+    mock.return_value = _username_mock_return(target)
+    with patch(mock_path, mock):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.get(endpoint)
+    assert response.status_code == 200, response.text
+    mock.assert_awaited_once_with(**kwargs)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_propagates_username():
+    await dashboard_snapshot_cache.invalidate()
+    build = AsyncMock(return_value=_dashboard_snapshot())
+    with patch("src.stats_service.StatsService._build_snapshot", build):
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.get("/api/stats/dashboard?days=30&username=bob")
+    assert response.status_code == 200
+    build.assert_awaited_once_with(
+        days=30,
+        timezone_name="UTC",
+        metric="plays",
+        source_id=None,
+        start_date=None,
+        end_date=None,
+        username="bob",
+    )
+
+
+def _dashboard_snapshot():
+    return {
+        "summary": {
+            "total_plays": 1,
+            "total_listen_sec": 120,
+            "unique_tracks": 1,
+            "client_count": 1,
+        },
+        "players": [],
+        "transcoding": [],
+        "hourly": [],
+        "daily": [],
+        "heatmap": [],
+        "history": [],
+        "servers": [],
+        "available_servers": [],
+        "top_artists": [],
+        "top_albums": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_users_endpoint_requires_token_when_auth_enabled(isolated_db):
+    await init_db(isolated_db)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+            response = await ac.get("/api/stats/users")
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Unauthorized"
+
+
+@pytest.mark.asyncio
+async def test_users_endpoint_returns_distinct_usernames_nocase(isolated_db):
+    await init_db(isolated_db)
+    ts = _iso(_now() - timedelta(days=1))
+    await save_play_session(_session(ts, track_id="u1", username="bob"), isolated_db)
+    await save_play_session(_session(ts, track_id="u2", username="Alice"), isolated_db)
+    await save_play_session(_session(ts, track_id="u3", username="Alice"), isolated_db)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/stats/users")
+    assert response.status_code == 200
+    assert response.json() == {"users": ["Alice", "bob"]}

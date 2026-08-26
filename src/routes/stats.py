@@ -21,6 +21,7 @@ from src.database import (
     get_top_artists,
     get_transcoding_stats,
     get_weekday_hour_stats,
+    list_usernames,
     resolve_timezone,
 )
 from src.schemas import (
@@ -55,6 +56,7 @@ from src.schemas import (
     TopAlbumItem,
     TopArtistItem,
     TranscodingStat,
+    UsersResponse,
     WeekdayHourStat,
 )
 from src.stats_service import stats_service
@@ -104,6 +106,19 @@ def _source_kwargs(source_id: str | None) -> dict:
     return {"source_id": source_id} if source_id else {}
 
 
+def _user_kwargs(username: str | None) -> dict:
+    return {"username": username} if username else {}
+
+
+@router.get("/api/stats/users", response_model=UsersResponse)
+async def api_stat_users():
+    """Return usernames present in listening history for filtering."""
+    async def fetch() -> UsersResponse:
+        return UsersResponse(users=await list_usernames())
+
+    return await _query_stats(fetch)
+
+
 @router.get("/api/coverart")
 async def api_cover_art(
     source_id: str = Query(min_length=1, max_length=128),
@@ -130,6 +145,7 @@ async def api_dashboard_snapshot(
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return one cached historical payload; now-playing remains real-time."""
     window = _validate_stats_days(days)
@@ -159,6 +175,7 @@ async def api_dashboard_snapshot(
             source_id=source_id,
             start_date=start_date,
             end_date=end_date,
+            username=username,
         )
     )
 
@@ -168,13 +185,17 @@ async def api_summary_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return aggregate listening totals and period comparisons."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
         lambda: get_summary(
-            days=window, timezone_name=tz, **_source_kwargs(source_id)
+            days=window,
+            timezone_name=tz,
+            **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 
@@ -184,13 +205,17 @@ async def api_player_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for player usage distribution over the selected window."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
         lambda: get_player_stats(
-            days=window, timezone_name=tz, **_source_kwargs(source_id)
+            days=window,
+            timezone_name=tz,
+            **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 
@@ -200,13 +225,17 @@ async def api_transcoding_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for transcoding ratio over the selected window."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
         lambda: get_transcoding_stats(
-            days=window, timezone_name=tz, **_source_kwargs(source_id)
+            days=window,
+            timezone_name=tz,
+            **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 
@@ -216,13 +245,17 @@ async def api_short_play_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return short-play rate; it does not claim intentional skips."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
         lambda: get_short_play_stats(
-            days=window, timezone_name=tz, **_source_kwargs(source_id)
+            days=window,
+            timezone_name=tz,
+            **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 
@@ -260,13 +293,17 @@ async def api_hourly_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return play counts grouped by local hour."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
         lambda: get_hourly_stats(
-            days=window, timezone_name=tz, **_source_kwargs(source_id)
+            days=window,
+            timezone_name=tz,
+            **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 
@@ -276,13 +313,17 @@ async def api_weekday_hour_stats(
     days: int = Query(default=STATS_DAYS_DEFAULT, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return a zero-filled 7-by-24 local-time listening heatmap."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
         lambda: get_weekday_hour_stats(
-            days=window, timezone_name=tz, **_source_kwargs(source_id)
+            days=window,
+            timezone_name=tz,
+            **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 
@@ -296,13 +337,17 @@ async def api_daily_stats(
     ),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return zero-filled play counts grouped by local calendar day."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
         lambda: get_daily_stats(
-            days=window, timezone_name=tz, **_source_kwargs(source_id)
+            days=window,
+            timezone_name=tz,
+            **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 
@@ -318,6 +363,7 @@ async def api_top_artists(
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     metric: str = Query(default=RANKING_METRIC_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return top artists ranked by plays or listening time."""
     window = _validate_stats_days(days)
@@ -330,6 +376,7 @@ async def api_top_artists(
             timezone_name=tz,
             metric=m,
             **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 
@@ -345,6 +392,7 @@ async def api_top_albums(
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     metric: str = Query(default=RANKING_METRIC_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return top albums ranked by plays or listening time."""
     window = _validate_stats_days(days)
@@ -357,6 +405,7 @@ async def api_top_albums(
             timezone_name=tz,
             metric=m,
             **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 
@@ -406,6 +455,7 @@ async def api_playback_history(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for recent playback history over the selected window."""
     window = _validate_stats_days(days)
@@ -416,6 +466,7 @@ async def api_playback_history(
             days=window,
             timezone_name=tz,
             **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 

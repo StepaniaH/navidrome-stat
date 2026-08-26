@@ -7,12 +7,13 @@
 
 import { validateCustomRange } from './format.js';
 
-const KEYS = ['days', 'timezone', 'metric', 'sourceId', 'startDate', 'endDate'];
+const KEYS = ['days', 'timezone', 'metric', 'sourceId', 'username', 'startDate', 'endDate'];
 const PARAM_ALIASES = {
     days: 'days',
     timezone: 'timezone',
     metric: 'metric',
     sourceId: 'source_id',
+    username: 'username',
     startDate: 'start_date',
     endDate: 'end_date',
 };
@@ -22,6 +23,7 @@ const DEFAULTS = Object.freeze({
     timezone: 'browser',
     metric: 'plays',
     sourceId: '',
+    username: '',
     startDate: '',
     endDate: '',
 });
@@ -47,6 +49,9 @@ function sanitize(candidate) {
     }
     if (typeof candidate.sourceId === 'string' && candidate.sourceId.length <= 128) {
         filters.sourceId = candidate.sourceId;
+    }
+    if (typeof candidate.username === 'string' && candidate.username.length <= 128) {
+        filters.username = candidate.username;
     }
     if (candidate.startDate && candidate.endDate) {
         const range = validateCustomRange(candidate.startDate, candidate.endDate);

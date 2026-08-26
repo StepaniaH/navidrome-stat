@@ -13,9 +13,10 @@ const REVIEW = {
   monthly: Array.from({ length: 12 }, (_, month) => ({
     month: `2026-${String(month + 1).padStart(2, "0")}`,
     count: month === 2 ? 120 : 30,
+    total_listen_sec: month === 2 ? 40000 : 9000,
   })),
-  hourly: Array.from({ length: 24 }, (_, hour) => ({ hour, count: hour === 9 ? 60 : 10 })),
-  weekday: Array.from({ length: 7 }, (_, weekday) => ({ weekday, count: weekday === 2 ? 90 : 40 })),
+  hourly: Array.from({ length: 24 }, (_, hour) => ({ hour, count: hour === 9 ? 60 : 10, total_listen_sec: hour === 9 ? 18000 : 3000 })),
+  weekday: Array.from({ length: 7 }, (_, weekday) => ({ weekday, count: weekday === 2 ? 90 : 40, total_listen_sec: weekday === 2 ? 26000 : 12000 })),
   top_artists: [{ name: "Synthetic Artist", count: 90, total_listen_sec: 18000, value: 18000 }],
   top_albums: [{ name: "Synthetic Album", count: 60, total_listen_sec: 12000, value: 12000, album_id: "al-1", source_id: "src-1" }],
   top_tracks: [{ name: "Synthetic Song", count: 40, total_listen_sec: 8000, value: 8000, track_id: "tr-1", source_id: "src-1" }],
@@ -71,4 +72,27 @@ test("review page switches years through the selector", async ({ page }) => {
   await page.locator("#reviewYearButton").click();
   await page.getByRole("option", { name: "2025" }).click();
   await expect(page.locator("#reviewSubtitle")).toContainText("2025");
+});
+
+test("review distribution charts switch between plays and listening time", async ({ page }) => {
+  await page.goto("/review");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const chart = echarts.getInstanceByDom(document.getElementById("reviewMonthlyChart"));
+        return Boolean(chart && chart.getOption().series[0].data.length);
+      }),
+    )
+    .toBe(true);
+  const listenButton = page.locator('#reviewMetricControl [data-review-metric="listen_time"]');
+  await listenButton.click();
+  await expect(listenButton).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const chart = echarts.getInstanceByDom(document.getElementById("reviewMonthlyChart"));
+        return chart.getOption().series[0].data[2];
+      }),
+    )
+    .toBe(40000);
 });

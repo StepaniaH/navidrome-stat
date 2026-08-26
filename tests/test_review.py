@@ -84,6 +84,19 @@ async def test_review_totals_and_buckets(seeded_db, isolated_db):
 
 
 @pytest.mark.asyncio
+async def test_review_buckets_carry_listen_seconds(seeded_db, isolated_db):
+    year = seeded_db
+    review = await get_review_summary(year, "UTC", db_path=isolated_db)
+    hourly = {entry["hour"]: entry["total_listen_sec"] for entry in review["hourly"]}
+    assert hourly[8] == 600
+    assert hourly[22] == 200
+    month_key = f"{year:04d}-{datetime.now(timezone.utc).month:02d}"
+    monthly = {entry["month"]: entry["total_listen_sec"] for entry in review["monthly"]}
+    assert monthly[month_key] == 800
+    assert sum(entry["total_listen_sec"] for entry in review["weekday"]) == 800
+
+
+@pytest.mark.asyncio
 async def test_review_top_lists(seeded_db, isolated_db):
     year = seeded_db
     review = await get_review_summary(year, "UTC", db_path=isolated_db)

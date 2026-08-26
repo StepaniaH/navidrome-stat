@@ -468,6 +468,7 @@
         }
         .filter-trigger-icon.window { color: var(--app-accent); }
         .filter-trigger-icon.source { color: var(--app-success); }
+        #statsUserControl .filter-trigger-icon { color: var(--app-muted); }
         .filter-trigger-copy { min-width: 0; flex: 1 1 auto; }
         .filter-trigger-value {
             display: block;
@@ -840,6 +841,7 @@
         }
 
         .review-subtitle { color: var(--app-muted); font-size: 0.9rem; margin: 0.25rem 0 1rem; }
+        .review-metric-row { display: flex; justify-content: flex-end; margin-bottom: 0.75rem; }
 
         .review-hero {
             display: grid;

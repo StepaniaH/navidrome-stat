@@ -594,6 +594,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         const servers = state.servers;
         list.replaceChildren();
         document.getElementById('serverEmpty').hidden = servers.length !== 0;
+        document.getElementById('privacyFirstRun').hidden = servers.length !== 0;
         servers.forEach((server) => {
             const row = document.createElement('div');
             row.className = 'server-row';

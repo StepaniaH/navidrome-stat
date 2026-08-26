@@ -307,7 +307,7 @@ def test_timezone_state_and_resolver_exist(source):
 
 
 def test_dashboard_reads_shared_timezone_preference(source):
-    assert "window.NavidromeI18n.readPreference('navidrome-timezone')" in source
+    assert "readPreference('navidrome-timezone')" in source
     assert "localStorage.setItem('navidrome-timezone', next)" not in source
     format_js = (DASHBOARD_JS.parent / "js" / "format.js").read_text(encoding="utf-8")
     assert "params.set('timezone', filters.timezone);" in format_js
@@ -316,10 +316,10 @@ def test_dashboard_reads_shared_timezone_preference(source):
 def test_dashboard_has_local_i18n_and_theme_palette(source):
     assert '<html lang="en">' in source
     assert "pageMessages('dashboard')" in source
-    assert "const dashboardI18n = window.NavidromeI18n.createI18n" in source
+    assert "const dashboardI18n = createI18n({" in source
     assert "function translateDashboard()" in source
     assert "dashboardI18n.translate()" in source
-    assert "window.NavidromeI18n.readPreference('navidrome-language', 'en')" in source
+    assert "readPreference('navidrome-language', 'en')" in source
     charts_src = (DASHBOARD_JS.parent / "js" / "charts.js").read_text(encoding="utf-8")
     assert "createThemeTokens" in charts_src
     assert "navidrome-theme" in DASHBOARD_JS.read_text(encoding="utf-8")
@@ -511,6 +511,26 @@ def test_filter_popovers_have_accessible_keyboard_behavior(source):
     assert 'role="option"' in source
     assert "createListbox({" in source
     assert "attachPopover({" in source
+
+
+def test_user_filter_shares_the_source_filter_pipeline(source):
+    assert 'id="statsUserControl"' in source
+    assert 'id="statsUserButton"' in source
+    assert 'id="statsUserMenu"' in source
+    assert 'data-i18n="user.all"' in source
+    assert 'aria-controls="statsUserMenu"' in source
+    block = _function_block(source, "renderUserOptions")
+    assert "dataset.username" in block
+    assert "dashboardMessage('user.all')" in block
+    wiring = _function_block(source, "fetchUserOptions")
+    assert "/api/stats/users" in wiring
+    assert "knownUsers" in source
+    assert "statsUserButton" in source
+    assert "selectedUsername = name;" in source
+    assert "username: selectedUsername" in source
+    fetch_block = _function_block(source, "fetchStats")
+    assert "username: requestState.username" in fetch_block
+    assert "item.username === requestState.username" in source
 
 
 def test_panel_state_helper_covers_loading_empty_error(source):

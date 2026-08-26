@@ -304,6 +304,10 @@ class ServerOption(BaseModel):
     display_name: str
 
 
+class UsersResponse(BaseModel):
+    users: list[str]
+
+
 class DashboardSnapshot(BaseModel):
     summary: SummaryStat
     players: list[PlayerStat]
@@ -330,16 +334,19 @@ class AboutResponse(BaseModel):
 class ReviewMonthBucket(BaseModel):
     month: str
     count: int
+    total_listen_sec: int = 0
 
 
 class ReviewHourBucket(BaseModel):
     hour: int
     count: int
+    total_listen_sec: int = 0
 
 
 class ReviewWeekdayBucket(BaseModel):
     weekday: int
     count: int
+    total_listen_sec: int = 0
 
 
 class ReviewTopItem(BaseModel):

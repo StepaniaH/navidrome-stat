@@ -38,3 +38,17 @@ def test_review_covers_use_per_item_source_with_letter_fallback():
 def test_review_charts_resize_after_render():
     js = _read(REVIEW_JS)
     assert "resizeCharts()" in js
+
+
+def test_review_distribution_charts_support_metric_toggle():
+    js = _read(REVIEW_JS)
+    html = _read(ROOT / "src" / "static" / "review.html")
+    assert 'id="reviewMetricControl"' in html
+    assert 'data-review-metric="plays"' in html
+    assert 'data-review-metric="listen_time"' in html
+    assert "function setReviewMetric" in js
+    assert "metricValue(entry)" in js
+    assert "entry.total_listen_sec" in js
+    toggle = js[js.index("function setReviewMetric") :]
+    assert "aria-pressed" in toggle
+    assert "renderCharts(lastReview)" in js

@@ -4,6 +4,11 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Added
+
+- Filter the dashboard by user alongside the server filter; the selection is shareable through the URL and also narrows the now-playing list.
+- Year-in-review distribution charts can switch between play counts and listening time.
+
 ## [0.8.2] - 2026-08-26
 
 ### Changed

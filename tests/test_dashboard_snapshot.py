@@ -94,6 +94,7 @@ async def test_dashboard_custom_range_is_validated_and_forwarded():
         source_id=None,
         start_date=date(2026, 1, 2),
         end_date=date(2026, 1, 31),
+        username=None,
     )
 
 
@@ -121,6 +122,22 @@ async def test_dashboard_rejects_invalid_custom_ranges(params, detail):
 
     assert response.status_code == 422
     assert detail in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_username_changes_cache_key():
+    await dashboard_snapshot_cache.invalidate()
+    build = AsyncMock(return_value=_snapshot())
+    with patch("src.stats_service.StatsService._build_snapshot", build):
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            await client.get("/api/stats/dashboard?days=30&username=alice")
+            await client.get("/api/stats/dashboard?days=30&username=alice")
+            await client.get("/api/stats/dashboard?days=30&username=bob")
+
+    assert build.await_count == 2
 
 
 @pytest.mark.asyncio

@@ -33,6 +33,7 @@ export function buildStatsQuery(filters) {
     params.set('timezone', filters.timezone);
     params.set('metric', filters.metric);
     if (filters.sourceId) params.set('source_id', filters.sourceId);
+    if (filters.username) params.set('username', filters.username);
     if (filters.startDate && filters.endDate) {
         params.set('start_date', filters.startDate);
         params.set('end_date', filters.endDate);

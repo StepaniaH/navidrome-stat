@@ -174,8 +174,9 @@ class StatsService:
         source_id: str | None,
         start_date: date | None = None,
         end_date: date | None = None,
+        username: str | None = None,
     ) -> dict:
-        key = (days, timezone_name, metric, source_id, start_date, end_date)
+        key = (days, timezone_name, metric, source_id, start_date, end_date, username)
 
         async def build() -> dict:
             return await self._build_snapshot(
@@ -185,6 +186,7 @@ class StatsService:
                 source_id=source_id,
                 start_date=start_date,
                 end_date=end_date,
+                username=username,
             )
 
         return await self._cache.get_or_create(key, build)
@@ -243,6 +245,7 @@ class StatsService:
         source_id: str | None,
         start_date: date | None,
         end_date: date | None,
+        username: str | None = None,
     ) -> dict:
         window_kwargs = {"start_date": start_date, "end_date": end_date}
         (
@@ -260,24 +263,28 @@ class StatsService:
                 days=days,
                 timezone_name=timezone_name,
                 **({"source_id": source_id} if source_id else {}),
+                **({"username": username} if username else {}),
                 **window_kwargs,
             ),
             get_player_stats(
                 days=days,
                 timezone_name=timezone_name,
                 **({"source_id": source_id} if source_id else {}),
+                **({"username": username} if username else {}),
                 **window_kwargs,
             ),
             get_transcoding_stats(
                 days=days,
                 timezone_name=timezone_name,
                 **({"source_id": source_id} if source_id else {}),
+                **({"username": username} if username else {}),
                 **window_kwargs,
             ),
             get_time_bucket_stats(
                 days=days,
                 timezone_name=timezone_name,
                 **({"source_id": source_id} if source_id else {}),
+                **({"username": username} if username else {}),
                 **window_kwargs,
             ),
             get_playback_history(
@@ -285,12 +292,14 @@ class StatsService:
                 days=days,
                 timezone_name=timezone_name,
                 **({"source_id": source_id} if source_id else {}),
+                **({"username": username} if username else {}),
                 **window_kwargs,
             ),
             get_server_stats(
                 days=days,
                 timezone_name=timezone_name,
                 source_id=source_id,
+                username=username,
                 **window_kwargs,
             ),
             list_servers(),
@@ -300,6 +309,7 @@ class StatsService:
                 timezone_name=timezone_name,
                 metric=metric,
                 **({"source_id": source_id} if source_id else {}),
+                **({"username": username} if username else {}),
                 **window_kwargs,
             ),
             get_top_albums(
@@ -308,6 +318,7 @@ class StatsService:
                 timezone_name=timezone_name,
                 metric=metric,
                 **({"source_id": source_id} if source_id else {}),
+                **({"username": username} if username else {}),
                 **window_kwargs,
             ),
         )

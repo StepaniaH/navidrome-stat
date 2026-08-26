@@ -97,6 +97,17 @@
                         </button>
                         <div id="statsSourceMenu" class="filter-popover hidden max-h-64 overflow-y-auto" role="listbox" aria-label="服务器" data-i18n-attr="aria-label:aria.sourceListbox"></div>
                     </div>
+                    <div class="filter-control user" id="statsUserControl">
+                        <button id="statsUserButton" type="button" class="filter-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="statsUserMenu">
+                            <svg class="filter-trigger-icon" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                            <span class="filter-trigger-copy">
+                                <span class="visually-hidden" data-i18n="dashboard.userFilter">用户</span>
+                                <span id="statsUserButtonLabel" class="filter-trigger-value" data-i18n="user.all">全部用户</span>
+                            </span>
+                            <svg class="filter-trigger-chevron" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div id="statsUserMenu" class="filter-popover hidden max-h-64 overflow-y-auto" role="listbox" aria-label="用户" data-i18n-attr="aria-label:aria.userListbox"></div>
+                    </div>
                 </div>
                 <div class="dashboard-meta">
                     <div id="statusBadge" class="dashboard-live" role="status" aria-live="polite">

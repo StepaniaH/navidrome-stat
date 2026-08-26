@@ -115,6 +115,10 @@ def test_local_preferences_include_motion_and_reset_without_server_writes():
     ):
         assert key in script
     assert 'id="motionToggle"' in html
+    assert 'id="privacyFirstRun"' in html
+    assert 'data-i18n="privacy.firstRunNote"' in html
+    script_block = script[script.index("function renderServers()") :]
+    assert "privacyFirstRun" in script_block
     assert 'role="switch"' in html
     assert 'id="resetPreferencesBtn"' in html
     assert "Object.values(preferenceKeys).forEach(removePreference)" in script

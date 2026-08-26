@@ -34,6 +34,7 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 - The recent-plays table has configurable column visibility, saved per browser.
 - Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
 - Supports per-server filtering, connection management, retention settings, and per-user JSON export, import, and deletion.
+- Filter the dashboard by user as well as server; the year-in-review charts switch between play counts and listening time.
 - Offers optional token authentication for dashboard data and APIs.
 - Serves pinned frontend assets locally and runs as a non-root user in the published container.
 

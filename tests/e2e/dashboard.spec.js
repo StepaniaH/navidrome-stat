@@ -645,6 +645,35 @@ test("dashboard filters persist across a reload and are shareable", async ({ pag
   await expect(page.locator("#statsWindowButton")).toContainText("Last 7 days");
 });
 
+test("the user filter narrows stats and now playing, and persists", async ({ page }) => {
+  await page.route("**/api/stats/users", (route) =>
+    route.fulfill({ json: { users: ["listener", "synthetic-user"] } }),
+  );
+  await page.goto("/");
+  await page.waitForFunction(() => {
+    const chart = echarts.getInstanceByDom(document.getElementById("hourlyChart"));
+    return Boolean(chart && chart.getOption().series[0]?.data?.length);
+  });
+  await expect(page.locator("#nowPlayingList .now-playing-item")).toHaveCount(1);
+
+  const snapshotRequest = page.waitForRequest((request) =>
+    request.url().includes("/api/stats/dashboard"),
+  );
+  await page.locator("#statsUserButton").click();
+  await page.locator('.stats-user-option[data-username="listener"]').click();
+  expect((await snapshotRequest).url()).toContain("username=listener");
+  await expect(page).toHaveURL(/username=listener/);
+  await expect(page.locator("#nowPlayingEmpty")).toBeVisible();
+  await expect(page.locator("#statsUserButton")).toContainText("listener");
+
+  await page.reload();
+  await page.waitForFunction(() => {
+    const chart = echarts.getInstanceByDom(document.getElementById("hourlyChart"));
+    return Boolean(chart && chart.getOption().series[0]?.data?.length);
+  });
+  await expect(page.locator("#statsUserButton")).toContainText("listener");
+});
+
 test("history and album rankings request cover art through the proxy", async ({ page }) => {
   await page.route("**/api/coverart*", (route) =>
     route.fulfill({

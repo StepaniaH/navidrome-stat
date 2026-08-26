@@ -24,6 +24,7 @@ test("defaults when URL has no filter params", () => {
     timezone: "browser",
     metric: "plays",
     sourceId: "",
+    username: "",
     startDate: "",
     endDate: "",
   });

@@ -42,6 +42,7 @@ from src.stats_queries import (  # noqa: F401
     get_top_artists,
     get_transcoding_stats,
     get_weekday_hour_stats,
+    list_usernames,
 )
 from src.windows import (  # noqa: F401
     TIMEZONE_DEFAULT,
@@ -52,6 +53,7 @@ from src.windows import (  # noqa: F401
     _previous_window_bounds,
     _previous_window_predicate,
     _source_predicate,
+    _username_predicate,
     _window_bounds,
     _window_predicate,
     resolve_timezone,

@@ -40,7 +40,7 @@ function initCharts() {
     weekdayChart = mount('reviewWeekdayChart');
 }
 
-function barOption(categories, values, { horizontal = false, categoryInterval = 0 } = {}) {
+function barOption(categories, values, { horizontal = false, categoryInterval = 0, seriesName = '', valueFormatter = null } = {}) {
     const categoryAxis = {
         type: 'category',
         data: categories,
@@ -61,13 +61,18 @@ function barOption(categories, values, { horizontal = false, categoryInterval = 
     return {
         backgroundColor: 'transparent',
         textStyle: chartBase().textStyle,
-        tooltip: { ...chartBase().tooltip, trigger: 'axis' },
+        tooltip: {
+            ...chartBase().tooltip,
+            trigger: 'axis',
+            ...(valueFormatter ? { valueFormatter } : {}),
+        },
         grid: { left: 8, right: 20, top: 16, bottom: 8, containLabel: true },
         ...(horizontal
             ? { xAxis: { ...valueAxis, splitNumber: 4 }, yAxis: categoryAxis }
             : { xAxis: categoryAxis, yAxis: valueAxis }),
         series: [{
             type: 'bar',
+            ...(seriesName ? { name: seriesName } : {}),
             data: values,
             itemStyle: { color: chartPalette[0], borderRadius: horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0] },
             barMaxWidth: 26,
@@ -75,20 +80,34 @@ function barOption(categories, values, { horizontal = false, categoryInterval = 
     };
 }
 
+let reviewMetric = 'plays';
+let lastReview = null;
+
+function metricValue(entry) {
+    return reviewMetric === 'listen_time' ? Number(entry.total_listen_sec) || 0 : entry.count;
+}
+
+function metricValueFormatter(value) {
+    return reviewMetric === 'listen_time' ? formatDuration(Number(value) || 0, t) : t('unit.plays', { count: num(value) });
+}
+
 function renderCharts(review) {
+    const seriesName = t(reviewMetric === 'listen_time' ? 'metric.listenTime' : 'metric.plays');
+    const valueFormatter = (value) => metricValueFormatter(value);
     monthlyChart.setOption(barOption(
         review.monthly.map((entry) => entry.month.slice(5)),
-        review.monthly.map((entry) => entry.count),
+        review.monthly.map(metricValue),
+        { seriesName, valueFormatter },
     ));
     hourlyChart.setOption(barOption(
         review.hourly.map((entry) => String(entry.hour)),
-        review.hourly.map((entry) => entry.count),
-        { categoryInterval: 2 },
+        review.hourly.map(metricValue),
+        { categoryInterval: 2, seriesName, valueFormatter },
     ));
     weekdayChart.setOption(barOption(
         review.weekday.map((entry) => t(`weekday.${['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][entry.weekday]}`)),
-        review.weekday.map((entry) => entry.count),
-        { horizontal: true },
+        review.weekday.map(metricValue),
+        { horizontal: true, seriesName, valueFormatter },
     ));
     resizeCharts();
 }
@@ -152,6 +171,7 @@ function setText(id, value) {
 }
 
 function renderReview(review, sourceId) {
+    lastReview = review;
     setText('reviewTotalPlays', num(review.total_plays));
     setText('reviewListenTime', formatDuration(review.total_listen_sec, t));
     setText('reviewActiveDays', num(review.active_days));
@@ -261,7 +281,25 @@ onPreferenceChange('navidrome-theme', (value) => {
 function localize() {
     i18n.setLocale(readPreference('navidrome-language', 'en'), { persist: false, translateDom: false });
     i18n.translate();
+    if (lastReview && lastReview.total_plays > 0) renderCharts(lastReview);
 }
+
+function setReviewMetric(metric) {
+    if (metric !== 'plays' && metric !== 'listen_time') return;
+    reviewMetric = metric;
+    document.querySelectorAll('#reviewMetricControl [data-review-metric]').forEach((btn) => {
+        const active = btn.dataset.reviewMetric === metric;
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        btn.classList.toggle('bg-accent', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('text-slate-400', !active);
+    });
+    if (lastReview && lastReview.total_plays > 0) renderCharts(lastReview);
+}
+
+document.querySelectorAll('#reviewMetricControl [data-review-metric]').forEach((btn) => {
+    btn.addEventListener('click', () => setReviewMetric(btn.dataset.reviewMetric));
+});
 
 async function bootstrap() {
     localize();

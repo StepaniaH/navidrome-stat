@@ -18,6 +18,7 @@ from src.windows import (
     _played_at_to_local_datetime,
     _previous_window_predicate,
     _source_predicate,
+    _username_predicate,
     _window_predicate,
     resolve_timezone,
 )
@@ -27,13 +28,27 @@ def _path(db_path: str | None = None) -> str:
     return config.DATABASE_PATH if db_path is None else db_path
 
 
+async def list_usernames(db_path: str | None = None) -> list[str]:
+    """Return usernames seen in play history, case-insensitively ordered."""
+    path = _path(db_path)
+    async with connect_db(path) as db:
+        async with db.execute(
+            "SELECT DISTINCT username FROM play_history "
+            "WHERE username IS NOT NULL AND username != '' "
+            "ORDER BY username COLLATE NOCASE"
+        ) as cursor:
+            return [row[0] for row in await cursor.fetchall()]
+
+
 async def get_short_play_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
                                db_path: str | None = None,
-                               source_id: str | None = None):
+                               source_id: str | None = None,
+                               username: str | None = None):
     """Return short-play counts and rate; this is not a skip-rate claim."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
     pred, params = _source_predicate(pred, params, source_id)
+    pred, params = _username_predicate(pred, params, username)
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(f"""
@@ -59,11 +74,13 @@ async def get_short_play_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFA
 
 async def get_source_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
                            db_path: str | None = None,
-                           source_id: str | None = None):
+                           source_id: str | None = None,
+                           username: str | None = None):
     """Return play counts grouped by provenance."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
     pred, params = _source_predicate(pred, params, source_id)
+    pred, params = _username_predicate(pred, params, username)
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(f"""
@@ -80,11 +97,13 @@ async def get_source_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
 async def get_server_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
                            source_id: str | None = None, db_path: str | None = None,
                            start_date: date | None = None,
-                           end_date: date | None = None):
+                           end_date: date | None = None,
+                           username: str | None = None):
     """Return play counts grouped by configured server."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     where, params = _source_predicate(pred, params, source_id, column="ph.source_id")
+    where, params = _username_predicate(where, params, username, column="ph.username")
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(f"""
@@ -109,6 +128,7 @@ async def get_player_stats(
     source_id: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    username: str | None = None,
 ):
     """Return client play and listening aggregates for the selected window.
 
@@ -118,6 +138,7 @@ async def get_player_stats(
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
+    pred, params = _username_predicate(pred, params, username)
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -163,6 +184,7 @@ async def get_transcoding_stats(
     source_id: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    username: str | None = None,
 ):
     """Return play and listen-time aggregates by transcoding mode.
 
@@ -171,6 +193,7 @@ async def get_transcoding_stats(
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
+    pred, params = _username_predicate(pred, params, username)
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -216,6 +239,7 @@ async def get_summary(
     source_id: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    username: str | None = None,
 ):
     """Return listening aggregates and previous-window comparisons.
 
@@ -232,6 +256,7 @@ async def get_summary(
         end_date,
     )
     cur_pred, cur_params = _source_predicate(cur_pred, cur_params, source_id)
+    cur_pred, cur_params = _username_predicate(cur_pred, cur_params, username)
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -307,6 +332,9 @@ async def get_summary(
             prev_pred, prev_params = _source_predicate(
                 prev_pred, prev_params, source_id
             )
+            prev_pred, prev_params = _username_predicate(
+                prev_pred, prev_params, username
+            )
             async with db.execute(
                 f"""
                 SELECT
@@ -357,6 +385,7 @@ async def get_hourly_stats(
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
     source_id: str | None = None,
+    username: str | None = None,
 ):
     """Return non-empty local-hour buckets in ascending order.
 
@@ -368,6 +397,7 @@ async def get_hourly_stats(
         timezone_name=timezone_name,
         db_path=db_path,
         source_id=source_id,
+        username=username,
     )
     return buckets["hourly"]
 
@@ -379,6 +409,7 @@ async def get_time_bucket_stats(
     source_id: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    username: str | None = None,
 ) -> dict[str, list[dict]]:
     """Build hourly, daily and weekday/hour buckets from one SQLite scan."""
 
@@ -386,6 +417,7 @@ async def get_time_bucket_stats(
     tz = resolve_timezone(timezone_name)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
+    pred, params = _username_predicate(pred, params, username)
     async with connect_db(path) as db:
         async with db.execute(
             f"SELECT played_at FROM play_history WHERE {pred}",
@@ -454,6 +486,7 @@ async def get_daily_stats(
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
     source_id: str | None = None,
+    username: str | None = None,
 ):
     """Return zero-filled local-date buckets in ascending order.
 
@@ -465,6 +498,7 @@ async def get_daily_stats(
         timezone_name=timezone_name,
         db_path=db_path,
         source_id=source_id,
+        username=username,
     )
     return buckets["daily"]
 
@@ -474,6 +508,7 @@ async def get_weekday_hour_stats(
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
     source_id: str | None = None,
+    username: str | None = None,
 ):
     """Return a zero-filled 7 by 24 local weekday/hour grid.
 
@@ -485,6 +520,7 @@ async def get_weekday_hour_stats(
         timezone_name=timezone_name,
         db_path=db_path,
         source_id=source_id,
+        username=username,
     )
     return buckets["heatmap"]
 
@@ -498,6 +534,7 @@ async def get_top_artists(
     source_id: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    username: str | None = None,
 ):
     """Return artists ranked by plays or listen time for the selected window.
 
@@ -514,6 +551,7 @@ async def get_top_artists(
         source_id=source_id,
         start_date=start_date,
         end_date=end_date,
+        username=username,
     )
 
 
@@ -526,6 +564,7 @@ async def get_top_albums(
     source_id: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    username: str | None = None,
 ):
     """Return albums ranked by plays or listen time for the selected window."""
     return await _get_top_entity(
@@ -538,6 +577,7 @@ async def get_top_albums(
         source_id=source_id,
         start_date=start_date,
         end_date=end_date,
+        username=username,
     )
 
 
@@ -551,6 +591,7 @@ async def _get_top_entity(
     source_id: str | None,
     start_date: date | None,
     end_date: date | None,
+    username: str | None = None,
 ):
     if metric not in ("plays", "listen_time"):
         raise ValueError(f"unknown ranking metric: {metric!r}")
@@ -564,6 +605,7 @@ async def _get_top_entity(
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
+    pred, params = _username_predicate(pred, params, username)
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -599,11 +641,13 @@ async def get_playback_history(
     source_id: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    username: str | None = None,
 ):
     """Return recent tracks with aggregated play counts for the selected window."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
+    pred, params = _username_predicate(pred, params, username)
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -667,8 +711,11 @@ async def get_review_summary(
 
     path = _path(db_path)
     hourly_counts = [0] * 24
+    hourly_listen_sec = [0] * 24
     weekday_counts = [0] * 7
+    weekday_listen_sec = [0] * 7
     monthly_counts = [0] * 12
+    monthly_listen_sec = [0] * 12
     active_dates: set[date] = set()
     total_plays = 0
     total_listen_sec = 0
@@ -692,12 +739,16 @@ async def get_review_summary(
         local = _played_at_to_local_datetime(played_at, tz)
         if local is None:
             continue
+        seconds = int(listen_sec or 0)
         total_plays += 1
-        total_listen_sec += int(listen_sec or 0)
+        total_listen_sec += seconds
         unique_tracks.add(track_key)
         hourly_counts[local.hour] += 1
+        hourly_listen_sec[local.hour] += seconds
         weekday_counts[local.weekday()] += 1
+        weekday_listen_sec[local.weekday()] += seconds
         monthly_counts[local.month - 1] += 1
+        monthly_listen_sec[local.month - 1] += seconds
         active_dates.add(local.date())
         if first_local is None or local < first_local:
             first_local = local
@@ -775,14 +826,27 @@ async def get_review_summary(
         "last_played_at": last_local.isoformat() if last_local else None,
         "biggest_month": biggest_month,
         "monthly": [
-            {"month": f"{year:04d}-{month:02d}", "count": monthly_counts[month - 1]}
+            {
+                "month": f"{year:04d}-{month:02d}",
+                "count": monthly_counts[month - 1],
+                "total_listen_sec": monthly_listen_sec[month - 1],
+            }
             for month in range(1, 13)
         ],
         "hourly": [
-            {"hour": hour, "count": hourly_counts[hour]} for hour in range(24)
+            {
+                "hour": hour,
+                "count": hourly_counts[hour],
+                "total_listen_sec": hourly_listen_sec[hour],
+            }
+            for hour in range(24)
         ],
         "weekday": [
-            {"weekday": weekday, "count": weekday_counts[weekday]}
+            {
+                "weekday": weekday,
+                "count": weekday_counts[weekday],
+                "total_listen_sec": weekday_listen_sec[weekday],
+            }
             for weekday in range(7)
         ],
         "top_artists": top_artists,

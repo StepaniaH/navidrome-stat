@@ -37,10 +37,12 @@ test("buildStatsQuery omits empty source and custom ranges", () => {
     timezone: "Europe/Berlin",
     metric: "listen_time",
     sourceId: "abc",
+    username: "alice",
     startDate: "2026-01-01",
     endDate: "2026-01-31",
   });
   assert.ok(full.includes("source_id=abc"));
+  assert.ok(full.includes("username=alice"));
   assert.ok(full.includes("start_date=2026-01-01"));
   assert.ok(full.includes("end_date=2026-01-31"));
 });

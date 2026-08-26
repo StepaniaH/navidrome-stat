@@ -1,4 +1,5 @@
 import { pageMessages } from './js/i18n/index.js';
+import { createI18n } from './localization.js';
 import { applyAppVersion } from './js/app-info.js';
 import { buildStatsQuery, coverArtUrl, escapeHtml, formatChangeText, formatDuration, validateCustomRange } from './js/format.js';
 import { chartPalette, createThemeTokens } from './js/charts.js';
@@ -123,7 +124,9 @@ import { getFilters, setFilters } from './js/filters.js';
     let customStartDate = initialFilters.startDate;
     let customEndDate = initialFilters.endDate;
     let selectedSourceId = initialFilters.sourceId;
+    let selectedUsername = initialFilters.username;
     const knownSources = new Map();
+    let knownUsers = [];
     // Shared by the artist and album rankings; changing it refreshes both.
     let rankingMetric = initialFilters.metric;
 
@@ -134,6 +137,7 @@ import { getFilters, setFilters } from './js/filters.js';
             timezone: statsTimezone,
             metric: rankingMetric,
             sourceId: selectedSourceId,
+            username: selectedUsername,
             startDate: customStartDate,
             endDate: customEndDate,
         });
@@ -142,7 +146,7 @@ import { getFilters, setFilters } from './js/filters.js';
 
     // `browser` resolves to an IANA zone before requests; the API does not accept the token.
     let statsTimezone = 'browser';
-    const savedStatsTimezone = window.NavidromeI18n.readPreference('navidrome-timezone');
+    const savedStatsTimezone = readPreference('navidrome-timezone');
     if (savedStatsTimezone === 'browser' || savedStatsTimezone === 'UTC') statsTimezone = savedStatsTimezone;
     let browserTimezone = null;
     try {
@@ -189,13 +193,14 @@ import { getFilters, setFilters } from './js/filters.js';
             startDate: customStartDate,
             endDate: customEndDate,
             sourceId: selectedSourceId,
+            username: selectedUsername,
             metric: rankingMetric,
             timezone: resolveStatsTimezone(),
         });
     }
 
     function captureNowPlayingRequestState() {
-        return Object.freeze({ sourceId: selectedSourceId });
+        return Object.freeze({ sourceId: selectedSourceId, username: selectedUsername });
     }
 
     function showLogin(message) {
@@ -258,13 +263,13 @@ import { getFilters, setFilters } from './js/filters.js';
     });
 
 
-    const dashboardI18n = window.NavidromeI18n.createI18n({
+    const dashboardI18n = createI18n({
         messages: pageMessages('dashboard'),
         fallbackLocale: 'en',
     });
     function translateDashboard() {
         dashboardI18n.setLocale(
-            window.NavidromeI18n.readPreference('navidrome-language', 'en'),
+            readPreference('navidrome-language', 'en'),
             { persist: false, translateDom: false },
         );
         dashboardI18n.translate();
@@ -289,6 +294,7 @@ import { getFilters, setFilters } from './js/filters.js';
         setActiveStatsWindowButton(statsDays);
         setActiveRankingMetric(rankingMetric);
         renderSourceOptions();
+        renderUserOptions();
     }
     translateDashboard();
 
@@ -1313,6 +1319,43 @@ import { getFilters, setFilters } from './js/filters.js';
         return selectionReset;
     }
 
+    function renderUserOptions() {
+        const menu = document.getElementById('statsUserMenu');
+        const entries = [
+            ['', dashboardMessage('user.all')],
+            ...[...knownUsers].sort((a, b) => a.localeCompare(b)).map((name) => [name, name]),
+        ];
+        const options = entries.map(([name]) => {
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.className = 'filter-option stats-user-option';
+            option.setAttribute('role', 'option');
+            option.setAttribute('aria-selected', name === selectedUsername ? 'true' : 'false');
+            option.dataset.username = name;
+            const label = document.createElement('span');
+            label.className = 'filter-option-label';
+            label.textContent = name || dashboardMessage('user.all');
+            const check = document.createElement('span');
+            check.className = 'option-check';
+            check.setAttribute('aria-hidden', 'true');
+            check.textContent = '✓';
+            option.append(label, check);
+            return option;
+        });
+        menu.replaceChildren(...options);
+        document.getElementById('statsUserButtonLabel').textContent =
+            entries.find(([name]) => name === selectedUsername)?.[0]
+            || dashboardMessage('user.all');
+    }
+
+    async function fetchUserOptions() {
+        const response = await fetch('/api/stats/users', fetchOptions);
+        if (!response.ok) throw new Error('users request failed');
+        const payload = await response.json();
+        knownUsers = Array.isArray(payload.users) ? payload.users.map(String) : [];
+        renderUserOptions();
+    }
+
     function renderHistoryTable(data, showSources = !selectedSourceId) {
         const tbody = document.getElementById('historyTable');
         tbody.replaceChildren();
@@ -1445,6 +1488,7 @@ import { getFilters, setFilters } from './js/filters.js';
                 timezone: requestState.timezone,
                 metric: requestState.metric,
                 sourceId: requestState.sourceId,
+                username: requestState.username,
                 startDate: requestState.startDate,
                 endDate: requestState.endDate,
             });
@@ -1534,7 +1578,10 @@ import { getFilters, setFilters } from './js/filters.js';
             if (!response.ok) throw new Error('now-playing request failed');
             const payload = await response.json();
             if (generation !== nowPlayingRequestGeneration || controller.signal.aborted) return;
-            renderNowPlaying(payload, !requestState.sourceId);
+            const visible = requestState.username
+                ? payload.filter((item) => item.username === requestState.username)
+                : payload;
+            renderNowPlaying(visible, !requestState.sourceId);
             if (Array.isArray(payload)) nowPlayingLoadedOnce = true;
         } catch (error) {
             if (isAbortError(error) || generation !== nowPlayingRequestGeneration) return;
@@ -1650,6 +1697,20 @@ import { getFilters, setFilters } from './js/filters.js';
         },
     });
 
+    const userListbox = createListbox({
+        trigger: document.getElementById('statsUserButton'),
+        menu: document.getElementById('statsUserMenu'),
+        onSelect: (option) => {
+            const name = option.dataset.username ?? '';
+            if (selectedUsername === name) return;
+            selectedUsername = name;
+            persistFilters();
+            renderUserOptions();
+            fetchStats();
+            fetchNowPlaying();
+        },
+    });
+
     document.getElementById('customRangeCancel').addEventListener('click', () => {
         document.getElementById('customRangeError').classList.add('hidden');
         windowListbox.setOpen(false, { restoreFocus: true });
@@ -1677,6 +1738,7 @@ import { getFilters, setFilters } from './js/filters.js';
     setActiveStatsWindowButton(statsDays);
     setupHistoryColumns();
     updateSourceOptions([]);
+    renderUserOptions();
 
     document.querySelectorAll('.ranking-metric-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -1763,6 +1825,7 @@ import { getFilters, setFilters } from './js/filters.js';
             }
         }
 
+        fetchUserOptions().catch(() => renderUserOptions());
         await Promise.all([fetchStats(), fetchNowPlaying()]);
         scheduleRefresh();
     }
