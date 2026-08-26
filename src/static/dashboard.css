@@ -888,6 +888,15 @@
             padding: 14px 16px;
         }
 
+        .review-top-card {
+            border: 1px solid var(--app-border);
+            border-radius: 12px;
+            background: var(--app-panel);
+            padding: 14px 16px;
+        }
+
+        .review-tops-row { margin-top: 14px; }
+
         .review-chart { width: 100%; height: 260px; }
         .review-chart-tall { height: 300px; }
         .review-chart-wide { margin-bottom: 14px; }

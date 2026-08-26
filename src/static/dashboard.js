@@ -20,11 +20,14 @@ import { getFilters, setFilters } from './js/filters.js';
     const weekdayHourChart = echarts.init(document.getElementById('weekdayHourChart'), null, { renderer: 'canvas' });
 
     function resizeDashboardCharts() {
-        playerChart.resize();
-        transcodingChart.resize();
-        hourlyChart.resize();
-        dailyChart.resize();
-        weekdayHourChart.resize();
+        // Resize only on a real size mismatch: resize() interrupts running
+        // update animations, so steady-state calls must be skipped.
+        [playerChart, transcodingChart, hourlyChart, dailyChart, weekdayHourChart].forEach((chart) => {
+            const dom = chart.getDom();
+            if (chart.getWidth() !== dom.clientWidth || chart.getHeight() !== dom.clientHeight) {
+                chart.resize();
+            }
+        });
     }
 
     // The backend uses Python's `date.weekday()` order: Monday=0 through Sunday=6.
@@ -832,6 +835,9 @@ import { getFilters, setFilters } from './js/filters.js';
                 type: 'pie',
                 radius: ['42%', '68%'],
                 center: ['50%', '45%'],
+                animationDurationUpdate: 650,
+                animationEasingUpdate: 'cubicInOut',
+                universalTransition: true,
                 itemStyle: { borderRadius: 6, borderColor: '#12121a', borderWidth: 2 },
                 label: { color: '#94a3b8', fontSize: 11 },
                 data: data.map(item => ({
@@ -885,6 +891,9 @@ import { getFilters, setFilters } from './js/filters.js';
                 type: 'pie',
                 radius: '62%',
                 center: ['50%', '45%'],
+                animationDurationUpdate: 650,
+                animationEasingUpdate: 'cubicInOut',
+                universalTransition: true,
                 itemStyle: { borderRadius: 4, borderColor: '#12121a', borderWidth: 2 },
                 label: { color: '#94a3b8', fontSize: 11 },
                 data: transformed,

@@ -113,7 +113,15 @@ function renderCharts(review) {
 }
 
 function resizeCharts() {
-    [monthlyChart, hourlyChart, weekdayChart].forEach((chart) => chart && chart.resize());
+    // Resize only on a real size mismatch: resize() interrupts running
+    // update animations, so steady-state calls must be skipped.
+    [monthlyChart, hourlyChart, weekdayChart].forEach((chart) => {
+        if (!chart) return;
+        const dom = chart.getDom();
+        if (chart.getWidth() !== dom.clientWidth || chart.getHeight() !== dom.clientHeight) {
+            chart.resize();
+        }
+    });
 }
 
 function letterFallback(text) {

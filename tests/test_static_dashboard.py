@@ -393,7 +393,10 @@ def test_heatmap_skeleton_in_set_loading(source):
 def test_heatmap_resize_in_window_resize_handler(source):
     assert "window.addEventListener('resize', resizeDashboardCharts)" in source
     block = _function_block(source, "resizeDashboardCharts")
-    assert "weekdayHourChart.resize()" in block
+    assert "weekdayHourChart" in block
+    # Resize is skipped when the size already matches so update animations
+    # are not interrupted by the post-render resize pass.
+    assert "chart.getWidth() !== dom.clientWidth" in block
 
 
 def test_format_change_text_helper_exists(source, catalog_source):
