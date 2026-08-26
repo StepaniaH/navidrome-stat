@@ -4,13 +4,19 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-26
+
 ### Changed
 
 - Interface translations live in one module per language with a shared registry; adding a language no longer requires touching page code.
+- Dashboard ranking rows always reserve a cover slot: album tiles fall back to a letter block when artwork is unavailable, and rows keep their layout when covers load.
+- Switching servers or date ranges now animates chart transitions instead of replacing them abruptly.
+- The weekday-by-hour heatmap orders rows Monday-first, rounds cells with gutters, and derives its color ramp from the active color scheme.
 
 ### Fixed
 
 - Selecting Deutsch on the settings page now applies immediately instead of silently falling back to English; the dashboard also gains the missing Traditional Chinese and Japanese catalogs.
+- The heatmap color slider no longer overlaps the hour axis labels.
 
 ## [0.8.1] - 2026-08-25
 
@@ -142,7 +148,8 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/StepaniaH/navidrome-stat/tree/v0.8.0
 [0.7.0]: https://github.com/StepaniaH/navidrome-stat/tree/v0.7.0

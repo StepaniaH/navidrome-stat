@@ -10,7 +10,6 @@ This roadmap describes project direction, not release commitments. Shipped chang
 - Define a compatibility and deprecation path for the fallback single-source API alongside multi-server connections.
 - Keep contributor and maintainer workflows reproducible, including dependency-lock refresh, frontend asset builds, browser tests, the statistics benchmark, the container smoke test, and tag-only Docker releases.
 - Improve collector diagnostics while keeping health responses free of credentials and playback metadata.
-- Adopt the shared dashboard listbox module inside the dashboard filter menus.
 - Persist artist IDs during collection so top-artist lists can show artwork instead of letter tiles.
 - Extend interface localization to Spanish and French; German is done and the catalog pipeline is proven.
 

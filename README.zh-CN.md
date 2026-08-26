@@ -29,7 +29,7 @@ Navidrome Statistic 汇总 Navidrome 上报的播放活动，并通过一个仪�
 - 展示收听时长、播放历史、小时与每日趋势、星期 × 小时热力图、客户端使用、转码，以及艺人、专辑与曲目排行。
 - 年度回顾页面：全年总量、连续收听天数、逐月与时段分布，以及热门榜单。
 - 播放历史、排行与正在播放显示封面图（经认证的本地缓存代理）。
-- 内置十款主题（Catppuccin、Nord、Dracula、Tokyo Night、Gruvbox、Solarized），跨标签页即时切换；六种界面语言，Apple 风格语言选择器。
+- 内置十款主题（Catppuccin、Nord、Dracula、Tokyo Night、Gruvbox、Solarized），跨标签页即时切换；五种界面语言，Apple 风格语言选择器。
 - 仪表盘筛选条件保存在 URL 中，刷新不丢失、链接可分享。
 - 最近播放表格支持自定义显示列，按浏览器保存偏好。
 - 支持自定义播放阈值与暂停宽限期、持久化会话检查点，并在上游支持时使用 OpenSubsonic 播放进度。
