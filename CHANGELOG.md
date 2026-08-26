@@ -4,6 +4,14 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Changed
+
+- Interface translations live in one module per language with a shared registry; adding a language no longer requires touching page code.
+
+### Fixed
+
+- Selecting Deutsch on the settings page now applies immediately instead of silently falling back to English; the dashboard also gains the missing Traditional Chinese and Japanese catalogs.
+
 ## [0.8.1] - 2026-08-25
 
 ### Added
