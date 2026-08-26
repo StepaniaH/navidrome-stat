@@ -56,7 +56,7 @@ The dashboard, settings, and API reference pages are plain ES modules served und
 | `js/http.js` | `apiFetch` with same-origin credentials, abort detection, and 401 handling |
 | `js/auth.js` | Login dialog controller: overlay visibility, `inert` background, focus trap |
 | `js/prefs.js` | localStorage-backed display preferences with cross-tab sync |
-| `js/messages-dashboard.js`, catalogs | UI strings as `[key, value]` entries so tests can guard key parity |
+| `js/i18n/` | Locale registry: one module per language under `js/i18n/locales/`, pages derive catalogs via `pageMessages(...)`; tests guard key parity |
 | `js/format.js` | Pure formatting, query-string building, and range validation helpers |
 | `js/filters.js` | Dashboard filter state persisted to shareable URL parameters |
 | `js/listbox.js` | Shared popover listbox and panel controls (review year picker, recent-plays column menu) |

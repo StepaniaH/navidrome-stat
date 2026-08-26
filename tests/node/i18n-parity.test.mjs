@@ -1,10 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
 
-import { dashboardMessages } from "../../src/static/js/messages-dashboard.js";
-import { settingsMessages } from "../../src/static/js/messages-settings.js";
 import { LOCALE_CODES } from "../../src/static/js/locales.js";
-import { reviewMessages } from "../../src/static/js/messages-review.js";
+import { pageMessages } from "../../src/static/js/i18n/index.js";
+
+const DOMAINS = ["dashboard", "review", "settings"];
+
+const localesDir = new URL("../../src/static/js/i18n/locales/", import.meta.url);
+const catalogs = {};
+for (const entry of readdirSync(localesDir).filter((name) => name.endsWith(".js")).sort()) {
+  const code = entry.replace(/\.js$/, "");
+  catalogs[code] = (await import(new URL(entry, localesDir).href)).default;
+}
 
 function keySet(locale, entries) {
   const seen = new Set();
@@ -15,58 +23,55 @@ function keySet(locale, entries) {
   return seen;
 }
 
-function assertCatalogConsistent(name, catalog) {
-  const locales = Object.keys(catalog);
-  test(`${name} catalogs contain no duplicate keys`, () => {
-    for (const locale of locales) keySet(locale, catalog[locale]);
-  });
+test("every supported locale ships a catalog module", () => {
+  for (const code of LOCALE_CODES) {
+    assert.ok(catalogs[code], `missing locale module for ${code}`);
+  }
+});
 
-  test(`${name} locales share the same key set`, () => {
-    const base = [...keySet(locales[0], catalog[locales[0]])].sort();
-    for (const locale of locales.slice(1)) {
-      const keys = [...keySet(locale, catalog[locale])].sort();
-      assert.deepEqual(keys, base);
+for (const domain of DOMAINS) {
+  test(`${domain} tables exist in every locale module`, () => {
+    for (const [code, module] of Object.entries(catalogs)) {
+      assert.ok(Array.isArray(module[domain]), `${code} does not define ${domain}`);
     }
   });
 
-  test(`${name} values are non-empty strings`, () => {
-    for (const [locale, entries] of Object.entries(catalog)) {
-      for (const [key, value] of entries) {
-        assert.equal(typeof value, "string", `${locale}:${key} must be a string`);
-        assert.ok(value.length > 0, `${locale}:${key} must not be empty`);
-      }
+  test(`${domain} keys match across locales`, () => {
+    const base = [...keySet("en", catalogs.en[domain])].sort();
+    for (const [code, module] of Object.entries(catalogs)) {
+      if (code === "en") continue;
+      const keys = [...keySet(code, module[domain])].sort();
+      assert.deepEqual(keys, base);
     }
   });
 }
 
-assertCatalogConsistent("dashboard", dashboardMessages);
-assertCatalogConsistent("settings", settingsMessages);
-assertCatalogConsistent("review", reviewMessages);
-
-test("all catalog modules expose the same locale set", () => {
-  const sets = [
-    new Set(Object.keys(dashboardMessages)),
-    new Set(Object.keys(settingsMessages)),
-    new Set(Object.keys(reviewMessages)),
-  ];
-  for (const set of sets.slice(1)) assert.deepEqual([...set].sort(), [...sets[0]].sort());
-});
-
-test("settings catalogs cover every supported locale name", () => {
-  for (const [locale, entries] of Object.entries(settingsMessages)) {
-    const keys = keySet(locale, entries);
-    for (const code of LOCALE_CODES) {
-      assert.ok(keys.has(`localeName.${code}`), `${locale} is missing localeName.${code}`);
+test("catalog values are non-empty strings", () => {
+  for (const [code, module] of Object.entries(catalogs)) {
+    for (const domain of DOMAINS) {
+      for (const [key, value] of module[domain]) {
+        assert.equal(typeof value, "string", `${code}:${domain}:${key} must be a string`);
+        assert.ok(value.length > 0, `${code}:${domain}:${key} must not be empty`);
+      }
     }
-    assert.ok(keys.has("locale.native"), `${locale} is missing locale.native`);
   }
 });
 
-test("every message value is a non-empty string", () => {
-  for (const [locale, entries] of Object.entries(dashboardMessages)) {
-    for (const [key, value] of entries) {
-      assert.equal(typeof value, "string", `${locale}:${key} must be a string`);
-      assert.ok(value.length > 0, `${locale}:${key} must not be empty`);
+test("settings tables cover every supported locale name", () => {
+  for (const [code, module] of Object.entries(catalogs)) {
+    const keys = keySet(code, module.settings);
+    for (const locale of LOCALE_CODES) {
+      assert.ok(keys.has(`localeName.${locale}`), `${code} is missing localeName.${locale}`);
     }
+    assert.ok(keys.has("locale.native"), `${code} is missing locale.native`);
+  }
+});
+
+test("pageMessages merges requested domains for every locale", () => {
+  const messages = pageMessages(...DOMAINS);
+  assert.deepEqual(Object.keys(messages).sort(), Object.keys(catalogs).sort());
+  for (const [code, module] of Object.entries(catalogs)) {
+    const expected = new Set(DOMAINS.flatMap((domain) => module[domain].map(([key]) => key)));
+    assert.deepEqual(Object.keys(messages[code]).sort(), [...expected].sort());
   }
 });

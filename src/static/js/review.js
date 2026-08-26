@@ -3,20 +3,12 @@ import { createLoginController } from './auth.js';
 import { UNAUTHORIZED_EVENT } from './http.js';
 import { readPreference, onPreferenceChange } from './prefs.js';
 import { createI18n } from '../localization.js';
-import { catalog, dashboardMessages } from './messages-dashboard.js';
-import { catalog as reviewCatalog, reviewMessages } from './messages-review.js';
+import { pageMessages } from './i18n/index.js';
 import { chartPalette, createThemeTokens } from './charts.js';
 import { formatDuration } from './format.js';
 import { createListbox } from './listbox.js';
 
-const messages = {
-    'zh-CN': { ...catalog(dashboardMessages.zhCN), ...reviewCatalog(reviewMessages.zhCN) },
-    'zh-TW': { ...catalog(dashboardMessages.zhTW), ...reviewCatalog(reviewMessages.zhTW) },
-    en: { ...catalog(dashboardMessages.en), ...reviewCatalog(reviewMessages.en) },
-    ja: { ...catalog(dashboardMessages.ja), ...reviewCatalog(reviewMessages.ja) },
-};
-
-const i18n = createI18n({ messages, fallbackLocale: 'en' });
+const i18n = createI18n({ messages: pageMessages('dashboard', 'review'), fallbackLocale: 'en' });
 const t = (key, values) => i18n.t(key, values);
 const num = (value) => i18n.formatNumber(value);
 

@@ -1,4 +1,4 @@
-import { catalog, dashboardMessages } from './js/messages-dashboard.js';
+import { pageMessages } from './js/i18n/index.js';
 import { applyAppVersion } from './js/app-info.js';
 import { buildStatsQuery, coverArtUrl, escapeHtml, formatChangeText, formatDuration, validateCustomRange } from './js/format.js';
 import { chartPalette, createThemeTokens } from './js/charts.js';
@@ -258,12 +258,8 @@ import { getFilters, setFilters } from './js/filters.js';
     });
 
 
-    const dashboardTranslations = {
-        'zh-CN': catalog(dashboardMessages.zhCN),
-        en: catalog(dashboardMessages.en),
-    };
     const dashboardI18n = window.NavidromeI18n.createI18n({
-        messages: dashboardTranslations,
+        messages: pageMessages('dashboard'),
         fallbackLocale: 'en',
     });
     function translateDashboard() {

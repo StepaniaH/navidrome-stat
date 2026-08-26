@@ -6,9 +6,7 @@ import pytest
 
 INDEX_HTML = Path(__file__).resolve().parent.parent / "src" / "static" / "index.html"
 DASHBOARD_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.js"
-DASHBOARD_MESSAGES_JS = (
-    Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "messages-dashboard.js"
-)
+LOCALES_DIR = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "i18n" / "locales"
 DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
 LISTBOX_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "listbox.js"
 THEME_BOOTSTRAP_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "theme-bootstrap.js"
@@ -25,7 +23,10 @@ def source() -> str:
 
 @pytest.fixture(scope="module")
 def catalog_source() -> str:
-    return DASHBOARD_MESSAGES_JS.read_text(encoding="utf-8")
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(LOCALES_DIR.glob("*.js"))
+    )
 
 
 def test_dashboard_loads_split_static_resources():
@@ -295,7 +296,7 @@ def test_dashboard_reads_shared_timezone_preference(source):
 
 def test_dashboard_has_local_i18n_and_theme_palette(source):
     assert '<html lang="en">' in source
-    assert "const dashboardTranslations" in source
+    assert "pageMessages('dashboard')" in source
     assert "const dashboardI18n = window.NavidromeI18n.createI18n" in source
     assert "function translateDashboard()" in source
     assert "dashboardI18n.translate()" in source

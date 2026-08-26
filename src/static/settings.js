@@ -6,7 +6,7 @@ import { createI18n } from './localization.js';
 import { DEFAULT_THEME, THEMES, resolveTheme, themeScheme } from './js/themes.js';
 import { SUPPORTED_LOCALES } from './js/locales.js';
 import { applyAppVersion } from './js/app-info.js';
-import { catalog, settingsMessages } from './js/messages-settings.js';
+import { pageMessages } from './js/i18n/index.js';
 
     const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
     const preferenceKeys = Object.freeze({
@@ -16,13 +16,7 @@ import { catalog, settingsMessages } from './js/messages-settings.js';
         motion: 'navidrome-motion',
     });
 
-const messages = {
-            'zh-CN': catalog(settingsMessages.zhCN),
-            'zh-TW': catalog(settingsMessages.zhTW),
-            en: catalog(settingsMessages.en),
-            ja: catalog(settingsMessages.ja),
-    };
-    const i18n = createI18n({ messages, fallbackLocale: 'en' });
+const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'en' });
     const t = (key, values) => i18n.t(key, values);
     const state = {
         privacyStatus: 'loading',

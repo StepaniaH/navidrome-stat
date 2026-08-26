@@ -97,11 +97,11 @@ def test_shared_localization_runtime_has_fallback_interpolation_and_dom_translat
     assert "localizedMessage ?? fallbackMessage ?? key" in runtime
     assert "element.textContent = t(element.dataset.i18n)" in runtime
     assert "data-i18n-attr" in runtime
-    assert "createI18n({ messages, fallbackLocale: 'en' })" in settings_script
-    catalog_js = _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
+    assert "createI18n({ messages: pageMessages('settings'), fallbackLocale: 'en' })" in settings_script
+    locale_files = {path.stem for path in (ROOT / "src" / "static" / "js" / "i18n" / "locales").glob("*.js")}
+    assert {"zh-CN", "zh-TW", "en", "ja", "de"} <= locale_files
     assert "'zh-CN': {" not in settings_script
-    assert "zhTW:" in catalog_js and "ja:" in catalog_js
-    assert "en: catalog(settingsMessages.en)" in settings_script
+    assert "pageMessages('settings')" in settings_script
     assert "function localized(" not in settings_script
     assert "localized(" not in settings_script
 
@@ -164,11 +164,12 @@ def test_sensitive_values_use_safe_dom_apis_and_password_is_never_rendered():
 
 def test_server_settings_apply_immediately_without_restart_copy():
     script = _read(SETTINGS_JS)
-    assert "连接更改保存后立即应用" in _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
-    catalog = _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
-    assert "Saved changes apply immediately" in catalog
-    assert "连接已保存并立即应用" in _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
-    assert "Connection saved and applied immediately" in _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
+    zh_catalog = _read(ROOT / "src" / "static" / "js" / "i18n" / "locales" / "zh-CN.js")
+    en_catalog = _read(ROOT / "src" / "static" / "js" / "i18n" / "locales" / "en.js")
+    assert "连接更改保存后立即应用" in zh_catalog
+    assert "Saved changes apply immediately" in en_catalog
+    assert "连接已保存并立即应用" in zh_catalog
+    assert "Connection saved and applied immediately" in en_catalog
     assert "重启服务后生效" not in script
     assert "Restart the service to apply it" not in script
 
@@ -177,8 +178,8 @@ def test_retention_copy_matches_automatic_cleanup_and_apply_uses_saved_policy():
     html = _read(SETTINGS_HTML)
     script = _read(SETTINGS_JS)
     assert "deleted automatically at startup and during background maintenance" in html
-    catalog_js = _read(ROOT / "src" / "static" / "js" / "messages-settings.js")
-    assert "有限策略会在启动和后台维护时自动执行" in catalog_js
+    zh_catalog = _read(ROOT / "src" / "static" / "js" / "i18n" / "locales" / "zh-CN.js")
+    assert "有限策略会在启动和后台维护时自动执行" in zh_catalog
     assert "Records are deleted only after" not in html
     assert "只有点击“确认清理”才会删除" not in script
     assert "function retentionDraftIsDirty()" in script

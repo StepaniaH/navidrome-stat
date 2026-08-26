@@ -95,7 +95,7 @@ test("custom listboxes support keyboard selection and preferences persist", asyn
   await expect(languageButton).toHaveAttribute("aria-expanded", "true");
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
-  await expect(page.locator("html")).toHaveAttribute("lang", "ja");
+  await expect(page.locator("html")).toHaveAttribute("lang", "de");
   await expect(languageButton).toHaveAttribute("aria-expanded", "false");
 
   await page.locator("#themeSelectButton").click();
@@ -109,7 +109,7 @@ test("custom listboxes support keyboard selection and preferences persist", asyn
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "latte");
   await expect(page.locator("html")).toHaveAttribute("data-motion", "reduced");
-  await expect(page.locator("html")).toHaveAttribute("lang", "ja");
+  await expect(page.locator("html")).toHaveAttribute("lang", "de");
   await expect(page.locator("#settingsTimezoneSelectButton")).toContainText(
     "UTC",
   );
