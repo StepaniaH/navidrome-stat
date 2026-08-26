@@ -70,11 +70,18 @@ def test_get_daily_stats_aggregates_recent_days(db_path):
     assert all(row["date"][:4].isdigit() for row in rows)
 
 
-def test_get_daily_stats_counts_only_zero_fills_window(db_path):
-    """For finite windows, every calendar date is present even with no data."""
+@pytest.mark.parametrize(
+    "days,tz,expected_len",
+    [
+        (30, "UTC", 30),
+        (7, "America/New_York", 7),
+    ],
+)
+def test_get_daily_stats_zero_fills_every_calendar_date(db_path, days, tz, expected_len):
+    """Finite windows produce every calendar date even with no data."""
     asyncio.run(init_db(db_path))
-    rows = asyncio.run(get_daily_stats(days=30, db_path=db_path))
-    assert len(rows) == 30
+    rows = asyncio.run(get_daily_stats(days=days, timezone_name=tz, db_path=db_path))
+    assert len(rows) == expected_len
     assert all(row["count"] == 0 for row in rows)
     assert rows == sorted(rows, key=lambda r: r["date"])
 
@@ -121,132 +128,89 @@ def test_get_daily_stats_respects_days_window(db_path):
 
 
 @pytest.mark.asyncio
-@patch("src.routes.stats.get_hourly_stats", new_callable=AsyncMock)
-async def test_api_hourly_stats(mock_get):
-    mock_get.return_value = [{"hour": 9, "count": 5}, {"hour": 21, "count": 7}]
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/hourly")
+@pytest.mark.parametrize(
+    "endpoint,mock_path,payload",
+    [
+        (
+            "/api/stats/hourly",
+            "src.routes.stats.get_hourly_stats",
+            [{"hour": 9, "count": 5}, {"hour": 21, "count": 7}],
+        ),
+        (
+            "/api/stats/daily",
+            "src.routes.stats.get_daily_stats",
+            [{"date": "2024-03-24", "count": 3}],
+        ),
+    ],
+)
+async def test_api_stats_returns_payload(endpoint, mock_path, payload):
+    mock_get = AsyncMock()
+    mock_get.return_value = payload
+    with patch(mock_path, mock_get):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.get(endpoint)
     assert response.status_code == 200
-    assert response.json() == [{"hour": 9, "count": 5}, {"hour": 21, "count": 7}]
+    assert response.json() == payload
 
 
 @pytest.mark.asyncio
-@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
-async def test_api_daily_stats(mock_get):
-    mock_get.return_value = [{"date": "2024-03-24", "count": 3}]
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/daily")
-    assert response.status_code == 200
-    assert response.json() == [{"date": "2024-03-24", "count": 3}]
-
-
-@pytest.mark.asyncio
-@patch("src.routes.stats.get_hourly_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
-async def test_api_hourly_stats_database_error(mock_get):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/hourly")
+@pytest.mark.parametrize(
+    "endpoint,mock_path",
+    [
+        ("/api/stats/hourly", "src.routes.stats.get_hourly_stats"),
+        ("/api/stats/daily", "src.routes.stats.get_daily_stats"),
+        ("/api/stats/heatmap", "src.routes.stats.get_weekday_hour_stats"),
+    ],
+)
+async def test_api_stats_database_error_returns_503(endpoint, mock_path):
+    mock_get = AsyncMock(side_effect=RuntimeError("db unavailable"))
+    with patch(mock_path, mock_get):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.get(endpoint)
     assert response.status_code == 503
     assert response.json()["detail"] == "Stats temporarily unavailable"
 
 
 @pytest.mark.asyncio
-@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
-async def test_api_daily_stats_database_error(mock_get):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/daily")
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Stats temporarily unavailable"
-
-
-@pytest.mark.asyncio
-@patch("src.routes.stats.get_hourly_stats", new_callable=AsyncMock)
-async def test_api_hourly_requires_auth_when_token_configured(mock_get):
+@pytest.mark.parametrize(
+    "endpoint,mock_path",
+    [
+        ("/api/stats/hourly", "src.routes.stats.get_hourly_stats"),
+        ("/api/stats/daily", "src.routes.stats.get_daily_stats"),
+        ("/api/stats/heatmap", "src.routes.stats.get_weekday_hour_stats"),
+    ],
+)
+async def test_api_stats_requires_auth_when_token_configured(endpoint, mock_path):
+    mock_get = AsyncMock()
     mock_get.return_value = []
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
-            response = await ac.get("/api/stats/hourly")
+    with patch(mock_path, mock_get):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+                response = await ac.get(endpoint)
     assert response.status_code == 401
     assert response.json()["detail"] == "Unauthorized"
     mock_get.assert_not_awaited()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query,expected_days",
+    [
+        ("", 30),
+        ("?days=0", 0),
+        ("?days=7", 7),
+        ("?days=90", 90),
+    ],
+)
 @patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
-async def test_api_daily_requires_auth_when_token_configured(mock_get):
-    mock_get.return_value = []
+async def test_api_daily_stats_days_param(mock_get, query, expected_days):
+    payload = [{"date": "2024-03-24", "count": 3}]
+    mock_get.return_value = payload
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
-            response = await ac.get("/api/stats/daily")
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Unauthorized"
-    mock_get.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("days", [7, 30, 90])
-@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
-async def test_api_daily_stats_days_param(mock_get, days):
-    mock_get.return_value = [{"date": "2024-03-24", "count": 3}]
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get(f"/api/stats/daily?days={days}")
+        response = await ac.get(f"/api/stats/daily{query}")
     assert response.status_code == 200
-    assert response.json() == [{"date": "2024-03-24", "count": 3}]
-    mock_get.assert_awaited_once_with(days=days, timezone_name="UTC")
-
-
-@pytest.mark.asyncio
-@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
-async def test_api_daily_stats_default_days_is_30(mock_get):
-    mock_get.return_value = []
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/daily")
-    assert response.status_code == 200
-    mock_get.assert_awaited_once_with(days=30, timezone_name="UTC")
-
-
-@pytest.mark.asyncio
-@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
-async def test_api_daily_stats_propagates_timezone(mock_get):
-    mock_get.return_value = []
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/daily?days=7&timezone=Asia/Shanghai")
-    assert response.status_code == 200
-    mock_get.assert_awaited_once_with(days=7, timezone_name="Asia/Shanghai")
-
-
-@pytest.mark.asyncio
-@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
-async def test_api_daily_stats_rejects_invalid_timezone(mock_get):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/daily?days=7&timezone=NotAReal/Zone")
-    assert response.status_code == 422
-    mock_get.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("days,expected_status", [
-    (6, 422),
-    (91, 422),
-    (-1, 422),
-])
-@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
-async def test_api_daily_stats_days_invalid_out_of_range(mock_get, days, expected_status):
-    mock_get.return_value = []
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get(f"/api/stats/daily?days={days}")
-    assert response.status_code == expected_status
-    mock_get.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@patch("src.routes.stats.get_daily_stats", new_callable=AsyncMock)
-async def test_api_daily_stats_days_zero_selects_all_history(mock_get):
-    mock_get.return_value = [{"date": "2024-01-01", "count": 5}]
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/daily?days=0")
-    assert response.status_code == 200
-    assert response.json() == [{"date": "2024-01-01", "count": 5}]
-    mock_get.assert_awaited_once_with(days=0, timezone_name="UTC")
+    assert response.json() == payload
+    mock_get.assert_awaited_once_with(days=expected_days, timezone_name="UTC")
 
 
 @pytest.mark.asyncio

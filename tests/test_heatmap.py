@@ -117,21 +117,6 @@ def test_daily_zero_filled_in_shanghai_timestamps_cross_midnight(db_path):
     assert rows[0]["count"] == 2
 
 
-def test_daily_new_york_window_includes_each_calendar_date(db_path):
-    asyncio.run(init_db(db_path))
-    # A 7-day window with no data must still produce every local calendar date.
-    rows = asyncio.run(get_daily_stats(days=7, timezone_name=NEW_YORK, db_path=db_path))
-    assert len(rows) == 7
-    assert rows == sorted(rows, key=lambda r: r["date"])
-    assert all(r["count"] == 0 for r in rows)
-
-
-def test_daily_all_history_empty_returns_empty(db_path):
-    asyncio.run(init_db(db_path))
-    rows = asyncio.run(get_daily_stats(days=0, timezone_name=SHANGHAI, db_path=db_path))
-    assert rows == []
-
-
 @pytest.mark.asyncio
 @patch("src.routes.stats.get_weekday_hour_stats", new_callable=AsyncMock)
 async def test_api_heatmap_returns_full_grid(mock_get):
@@ -147,49 +132,8 @@ async def test_api_heatmap_returns_full_grid(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.routes.stats.get_weekday_hour_stats", new_callable=AsyncMock)
-async def test_api_heatmap_propagates_timezone(mock_get):
-    mock_get.return_value = []
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get(
-            f"/api/stats/heatmap?days=7&timezone={SHANGHAI}"
-        )
-    assert response.status_code == 200
-    mock_get.assert_awaited_once_with(days=7, timezone_name=SHANGHAI)
-
-
-@pytest.mark.asyncio
-@patch("src.routes.stats.get_weekday_hour_stats", new_callable=AsyncMock)
-async def test_api_heatmap_rejects_invalid_timezone(mock_get):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/heatmap?days=7&timezone=Invalid/Zone")
-    assert response.status_code == 422
-    mock_get.assert_not_awaited()
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize("days", [6, 91, -1])
 async def test_api_heatmap_rejects_invalid_days(days):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get(f"/api/stats/heatmap?days={days}")
     assert response.status_code == 422
-
-
-@pytest.mark.asyncio
-@patch("src.routes.stats.get_weekday_hour_stats", new_callable=AsyncMock, side_effect=RuntimeError("db unavailable"))
-async def test_api_heatmap_database_error_returns_503(mock_get):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/heatmap")
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Stats temporarily unavailable"
-
-
-@pytest.mark.asyncio
-@patch("src.routes.stats.get_weekday_hour_stats", new_callable=AsyncMock)
-async def test_api_heatmap_requires_auth_when_token_configured(mock_get):
-    mock_get.return_value = []
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
-            response = await ac.get("/api/stats/heatmap")
-    assert response.status_code == 401
-    mock_get.assert_not_awaited()

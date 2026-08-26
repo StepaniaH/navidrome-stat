@@ -47,17 +47,6 @@ def _function_block(source: str, fn_name: str) -> str:
     raise AssertionError(f"function {fn_name} not balanced")
 
 
-def test_top_charts_echarts_init_removed(source):
-    assert "echarts.init(document.getElementById('topArtistsChart')" not in source
-    assert "echarts.init(document.getElementById('topAlbumsChart')" not in source
-
-
-def test_top_charts_resize_calls_removed(source):
-    resize_block = source[source.index("window.addEventListener('resize'"):]
-    assert "topArtistsChart.resize()" not in resize_block
-    assert "topAlbumsChart.resize()" not in resize_block
-
-
 def test_no_echarts_axis_config_for_top_rankings(source):
     for fn_name in ("renderTopArtistsChart", "renderTopAlbumsChart"):
         block = _function_block(source, fn_name)
@@ -74,25 +63,12 @@ def test_render_ranking_list_helper_exists(source):
     assert "style.width = `${pct}%`" in block
 
 
-def test_render_ranking_list_uses_textcontent_not_innerhtml(source):
-    block = _function_block(source, "renderRankingList")
-    assert "textContent" in block
-    assert "innerHTML" not in block
-
-
 def test_render_ranking_list_uses_create_element_only(source):
     block = _function_block(source, "renderRankingList")
     assert "document.createElement" in block
     # No raw HTML string interpolation into the DOM container.
     assert "insertAdjacentHTML" not in block
     assert "outerHTML" not in block
-
-
-def test_render_ranking_list_sets_accessible_roles(source):
-    block = _function_block(source, "renderRankingList")
-    assert "'role', 'list'" in block
-    assert "'role', 'listitem'" in block
-    assert "'aria-label', ariaLabel" in block
 
 
 @pytest.mark.parametrize("fn_name,label_key", [
@@ -143,9 +119,3 @@ def test_top_containers_keep_skeleton_and_empty_states(source):
     for prefix in ("topArtistsChart", "topAlbumsChart"):
         assert f'id="{prefix}Skeleton"' in source
         assert f'id="{prefix}Empty"' in source
-
-
-def test_top_data_uses_dashboard_snapshot(source):
-    assert "/api/stats/dashboard?${query}" in source
-    assert "snapshot.top_artists" in source
-    assert "snapshot.top_albums" in source

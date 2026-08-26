@@ -40,32 +40,6 @@ def test_get_top_artists_groups_and_orders(db_path):
     ]
 
 
-def test_get_top_artists_skips_empty_artist(db_path):
-    asyncio.run(init_db(db_path))
-    asyncio.run(save_play_session(_session("2024-03-24T01:00:00Z", "t1", artist=""), db_path=db_path))
-    asyncio.run(save_play_session(_session("2024-03-24T02:00:00Z", "t2", artist="Alpha"), db_path=db_path))
-
-    rows = asyncio.run(get_top_artists(db_path=db_path))
-
-    assert rows == [_row("artist", "Alpha", 1, 30, 1)]
-
-
-def test_get_top_artists_respects_limit(db_path):
-    asyncio.run(init_db(db_path))
-    for i in range(5):
-        asyncio.run(save_play_session(_session(f"2024-03-24T0{i}:00:00Z", f"t{i}", artist=f"A{i}"), db_path=db_path))
-
-    rows = asyncio.run(get_top_artists(limit=2, db_path=db_path))
-
-    assert len(rows) == 2
-
-
-def test_get_top_artists_empty_database(db_path):
-    asyncio.run(init_db(db_path))
-    rows = asyncio.run(get_top_artists(db_path=db_path))
-    assert rows == []
-
-
 def test_get_top_albums_groups_and_orders(db_path):
     asyncio.run(init_db(db_path))
     asyncio.run(save_play_session(_session("2024-03-24T01:00:00Z", "t1", album="Record A", duration_sec=30), db_path=db_path))
@@ -80,30 +54,38 @@ def test_get_top_albums_groups_and_orders(db_path):
     ]
 
 
-def test_get_top_albums_skips_empty_album(db_path):
+@pytest.mark.parametrize(
+    ("name_key", "default_name", "get_entity"),
+    [
+        ("artist", "Alpha", get_top_artists),
+        ("album", "Record A", get_top_albums),
+    ],
+)
+def test_get_top_entity_skips_empty_name(db_path, name_key, default_name, get_entity):
     asyncio.run(init_db(db_path))
-    asyncio.run(save_play_session(_session("2024-03-24T01:00:00Z", "t1", album=""), db_path=db_path))
-    asyncio.run(save_play_session(_session("2024-03-24T02:00:00Z", "t2", album="Record A"), db_path=db_path))
+    asyncio.run(save_play_session(_session("2024-03-24T01:00:00Z", "t1", **{name_key: ""}), db_path=db_path))
+    asyncio.run(save_play_session(_session("2024-03-24T02:00:00Z", "t2", **{name_key: default_name}), db_path=db_path))
 
-    rows = asyncio.run(get_top_albums(db_path=db_path))
+    rows = asyncio.run(get_entity(db_path=db_path))
 
-    assert rows == [_row("album", "Record A", 1, 30, 1)]
+    assert rows == [_row(name_key, default_name, 1, 30, 1)]
 
 
-def test_get_top_albums_respects_limit(db_path):
+@pytest.mark.parametrize(
+    ("name_key", "get_entity"),
+    [
+        ("artist", get_top_artists),
+        ("album", get_top_albums),
+    ],
+)
+def test_get_top_entity_respects_limit(db_path, name_key, get_entity):
     asyncio.run(init_db(db_path))
     for i in range(5):
-        asyncio.run(save_play_session(_session(f"2024-03-24T0{i}:00:00Z", f"t{i}", album=f"Alb{i}"), db_path=db_path))
+        asyncio.run(save_play_session(_session(f"2024-03-24T0{i}:00:00Z", f"t{i}", **{name_key: f"N{i}"}), db_path=db_path))
 
-    rows = asyncio.run(get_top_albums(limit=2, db_path=db_path))
+    rows = asyncio.run(get_entity(limit=2, db_path=db_path))
 
     assert len(rows) == 2
-
-
-def test_get_top_albums_empty_database(db_path):
-    asyncio.run(init_db(db_path))
-    rows = asyncio.run(get_top_albums(db_path=db_path))
-    assert rows == []
 
 
 @pytest.mark.asyncio
@@ -138,32 +120,18 @@ async def test_api_top_albums(mock_get):
     (-1, 422),
     (51, 422),
 ])
-@patch("src.routes.stats.get_top_artists", new_callable=AsyncMock)
-async def test_api_top_artists_limit_bounds(mock_get, limit, expected_status):
-    mock_get.return_value = []
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get(f"/api/stats/top-artists?limit={limit}")
-    assert response.status_code == expected_status
-    if expected_status == 200:
-        mock_get.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC", metric="plays")
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("limit,expected_status", [
-    (1, 200),
-    (50, 200),
-    (0, 422),
-    (-1, 422),
-    (51, 422),
+@pytest.mark.parametrize("endpoint,mock_target", [
+    ("/api/stats/top-artists", "src.routes.stats.get_top_artists"),
+    ("/api/stats/top-albums", "src.routes.stats.get_top_albums"),
 ])
-@patch("src.routes.stats.get_top_albums", new_callable=AsyncMock)
-async def test_api_top_albums_limit_bounds(mock_get, limit, expected_status):
-    mock_get.return_value = []
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get(f"/api/stats/top-albums?limit={limit}")
-    assert response.status_code == expected_status
-    if expected_status == 200:
-        mock_get.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC", metric="plays")
+async def test_api_ranking_endpoint_limit_bounds(endpoint, mock_target, limit, expected_status):
+    with patch(mock_target, new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = []
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            response = await ac.get(f"{endpoint}?limit={limit}")
+        assert response.status_code == expected_status
+        if expected_status == 200:
+            mock_get.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC", metric="plays")
 
 
 @pytest.mark.asyncio

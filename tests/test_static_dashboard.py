@@ -140,8 +140,55 @@ def test_stats_window_buttons_carry_data_days(source):
         assert f'data-days="{n}"' in source
 
 
-def test_stats_scope_label_exists(source):
-    assert 'id="statsScopeLabel"' in source
+@pytest.mark.parametrize("element_id", [
+    # stats scope / subtitle
+    "statsScopeLabel",
+    "dailyChartSubtitle",
+    # heatmap card markup
+    "weekdayHourChart",
+    "weekdayHourChartSkeleton",
+    "weekdayHourChartEmpty",
+    "weekdayHourChartWrap",
+    # summary change badges
+    "statTotalPlaysChange",
+    "statListenTimeChange",
+    "statActiveDays",
+    # section error overlays
+    "nowPlayingError",
+    "playerChartError",
+    "transcodingChartError",
+    "hourlyChartError",
+    "dailyChartError",
+    "weekdayHourChartError",
+    "topArtistsChartError",
+    "topAlbumsChartError",
+    "serverSourceError",
+    "historyError",
+    "summaryError",
+    # section empty states
+    "playerChartEmpty",
+    "historyEmpty",
+    "nowPlayingEmpty",
+    # visually hidden chart aria summaries
+    "playerChartSummary",
+    "transcodingChartSummary",
+    "hourlyChartSummary",
+    "dailyChartSummary",
+    "weekdayHourChartSummary",
+    "topArtistsChartSummary",
+    "topAlbumsChartSummary",
+    "nowPlayingSummary",
+    "historySummary",
+    "summaryAria",
+])
+def test_dashboard_element_ids_exist(source, element_id):
+    assert f'id="{element_id}"' in source
+
+
+def test_dashboard_markup_accessibility_annotations_exist(source):
+    assert 'aria-label="周时热力图"' in source
+    assert "visually-hidden" in source
+    assert 'aria-describedby="playerChartSummary"' in source
 
 
 def test_stats_window_label_helper(source):
@@ -166,18 +213,6 @@ def test_stats_window_subtitle_updates_to_selected_range(source):
     assert "window: statsWindowLabel()" in block
 
 
-def test_daily_chart_subtitle_has_id(source):
-    assert 'id="dailyChartSubtitle"' in source
-
-
-def test_daily_days_state_variable_replaced(source):
-    assert "let dailyDays" not in source
-    assert "dailyFetchInFlight" not in source
-    assert "function fetchDaily" not in source
-    assert "function setActiveDailyButton" not in source
-    assert ".daily-days-btn" not in source
-
-
 def test_historical_fetch_urls_use_stats_days(source):
     block = _function_block(source, "fetchStats")
     assert "/api/stats/dashboard?${query}" in block
@@ -196,12 +231,11 @@ def test_historical_fetch_urls_use_stats_days(source):
         assert f"/api/stats/{endpoint}" not in block
     now_block = _function_block(source, "fetchNowPlaying")
     assert "/api/stats/now-playing${sourceParam}" in now_block
-    assert "now-playing?days" not in now_block
+    assert "timezone" not in now_block
+    assert "days" not in now_block
 
 
 def test_dashboard_header_has_no_preference_controls(source):
-    for control_id in ("dashboardLanguageSelect", "dashboardThemeSelect", "statsTimezoneSelect"):
-        assert f'id="{control_id}"' not in source
     assert "dashboardLanguageSelect" not in source
     assert "dashboardThemeSelect" not in source
     assert "statsTimezoneSelect" not in source
@@ -268,23 +302,8 @@ def test_timezone_state_and_resolver_exist(source):
     assert "browserTimezone" in block
     assert "'UTC'" in block
     assert "statsTimezone" in block
-
-
-def test_browser_timezone_resolved_via_intl(source):
+    # The browser timezone is resolved through Intl, never sent verbatim.
     assert "Intl.DateTimeFormat().resolvedOptions().timeZone" in source
-
-
-def test_timezone_resolution_has_no_dashboard_control_dom_dependency(source):
-    block = _function_block(source, "resolveStatsTimezone")
-    assert "browserTimezone" in block
-    assert "'UTC'" in block
-    assert "statsTimezoneSelect" not in source
-
-
-def test_timezone_change_handler_calls_fetchstats(source):
-    assert "statsTimezoneSelect.addEventListener('change'" not in source
-    assert "dashboardLanguageSelect.addEventListener('change'" not in source
-    assert "dashboardThemeSelect.addEventListener('change'" not in source
 
 
 def test_dashboard_reads_shared_timezone_preference(source):
@@ -303,7 +322,7 @@ def test_dashboard_has_local_i18n_and_theme_palette(source):
     assert "window.NavidromeI18n.readPreference('navidrome-language', 'en')" in source
     charts_src = (DASHBOARD_JS.parent / "js" / "charts.js").read_text(encoding="utf-8")
     assert "createThemeTokens" in charts_src
-    assert "navidrome-theme" in DASHBOARD_JS.read_text(encoding="utf-8") or True
+    assert "navidrome-theme" in DASHBOARD_JS.read_text(encoding="utf-8")
     assert "readPreference('navidrome-motion', 'system')" in source
     assert '[data-motion="reduced"] *' in source
     for token in ("#303446", "#292c3c", "#ca9ee6", "#a6d189", "#eff1f5", "#e6e9ef", "#8839ef", "#40a02b"):
@@ -332,27 +351,6 @@ def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(sourc
     assert "function dashboardText(" not in source
 
 
-def test_historical_fetch_urls_propagate_timezone(source):
-    block = _function_block(source, "fetchStats")
-    assert "buildStatsQuery({" in block
-    assert "/api/stats/dashboard?${query}" in block
-    now_block = _function_block(source, "fetchNowPlaying")
-    assert "timezone" not in now_block
-    assert "days" not in now_block
-
-
-def test_heatmap_card_markup_exists(source):
-    assert 'id="weekdayHourChart"' in source
-    assert 'id="weekdayHourChartSkeleton"' in source
-    assert 'id="weekdayHourChartEmpty"' in source
-    assert 'id="weekdayHourChartWrap"' in source
-    assert 'aria-label="周时热力图"' in source
-
-
-def test_heatmap_echarts_init_exists(source):
-    assert "weekdayHourChart = echarts.init(" in source
-
-
 def test_heatmap_static_axis_labels_exist(source):
     assert "WEEKDAY_MESSAGE_KEYS" in source
     assert "HOUR_LABELS" in source
@@ -364,6 +362,7 @@ def test_heatmap_static_axis_labels_exist(source):
 
 
 def test_heatmap_render_function_exists(source):
+    assert "weekdayHourChart = echarts.init(" in source
     block = _function_block(source, "renderWeekdayHourChart")
     assert "type: 'heatmap'" in block
     assert "visualMap" in block
@@ -372,15 +371,10 @@ def test_heatmap_render_function_exists(source):
     assert "Number(item.count)" in block
     assert "weekdayHourChart.setOption" in block
     assert "beginArrayPanel" in block
-    assert "weekdayHourChart.setOption" in block
     # No raw HTML injection in the heatmap renderer.
     assert "innerHTML" not in block
     assert "insertAdjacentHTML" not in block
-
-
-def test_heatmap_included_in_fetchstats_promise_all(source):
-    block = _function_block(source, "fetchStats")
-    assert "/api/stats/dashboard?${query}" in block
+    # The heatmap render is wired into the fetchStats snapshot dispatch.
     assert "renderWeekdayHourChart(snapshot.heatmap)" in source
 
 
@@ -389,22 +383,12 @@ def test_heatmap_skeleton_in_set_loading(source):
     assert "STATS_PANEL_NAMES" in loading
     assert "setPanelState" in loading
     assert 'skeleton: \'weekdayHourChartSkeleton\'' in source or 'skeleton: "weekdayHourChartSkeleton"' in source
-    assert "weekdayHourChartSkeleton" in source
 
 
 def test_heatmap_resize_in_window_resize_handler(source):
     assert "window.addEventListener('resize', resizeDashboardCharts)" in source
     block = _function_block(source, "resizeDashboardCharts")
     assert "weekdayHourChart.resize()" in block
-
-
-def test_summary_change_badge_elements_exist(source):
-    for element_id in (
-        "statTotalPlaysChange",
-        "statListenTimeChange",
-        "statActiveDays",
-    ):
-        assert f'id="{element_id}"' in source
 
 
 def test_format_change_text_helper_exists(source, catalog_source):
@@ -443,6 +427,7 @@ def test_ranking_fetch_propagates_metric_and_uses_selected_value(source):
     assert "metric: requestState.metric" in block
     assert "renderStatPanels(snapshot);" in block
     assert "renderPanelSafely" not in block  # dispatch lives in the helper now
+    assert "renderTopArtistsChart(snapshot.top_artists, lastRankingMetric)" in source
     assert "renderTopAlbumsChart(snapshot.top_albums, lastRankingMetric)" in source
 
 
@@ -531,44 +516,6 @@ def test_panel_state_helper_covers_loading_empty_error(source):
     assert "error" in block
     assert "innerHTML" not in block
     assert "insertAdjacentHTML" not in block
-
-
-def test_dashboard_section_error_and_empty_overlays_exist(source):
-    for element_id in (
-        "nowPlayingError",
-        "playerChartError",
-        "transcodingChartError",
-        "hourlyChartError",
-        "dailyChartError",
-        "weekdayHourChartError",
-        "topArtistsChartError",
-        "topAlbumsChartError",
-        "serverSourceError",
-        "historyError",
-        "summaryError",
-        "playerChartEmpty",
-        "historyEmpty",
-        "nowPlayingEmpty",
-    ):
-        assert f'id="{element_id}"' in source
-
-
-def test_chart_aria_summaries_are_visually_hidden(source):
-    for element_id in (
-        "playerChartSummary",
-        "transcodingChartSummary",
-        "hourlyChartSummary",
-        "dailyChartSummary",
-        "weekdayHourChartSummary",
-        "topArtistsChartSummary",
-        "topAlbumsChartSummary",
-        "nowPlayingSummary",
-        "historySummary",
-        "summaryAria",
-    ):
-        assert f'id="{element_id}"' in source
-    assert "visually-hidden" in source
-    assert "aria-describedby=\"playerChartSummary\"" in source
 
 
 def test_fetch_now_playing_surfaces_section_error(source):
@@ -707,6 +654,8 @@ def test_ranking_uses_list_semantics(source):
     block = _function_block(source, "renderRankingList")
     assert "container.setAttribute('role', 'list')" in block
     assert "row.setAttribute('role', 'listitem')" in block
+    # The list carries an accessible label derived from the ranking metric.
+    assert "'aria-label', ariaLabel" in block
     assert "role', 'cell'" not in block
 
 

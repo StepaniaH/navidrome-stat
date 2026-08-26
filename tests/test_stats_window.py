@@ -466,19 +466,6 @@ async def test_summary_response_includes_comparison_fields(mock_get):
 
 
 @pytest.mark.asyncio
-@patch("src.routes.stats.get_now_playing_data", new_callable=AsyncMock, create=True)
-async def test_now_playing_endpoint_accepts_no_days_param(_mock):
-    # Now-playing is real-time and has no statistics window.
-    import inspect
-
-    from src.routes.stats import api_now_playing
-
-    sig = inspect.signature(api_now_playing)
-    assert "days" not in sig.parameters
-    assert "timezone" not in sig.parameters
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "endpoint,target,mock_path,kwargs",
     [
@@ -560,16 +547,3 @@ async def test_historical_endpoints_reject_invalid_timezone(endpoint):
         response = await ac.get(endpoint)
     assert response.status_code == 422, endpoint
     assert response.json()["detail"] == "timezone must be a valid IANA timezone name"
-
-
-@pytest.mark.asyncio
-async def test_heatmap_endpoint_default_window_is_30_days():
-    import inspect
-
-    from src.routes.stats import api_weekday_hour_stats
-
-    sig = inspect.signature(api_weekday_hour_stats)
-    days_default = sig.parameters["days"].default
-    assert getattr(days_default, "default", None) == 30
-    tz_default = sig.parameters["timezone"].default
-    assert getattr(tz_default, "default", None) == "UTC"

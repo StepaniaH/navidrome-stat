@@ -101,8 +101,6 @@ def test_shared_localization_runtime_has_fallback_interpolation_and_dom_translat
     locale_files = {path.stem for path in (ROOT / "src" / "static" / "js" / "i18n" / "locales").glob("*.js")}
     assert {"zh-CN", "zh-TW", "en", "ja", "de"} <= locale_files
     assert "'zh-CN': {" not in settings_script
-    assert "pageMessages('settings')" in settings_script
-    assert "function localized(" not in settings_script
     assert "localized(" not in settings_script
 
 
@@ -132,7 +130,6 @@ def test_local_preferences_include_motion_and_reset_without_server_writes():
 def test_settings_has_timezone_and_catppuccin_palette_tokens():
     html = _read(SETTINGS_HTML)
     script = _read(SETTINGS_JS)
-    assert 'id="settingsTimezoneSelect"' in html
     assert "{ value: 'browser'" in script
     assert "{ value: 'UTC'" in script
     for token in (
@@ -192,7 +189,8 @@ def test_source_form_has_explicit_create_and_edit_modes():
     html = _read(SETTINGS_HTML)
     script = _read(SETTINGS_JS)
     assert 'id="cancelSourceEditBtn"' in html
-    assert 'id="sourcePass"' in html and "required" in html
+    source_pass_line = next(line for line in html.splitlines() if 'id="sourcePass"' in line)
+    assert "required" in source_pass_line
     assert 'id="sourceEnabled"' in html
     assert "function resetSourceForm()" in script
     assert "password.required = !editing" in script

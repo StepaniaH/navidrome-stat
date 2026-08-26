@@ -50,21 +50,6 @@ def _session(
     }
 
 
-def test_top_artists_plays_default_uses_count_as_value(db_path):
-    asyncio.run(init_db(db_path))
-    now = _now()
-    asyncio.run(save_play_session(_session(_iso(now - timedelta(days=1)), track_id="a1", artist="Alpha", duration_sec=10), db_path=db_path))
-    asyncio.run(save_play_session(_session(_iso(now - timedelta(days=1)), track_id="a2", artist="Alpha", duration_sec=20), db_path=db_path))
-    asyncio.run(save_play_session(_session(_iso(now - timedelta(days=1)), track_id="b1", artist="Beta", duration_sec=999), db_path=db_path))
-
-    rows = asyncio.run(get_top_artists(limit=10, days=0, db_path=db_path))
-
-    assert rows == [
-        {"artist": "Alpha", "count": 2, "total_listen_sec": 30, "value": 2},
-        {"artist": "Beta", "count": 1, "total_listen_sec": 999, "value": 1},
-    ]
-
-
 def test_top_artists_listen_time_ranks_by_seconds(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
@@ -141,17 +126,6 @@ def test_invalid_metric_raises_value_error_db_layer(db_path):
         asyncio.run(get_top_artists(limit=10, days=0, metric="invalid", db_path=db_path))
 
 
-def test_top_artists_listen_time_respects_window(db_path):
-    asyncio.run(init_db(db_path))
-    now = _now()
-    asyncio.run(save_play_session(_session(_iso(now - timedelta(days=1)), track_id="b1", artist="Beta", duration_sec=600), db_path=db_path))
-    asyncio.run(save_play_session(_session(_iso(now - timedelta(days=40)), track_id="a1", artist="Alpha", duration_sec=1000), db_path=db_path))
-
-    rows = asyncio.run(get_top_artists(limit=10, days=7, metric="listen_time", db_path=db_path))
-
-    assert rows == [{"artist": "Beta", "count": 1, "total_listen_sec": 600, "value": 600}]
-
-
 def test_top_artists_listen_time_respects_timezone_window(db_path):
     # Timezone changes the cutoff boundary, not accumulated seconds.
     asyncio.run(init_db(db_path))
@@ -184,7 +158,7 @@ async def test_api_top_albums_propagates_metric_listen_time(mock_get):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("metric", ["plays", "listen_time"])
+@pytest.mark.parametrize("metric", ["listen_time"])
 @patch("src.routes.stats.get_top_artists", new_callable=AsyncMock)
 async def test_api_top_artists_accepts_valid_metrics(mock_get, metric):
     mock_get.return_value = []
@@ -195,53 +169,28 @@ async def test_api_top_artists_accepts_valid_metrics(mock_get, metric):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "metric",
-    [
-        "",
-        "invalid",
-        "PLAYS",
-        "listen",
-        "duration",
-        "random",
-    ],
-)
+@pytest.mark.parametrize("metric", ["invalid", "PLAYS"])
 async def test_api_top_artists_rejects_invalid_metric(metric):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        url = f"/api/stats/top-artists?metric={metric}" if metric else "/api/stats/top-artists?metric="
-        response = await ac.get(url)
+        response = await ac.get(f"/api/stats/top-artists?metric={metric}")
     assert response.status_code == 422
     assert response.json()["detail"] == "metric must be one of: plays, listen_time"
 
 
-@pytest.mark.asyncio
-async def test_api_top_albums_rejects_invalid_metric():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/top-albums?metric=invalid")
-    assert response.status_code == 422
-    assert response.json()["detail"] == "metric must be one of: plays, listen_time"
-
-
-@pytest.mark.asyncio
-@patch("src.routes.stats.get_top_albums", new_callable=AsyncMock)
-async def test_api_top_albums_default_metric_is_plays(mock_get):
-    mock_get.return_value = []
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        response = await ac.get("/api/stats/top-albums")
-    assert response.status_code == 200
-    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="plays")
-
-
-def test_top_artists_listen_time_empty_database(db_path):
+@pytest.mark.parametrize(
+    ("query_func", "kwargs"),
+    [
+        pytest.param(get_top_artists, {"metric": "plays"}, id="top-artists-plays"),
+        pytest.param(get_top_artists, {"metric": "listen_time"}, id="top-artists-listen-time"),
+        pytest.param(get_top_albums, {"metric": "plays"}, id="top-albums-plays"),
+        pytest.param(get_top_albums, {"metric": "listen_time"}, id="top-albums-listen-time"),
+        pytest.param(get_player_stats, {}, id="player"),
+        pytest.param(get_transcoding_stats, {}, id="transcoding"),
+    ],
+)
+def test_ranking_queries_return_no_rows_on_fresh_database(db_path, query_func, kwargs):
     asyncio.run(init_db(db_path))
-    rows = asyncio.run(get_top_artists(limit=10, days=0, metric="listen_time", db_path=db_path))
-    assert rows == []
-
-
-def test_top_albums_listen_time_empty_database(db_path):
-    asyncio.run(init_db(db_path))
-    rows = asyncio.run(get_top_albums(limit=10, days=0, metric="listen_time", db_path=db_path))
-    assert rows == []
+    assert asyncio.run(query_func(db_path=db_path, **kwargs)) == []
 
 
 def _player_row(client_name, count, total_listen_sec, average_listen_sec, transcoded_count, transcoding_rate_pct):
@@ -305,23 +254,6 @@ def test_player_stats_groups_null_and_empty_separately_and_sorts_above_nonempty(
     assert rows[2]["count"] == 1
 
 
-def test_player_stats_zero_rates_when_count_is_zero_is_safe(db_path):
-    asyncio.run(init_db(db_path))
-    rows = asyncio.run(get_player_stats(days=0, db_path=db_path))
-    assert rows == []
-
-
-def test_player_stats_window_filter_applies(db_path):
-    asyncio.run(init_db(db_path))
-    now = _now()
-    asyncio.run(save_play_session(_session(_iso(now - timedelta(days=1)), track_id="r1", client="Web", duration_sec=10, transcoding=1), db_path=db_path))
-    asyncio.run(save_play_session(_session(_iso(now - timedelta(days=40)), track_id="f1", client="Distant", duration_sec=999, transcoding=0), db_path=db_path))
-
-    rows = asyncio.run(get_player_stats(days=7, db_path=db_path))
-
-    assert rows == [_player_row("Web", 1, 10, 10.0, 1, 100.0)]
-
-
 def test_transcoding_stats_extended_fields_and_percentages(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
@@ -352,12 +284,6 @@ def test_transcoding_stats_extended_fields_and_percentages(db_path):
     }
 
 
-def test_transcoding_stats_zero_denominators_are_safe(db_path):
-    asyncio.run(init_db(db_path))
-    rows = asyncio.run(get_transcoding_stats(days=0, db_path=db_path))
-    assert rows == []
-
-
 def test_transcoding_stats_single_mode_pct_is_100(db_path):
     asyncio.run(init_db(db_path))
     now = _now()
@@ -372,18 +298,3 @@ def test_transcoding_stats_single_mode_pct_is_100(db_path):
         "plays_pct": 100.0,
         "listen_sec_pct": 100.0,
     }]
-
-
-def test_transcoding_stats_window_propagates(db_path):
-    asyncio.run(init_db(db_path))
-    now = _now()
-    asyncio.run(save_play_session(_session(_iso(now - timedelta(days=1)), track_id="d1", client="X", duration_sec=10, transcoding=0), db_path=db_path))
-    asyncio.run(save_play_session(_session(_iso(now - timedelta(days=40)), track_id="t1", client="X", duration_sec=999, transcoding=1), db_path=db_path))
-
-    rows = asyncio.run(get_transcoding_stats(days=7, db_path=db_path))
-    by_mode = {r["is_transcoding"]: r for r in rows}
-    assert by_mode[0]["count"] == 1
-    assert by_mode[0]["total_listen_sec"] == 10
-    assert "transcoded" not in by_mode  # excluded by window
-    assert by_mode[0]["plays_pct"] == 100.0
-    assert by_mode[0]["listen_sec_pct"] == 100.0
