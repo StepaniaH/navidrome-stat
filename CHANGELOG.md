@@ -4,10 +4,17 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-08-26
+
 ### Added
 
 - Filter the dashboard by user alongside the server filter; the selection is shareable through the URL and also narrows the now-playing list.
 - Year-in-review distribution charts can switch between play counts and listening time.
+
+### Fixed
+
+- Chart update animations play in full instead of being cut short by the post-render resize pass.
+- The year-in-review top lists render inside cards consistent with the chart panels.
 
 ## [0.8.2] - 2026-08-26
 
@@ -153,7 +160,8 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/StepaniaH/navidrome-stat/tree/v0.8.0
