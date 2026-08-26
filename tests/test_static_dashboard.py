@@ -10,6 +10,7 @@ DASHBOARD_MESSAGES_JS = (
     Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "messages-dashboard.js"
 )
 DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
+LISTBOX_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "listbox.js"
 THEME_BOOTSTRAP_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "theme-bootstrap.js"
 TAILWIND_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "vendor" / "tailwind.css"
 
@@ -517,8 +518,8 @@ def test_filter_popovers_have_accessible_keyboard_behavior(source):
     assert 'aria-haspopup="listbox"' in source
     assert 'role="listbox"' in source
     assert 'role="option"' in source
-    assert "event.key === 'Escape'" in source
-    assert "closeFilterMenus()" in source
+    assert "createListbox({" in source
+    assert "attachPopover({" in source
 
 
 def test_panel_state_helper_covers_loading_empty_error(source):
@@ -682,12 +683,11 @@ def test_dashboard_accessible_labels_are_bilingual(source, catalog_source):
 
 
 def test_filter_listboxes_support_roving_keyboard_focus(source):
-    block = _function_block(source, "handleListboxKeydown")
-    for key in ("ArrowDown", "ArrowUp", "Home", "End", "Escape"):
-        assert key in block
-    focus = _function_block(source, "focusListboxOption")
-    assert "tabIndex" in focus
-    assert "option.focus()" in focus
+    shared = LISTBOX_JS.read_text(encoding="utf-8")
+    for key in ("ArrowDown", "ArrowUp", "Home", "End", "Escape", "Tab"):
+        assert key in shared
+    assert "tabIndex" in shared
+    assert "option.focus()" in shared
     assert 'id="statsWindowOptions" role="listbox"' in source
     assert 'id="customRangePanel"' in source
 

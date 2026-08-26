@@ -111,7 +111,7 @@ test("renders synthetic statistics without executing metadata", async ({ page })
   await expect(page.locator("#nowPlayingList .source-badge")).toHaveText(
     "Synthetic Server",
   );
-  await expect(page.locator("#historyTable .source-badge")).toHaveText(
+  await expect(page.locator("#historyTable .history-user-source")).toHaveText(
     "Synthetic Server",
   );
   await expect(page.locator("#topArtistsChart")).toHaveAttribute("role", "list");
@@ -649,7 +649,10 @@ test("history and album rankings request cover art through the proxy", async ({ 
     route.fulfill({
       status: 200,
       contentType: "image/png",
-      body: Buffer.from("89504e470d0a1a0a", "hex"),
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+        "base64",
+      ),
     }),
   );
   await page.goto("/");

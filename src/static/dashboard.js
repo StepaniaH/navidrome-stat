@@ -3,7 +3,7 @@ import { applyAppVersion } from './js/app-info.js';
 import { buildStatsQuery, coverArtUrl, escapeHtml, formatChangeText, formatDuration, validateCustomRange } from './js/format.js';
 import { chartPalette, createThemeTokens } from './js/charts.js';
 import { onPreferenceChange, readPreference, writePreference } from './js/prefs.js';
-import { attachPopover } from './js/listbox.js';
+import { attachPopover, createListbox } from './js/listbox.js';
 import { getFilters, setFilters } from './js/filters.js';
 
 
@@ -1190,6 +1190,7 @@ import { getFilters, setFilters } from './js/filters.js';
             barClass: 'ranking-bar-albums',
             ariaLabel: dashboardMessage(activeMetric === 'listen_time' ? 'aria.albumsByTime' : 'aria.albumsByPlays'),
             metric: activeMetric,
+            sourceId: selectedSourceId || firstKnownSourceId(),
         });
     }
 
@@ -1246,17 +1247,6 @@ import { getFilters, setFilters } from './js/filters.js';
             check.setAttribute('aria-hidden', 'true');
             check.textContent = '✓';
             option.append(label, check);
-            option.addEventListener('click', () => {
-                if (selectedSourceId !== id) {
-                    selectedSourceId = id;
-                    persistFilters();
-                    renderSourceOptions();
-                    fetchStats();
-                    fetchNowPlaying();
-                }
-                closeFilterMenus();
-                document.getElementById('statsSourceButton').focus();
-            });
             return option;
         });
         menu.replaceChildren(...options);
@@ -1594,109 +1584,43 @@ import { getFilters, setFilters } from './js/filters.js';
         }
     }
 
-    let activeFilterTrigger = null;
-
-    function focusListboxOption(menu, option) {
-        const options = [...menu.querySelectorAll('[role="option"]')]
-            .filter(item => item instanceof HTMLButtonElement);
-        options.forEach(item => { item.tabIndex = item === option ? 0 : -1; });
-        if (option) option.focus();
-    }
-
-    function setFilterMenu(openButtonId, openMenuId, open) {
-        ['statsWindow', 'statsSource'].forEach((prefix) => {
-            const button = document.getElementById(`${prefix}Button`);
-            const menu = document.getElementById(`${prefix}Menu`);
-            const shouldOpen = open && button.id === openButtonId;
-            button.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-            menu.classList.toggle('hidden', !shouldOpen);
-            if (shouldOpen) activeFilterTrigger = button;
-        });
-        if (open) {
-            const menu = document.getElementById(openMenuId);
-            const selected = menu.querySelector('[role="option"][aria-selected="true"]');
-            const firstOption = menu.querySelector('[role="option"]');
-            focusListboxOption(menu, selected || firstOption);
-        }
-    }
-
-    function closeFilterMenus({ restoreFocus = false } = {}) {
-        setFilterMenu('', '', false);
-        if (restoreFocus && activeFilterTrigger) activeFilterTrigger.focus();
-    }
-
-    function handleListboxKeydown(event) {
-        const listbox = event.currentTarget;
-        const options = [...listbox.querySelectorAll('[role="option"]')]
-            .filter(item => item instanceof HTMLButtonElement);
-        if (!options.length) return;
-        const currentIndex = Math.max(0, options.indexOf(document.activeElement));
-        let nextIndex = null;
-        if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % options.length;
-        else if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + options.length) % options.length;
-        else if (event.key === 'Home') nextIndex = 0;
-        else if (event.key === 'End') nextIndex = options.length - 1;
-        else if (event.key === 'Escape') {
-            event.preventDefault();
-            closeFilterMenus({ restoreFocus: true });
-            return;
-        }
-        if (nextIndex !== null) {
-            event.preventDefault();
-            focusListboxOption(listbox, options[nextIndex]);
-        }
-    }
-
-    document.getElementById('statsWindowButton').addEventListener('click', () => {
-        const button = document.getElementById('statsWindowButton');
-        setFilterMenu(
-            'statsWindowButton',
-            'statsWindowMenu',
-            button.getAttribute('aria-expanded') !== 'true',
-        );
-    });
-    document.getElementById('statsSourceButton').addEventListener('click', () => {
-        const button = document.getElementById('statsSourceButton');
-        setFilterMenu(
-            'statsSourceButton',
-            'statsSourceMenu',
-            button.getAttribute('aria-expanded') !== 'true',
-        );
-    });
-    ['statsWindowButton', 'statsSourceButton'].forEach((id) => {
-        document.getElementById(id).addEventListener('keydown', (event) => {
-            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-            event.preventDefault();
-            const prefix = id === 'statsWindowButton' ? 'statsWindow' : 'statsSource';
-            setFilterMenu(id, `${prefix}Menu`, true);
-        });
-    });
-    document.getElementById('statsWindowOptions').addEventListener('keydown', handleListboxKeydown);
-    document.getElementById('statsSourceMenu').addEventListener('keydown', handleListboxKeydown);
-    document.getElementById('customRangeOption').addEventListener('click', () => {
-        document.getElementById('customStartDate').focus();
-    });
-
-    document.querySelectorAll('.stats-window-option').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const days = Number(btn.dataset.days);
-            if (!Number.isFinite(days)) return;
+    const windowListbox = createListbox({
+        trigger: document.getElementById('statsWindowButton'),
+        menu: document.getElementById('statsWindowMenu'),
+        onSelect: (option) => {
+            if (option.dataset.range === 'custom') {
+                document.getElementById('customStartDate').focus();
+                return false;
+            }
+            const days = Number(option.dataset.days);
+            if (!Number.isFinite(days)) return false;
             const changed = days !== statsDays || customStartDate || customEndDate;
             statsDays = days;
             customStartDate = '';
             customEndDate = '';
             persistFilters();
             setActiveStatsWindowButton(days);
-            closeFilterMenus();
-            document.getElementById('statsWindowButton').focus();
             if (changed) fetchStats();
-        });
+        },
+    });
+
+    const sourceListbox = createListbox({
+        trigger: document.getElementById('statsSourceButton'),
+        menu: document.getElementById('statsSourceMenu'),
+        onSelect: (option) => {
+            const id = option.dataset.sourceId ?? '';
+            if (selectedSourceId === id) return;
+            selectedSourceId = id;
+            persistFilters();
+            renderSourceOptions();
+            fetchStats();
+            fetchNowPlaying();
+        },
     });
 
     document.getElementById('customRangeCancel').addEventListener('click', () => {
         document.getElementById('customRangeError').classList.add('hidden');
-        closeFilterMenus();
-        document.getElementById('statsWindowButton').focus();
+        windowListbox.setOpen(false, { restoreFocus: true });
     });
     document.getElementById('customRangeApply').addEventListener('click', () => {
         const start = document.getElementById('customStartDate').value;
@@ -1714,26 +1638,10 @@ import { getFilters, setFilters } from './js/filters.js';
         customEndDate = end;
         persistFilters();
         setActiveStatsWindowButton(statsDays);
-        closeFilterMenus();
-        document.getElementById('statsWindowButton').focus();
+        windowListbox.setOpen(false, { restoreFocus: true });
         fetchStats();
     });
 
-    document.getElementById('statsWindowControl').addEventListener(
-        'click',
-        (event) => event.stopPropagation(),
-    );
-    document.getElementById('statsSourceControl').addEventListener(
-        'click',
-        (event) => event.stopPropagation(),
-    );
-    document.addEventListener('click', closeFilterMenus);
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && activeFilterTrigger) {
-            const anyOpen = document.querySelector('.filter-trigger[aria-expanded="true"]');
-            if (anyOpen) closeFilterMenus({ restoreFocus: true });
-        }
-    });
     setActiveStatsWindowButton(statsDays);
     setupHistoryColumns();
     updateSourceOptions([]);
