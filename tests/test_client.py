@@ -156,3 +156,36 @@ async def test_song_history_probe_survives_unknown_endpoint():
     client._get_json = AsyncMock(side_effect=RuntimeError("connection refused"))
     assert await client.supports_song_history() is False
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_get_playlist_passes_id_and_returns_envelope():
+    client = NavidromeClient(
+        url="http://navidrome.example.invalid",
+        user="synthetic-user",
+        password="synthetic-password",
+    )
+    envelope = {
+        "subsonic-response": {"status": "ok", "playlist": {"entry": []}}
+    }
+    client._get_json = AsyncMock(return_value=envelope)
+    assert await client.get_playlist("pl-77") is envelope
+    client._get_json.assert_awaited_once_with("getPlaylist", id="pl-77")
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_get_song_history_page_passes_pagination_params():
+    client = NavidromeClient(
+        url="http://navidrome.example.invalid",
+        user="synthetic-user",
+        password="synthetic-password",
+    )
+    envelope = {
+        "subsonic-response": {"status": "ok", "songHistory": {"entry": []}}
+    }
+    client._get_json = AsyncMock(return_value=envelope)
+    page = await client.get_song_history(size=200, offset=400)
+    assert page == envelope
+    client._get_json.assert_awaited_once_with("getSongHistory", size="200", offset="400")
+    await client.close()

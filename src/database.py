@@ -5,7 +5,12 @@ Schema and migrations live in :mod:`src.schema`; the query layer lives in
 re-exports the stable import surface that routes and services consume.
 """
 
-from src.persistence import save_play_attempt, save_play_session  # noqa: F401
+from src.persistence import (  # noqa: F401
+    save_imported_events,
+    save_play_attempt,
+    save_play_session,
+)
+from src.review_queries import get_review_summary  # noqa: F401
 from src.schema import (  # noqa: F401
     LEGACY_SOURCE_ID,
     LEGACY_SOURCE_NAME,
@@ -29,10 +34,10 @@ from src.stats_queries import (  # noqa: F401
     WEEKDAY_HOUR_HOUR_COUNT,
     WEEKDAY_HOUR_WEEKDAY_COUNT,
     get_daily_stats,
+    get_earliest_poller_played_at,
     get_hourly_stats,
     get_playback_history,
     get_player_stats,
-    get_review_summary,
     get_server_stats,
     get_short_play_stats,
     get_source_stats,

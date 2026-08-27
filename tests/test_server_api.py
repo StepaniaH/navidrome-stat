@@ -273,3 +273,124 @@ async def test_server_view_reports_song_history_capability(isolated_db):
         assert entry["song_history_ready"] is True
     finally:
         runtime_state.reset()
+
+
+def _payload_with_playlist(playlist="pl-9", **overrides):
+    body = payload(**overrides)
+    body["backfill_playlist_id"] = playlist
+    return body
+
+
+@pytest.mark.asyncio
+async def test_create_and_update_persist_backfill_playlist_id(isolated_db):
+    await init_db(isolated_db)
+    reconcile = AsyncMock()
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        with patch("src.collectors.reconcile_collectors", reconcile):
+            created = await ac.post(
+                "/api/servers", json=_payload_with_playlist()
+            )
+            assert created.status_code == 200
+            body = created.json()
+            assert body["backfill_playlist_id"] == "pl-9"
+            created_id = body["id"]
+
+            updated = await ac.put(
+                f"/api/servers/{created_id}",
+                json=_payload_with_playlist("pl-10"),
+            )
+
+    assert updated.status_code == 200
+    assert updated.json()["backfill_playlist_id"] == "pl-10"
+    stored = await get_server(created_id, isolated_db)
+    assert stored["backfill_playlist_id"] == "pl-10"
+
+
+@pytest.mark.asyncio
+async def test_backfill_run_returns_counts(isolated_db):
+    existing = {"id": "server-1", **_payload_with_playlist(), "password": "pw"}
+    with patch("src.routes.servers.get_server", AsyncMock(return_value=existing)):
+        with patch(
+            "src.routes.servers.backfill_runner"
+        ) as runner:
+            runner.run_once = AsyncMock(return_value={"imported": 2, "skipped": 1})
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as ac:
+                response = await ac.post("/api/servers/server-1/backfill/run")
+
+    assert response.status_code == 200
+    assert response.json() == {"imported": 2, "skipped": 1}
+    called_server = runner.run_once.await_args.args[0]
+    assert called_server["backfill_playlist_id"] == "pl-9"
+
+
+@pytest.mark.asyncio
+async def test_backfill_run_conflicts_without_playlist():
+    existing = {"id": "server-1", **payload(), "password": "pw"}
+    with patch("src.routes.servers.get_server", AsyncMock(return_value=existing)):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            response = await ac.post("/api/servers/server-1/backfill/run")
+
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_backfill_run_maps_failure_to_502_without_details():
+    existing = {"id": "server-1", **_payload_with_playlist(), "password": "pw"}
+    with patch("src.routes.servers.get_server", AsyncMock(return_value=existing)):
+        with patch("src.routes.servers.backfill_runner") as runner:
+            runner.run_once = AsyncMock(
+                side_effect=RuntimeError("secret upstream detail")
+            )
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as ac:
+                response = await ac.post("/api/servers/server-1/backfill/run")
+
+    assert response.status_code == 502
+    assert "secret upstream detail" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_readiness_metrics_model_exposes_backfill_counters(isolated_db):
+    await init_db(isolated_db)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        response = await ac.get("/health/ready")
+
+    assert response.status_code == 200
+    assert {"backfill_run_total", "backfill_imported_total",
+            "backfill_error_total"} <= set(response.json()["metrics"])
+
+
+@pytest.mark.asyncio
+async def test_server_view_includes_backfill_runtime_summary(isolated_db):
+    from src.database import init_db
+    from src.runtime_state import runtime_state
+
+    await init_db(isolated_db)
+    existing = {"id": "bf-view", **_payload_with_playlist(), "password": "pw"}
+    await save_server(existing, isolated_db)
+    try:
+        runtime_state.record_backfill_result("bf-view", 7)
+        runtime_state.record_backfill_error("bf-view")
+        with patch(
+            "src.routes.servers.get_server", AsyncMock(return_value=existing)
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as ac:
+                response = await ac.get("/api/servers")
+
+        entry = next(s for s in response.json() if s["id"] == "bf-view")
+        assert entry["backfill_summary"]["imported_total"] == 7
+        assert entry["backfill_summary"]["error_count"] == 1
+        assert entry["backfill_summary"]["last_at"] is not None
+    finally:
+        runtime_state.reset()

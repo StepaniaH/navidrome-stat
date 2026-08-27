@@ -156,7 +156,7 @@ function renderTopList(listId, entries, { coverId, sourceId }) {
         rank.textContent = String(index + 1);
         li.appendChild(rank);
 
-        const id = coverId === 'album_id' ? entry.album_id : entry.track_id;
+        const id = entry[coverId];
         li.appendChild(coverImage(entry.source_id || sourceId, id, 'review-top-cover', entry.name));
 
         const meta = document.createElement('span');
@@ -197,7 +197,7 @@ function renderReview(review, sourceId) {
         return;
     }
     renderCharts(review);
-    renderTopList('reviewTopArtists', review.top_artists, { coverId: null, sourceId: '' });
+    renderTopList('reviewTopArtists', review.top_artists, { coverId: 'artist_id', sourceId });
     renderTopList('reviewTopAlbums', review.top_albums, { coverId: 'album_id', sourceId });
     renderTopList('reviewTopTracks', review.top_tracks, { coverId: 'track_id', sourceId });
 }

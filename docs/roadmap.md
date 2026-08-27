@@ -6,18 +6,13 @@ This roadmap describes project direction, not release commitments. Shipped chang
 
 ## Near term
 
-- Add migration fixtures and repeatable restore checks for existing SQLite deployments.
-- Define a compatibility and deprecation path for the fallback single-source API alongside multi-server connections.
 - Keep contributor and maintainer workflows reproducible, including dependency-lock refresh, frontend asset builds, browser tests, the statistics benchmark, the container smoke test, and tag-only Docker releases.
 - Improve collector diagnostics while keeping health responses free of credentials and playback metadata.
-- Persist artist IDs during collection so top-artist lists can show artwork instead of letter tiles.
-- Extend interface localization to Spanish and French; German is done and the catalog pipeline is proven.
 
 ## Medium term
 
 - Define pre-1.0 compatibility rules for HTTP endpoints, privacy export formats, and SQLite migrations.
 - Improve large-history query, cache, and retention performance within the existing single-host SQLite architecture, guided by synthetic benchmarks.
-- Reduce credential exposure for saved multi-server connections without obscuring deployment, migration, or backup behavior.
 - Watch upstream for a public Navidrome listening-history read API (the `getSongHistory` proposal) so a native import can land once one exists.
 - Offer opt-in ListenBrainz-format scrobble forwarding with per-server deduplication.
 

@@ -252,3 +252,23 @@ def test_server_row_test_result_renders_inline_not_in_form():
     assert "server-test-status" in js
     html = _read(SETTINGS_HTML)
     assert ".server-test-status" in html
+
+
+def test_server_form_has_backfill_playlist_field_with_help():
+    html = _read(SETTINGS_HTML)
+    assert 'id="sourceBackfillPlaylist"' in html
+    assert 'for="sourceBackfillPlaylist"' in html
+    assert 'data-i18n="source.backfillPlaylist"' in html
+    assert "source.backfillHelp" in html
+
+
+def test_settings_js_round_trips_backfill_playlist_id():
+    script = _read(SETTINGS_JS)
+    assert "sourceBackfillPlaylist" in script
+    assert "backfill_playlist_id" in script
+
+
+def test_settings_row_surfaces_backfill_status_only_when_configured():
+    script = _read(SETTINGS_JS)
+    assert "backfillStatusLine" in script or "server-backfill-status" in script
+    assert "source.backfillStatus" in script

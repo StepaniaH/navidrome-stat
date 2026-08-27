@@ -1593,6 +1593,11 @@
                                 <label for="sourcePass" data-i18n="source.password">Password</label>
                                 <input id="sourcePass" name="sourcePass" type="password" autocomplete="new-password" required placeholder="Required for a new connection" data-i18n-attr="placeholder:source.passwordPlaceholder">
                             </div>
+                            <div class="form-field form-field-wide">
+                                <label for="sourceBackfillPlaylist" data-i18n="source.backfillPlaylist">Backfill playlist ID</label>
+                                <input id="sourceBackfillPlaylist" name="sourceBackfillPlaylist" type="text" autocomplete="off" spellcheck="false" placeholder="Optional smart playlist ID (.nsp)" data-i18n-attr="placeholder:source.backfillPlaceholder">
+                                <small data-i18n="source.backfillHelp">Optional. Create a &quot;Recently Played&quot; smart playlist in Navidrome and paste its ID to recover pre-install history over the public API only.</small>
+                            </div>
                             <label class="source-enabled-control" for="sourceEnabled">
                                 <input id="sourceEnabled" name="sourceEnabled" type="checkbox" checked>
                                 <span>

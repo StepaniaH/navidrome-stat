@@ -12,6 +12,8 @@ export const SUPPORTED_LOCALES = Object.freeze([
     { code: 'en', native: 'English' },
     { code: 'ja', native: '日本語' },
     { code: 'de', native: 'Deutsch' },
+    { code: 'es', native: 'Español' },
+    { code: 'fr', native: 'Français' },
 ]);
 
 export const LOCALE_CODES = Object.freeze(SUPPORTED_LOCALES.map((locale) => locale.code));

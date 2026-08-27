@@ -1,6 +1,6 @@
 # Adding an interface language
 
-The interface ships five languages (Simplified Chinese, Traditional Chinese, English, Japanese, German). New languages are one module plus two registrations; tests catch anything missed.
+The interface ships seven languages (Simplified Chinese, Traditional Chinese, English, Japanese, German, Spanish, French). New languages are one module plus two registrations; tests catch anything missed.
 
 ## Steps
 

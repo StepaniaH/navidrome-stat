@@ -1,10 +1,12 @@
 import asyncio
+import logging
 from unittest.mock import AsyncMock
 
 import pytest
 
 
-def server_config(server_id="server-1", *, enabled=True, password="synthetic-password"):
+def server_config(server_id="server-1", *, enabled=True, password="synthetic-password",
+                  backfill_playlist_id=None):
     return {
         "id": server_id,
         "display_name": "Synthetic Server",
@@ -12,7 +14,46 @@ def server_config(server_id="server-1", *, enabled=True, password="synthetic-pas
         "username": "synthetic-user",
         "password": password,
         "enabled": enabled,
+        "backfill_playlist_id": backfill_playlist_id,
     }
+
+
+@pytest.mark.asyncio
+async def test_desired_configs_warn_once_when_env_connection_shadowed(
+    isolated_db, monkeypatch, caplog
+):
+    import src.collectors as collectors_module
+    from src.collectors import _desired_collector_configs
+    from src.database import init_db, save_server
+
+    await init_db()
+    await save_server(server_config())
+    monkeypatch.setenv("NAVIDROME_URL", "http://env.example.invalid")
+    monkeypatch.setenv("NAVIDROME_USER", "env_user")
+    monkeypatch.setenv("NAVIDROME_PASS", "env_pass")
+    monkeypatch.setattr(collectors_module, "_env_shadow_warning_emitted", False)
+
+    with caplog.at_level(logging.WARNING, logger="src.collectors"):
+        await _desired_collector_configs()
+        await _desired_collector_configs()
+
+    shadowed = [r for r in caplog.records if "ignored" in r.getMessage()]
+    assert len(shadowed) == 1
+    assert "NAVIDROME_" in shadowed[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_desired_configs_silent_without_saved_servers_or_env(isolated_db, caplog):
+    from src.collectors import _desired_collector_configs
+    from src.database import init_db
+
+    await init_db()
+
+    with caplog.at_level(logging.WARNING, logger="src.collectors"):
+        desired = await _desired_collector_configs()
+
+    assert desired == []
+    assert caplog.records == []
 
 
 @pytest.mark.asyncio
@@ -360,3 +401,118 @@ async def test_reconcile_unchanged_configuration_keeps_running_collector():
     assert manager.collectors["server-1"] is original
     assert len(clients) == 1
     await manager.stop_all()
+
+
+def _with_watch(**overrides):
+    from src.collectors import CollectorManager
+
+    watched = []
+    clients = []
+
+    def client_factory(**_config):
+        client = AsyncMock()
+        clients.append(client)
+        return client
+
+    async def poller(_client, _tracker):
+        await asyncio.Event().wait()
+
+    async def watch(_server, _client):
+        await asyncio.Event().wait()
+
+    def watch_factory(server, client):
+        if not server.get("backfill_playlist_id"):
+            return None
+        watched.append(server["id"])
+        return watch(server, client)
+
+    manager = CollectorManager(
+        client_factory,
+        poller,
+        [],
+        watch_factory=watch_factory,
+        **overrides,
+    )
+    return manager, watched
+
+
+@pytest.mark.asyncio
+async def test_playlist_id_starts_watch_task_on_activation():
+    manager, watched = _with_watch()
+    await manager.start(server_config("server-1", backfill_playlist_id="pl-1"))
+
+    collector = manager.collectors["server-1"]
+    assert watched == ["server-1"]
+    assert collector.watch_task is not None
+    assert not collector.watch_task.done()
+
+    await manager.stop_all()
+    assert collector.watch_task.done()
+
+
+@pytest.mark.asyncio
+async def test_absent_playlist_id_skips_watch_task():
+    manager, watched = _with_watch()
+    await manager.start(server_config("server-1"))
+
+    assert watched == []
+    assert manager.collectors["server-1"].watch_task is None
+
+    await manager.stop_all()
+
+
+@pytest.mark.asyncio
+async def test_playlist_id_change_replaces_collector_and_watch():
+    manager, watched = _with_watch()
+    await manager.start(server_config("server-1", backfill_playlist_id="pl-old"))
+    original = manager.collectors["server-1"]
+
+    await manager.replace(
+        server_config("server-1", backfill_playlist_id="pl-new")
+    )
+
+    replaced = manager.collectors["server-1"]
+    assert replaced is not original
+    assert original.task.cancelled()
+    assert original.watch_task.cancelled()
+    assert watched == ["server-1", "server-1"]
+    assert not replaced.watch_task.done()
+
+    await manager.stop_all()
+
+
+@pytest.mark.asyncio
+async def test_default_manager_wires_backfill_watch_when_playlist_present():
+    import src.collectors as collectors_module
+    from src.runtime_state import runtime_state
+
+    awaited = []
+
+    class StubRunner:
+        async def run_once(self, server, client=None):
+            awaited.append(server["id"])
+            return {"imported": 0, "skipped": 0}
+
+    original_runner = collectors_module.backfill_runner
+    collectors_module.backfill_runner = StubRunner()
+    try:
+        async def poller(_client, _tracker):
+            await asyncio.Event().wait()
+
+        manager = collectors_module.CollectorManager(
+            lambda **_config: AsyncMock(), poller, []
+        )
+        await manager.start(
+            server_config("server-1", backfill_playlist_id="pl-x")
+        )
+        collector = manager.collectors["server-1"]
+        assert collector.watch_task is not None
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert awaited == ["server-1"]
+
+        await manager.stop_all()
+        assert collector.watch_task.done()
+    finally:
+        collectors_module.backfill_runner = original_runner
+        runtime_state.reset()

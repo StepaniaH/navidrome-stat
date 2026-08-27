@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -13,6 +13,10 @@ class CollectorRuntimeState:
     last_poll_ok: Optional[bool] = None
     last_upstream_error_code: Optional[int] = None
     song_history: Optional[bool] = None
+    backfill_run_count: int = 0
+    backfill_imported_total: int = 0
+    backfill_error_count: int = 0
+    last_backfill_at: Optional[datetime] = None
 
     def task_alive(self) -> bool:
         return self.task is not None and not self.task.done()
@@ -96,6 +100,15 @@ class RuntimeState:
     def set_song_history(self, source_id: str, supported: bool) -> None:
         self._collector(source_id).song_history = bool(supported)
 
+    def record_backfill_result(self, source_id: str, imported: int) -> None:
+        collector = self._collector(source_id)
+        collector.backfill_run_count += 1
+        collector.backfill_imported_total += max(imported, 0)
+        collector.last_backfill_at = datetime.now(timezone.utc)
+
+    def record_backfill_error(self, source_id: str) -> None:
+        self._collector(source_id).backfill_error_count += 1
+
     def record_save_success(self) -> None:
         self.save_success_count += 1
 
@@ -115,6 +128,7 @@ class RuntimeState:
                 "last_poll_ok": None,
                 "last_poll_at": None,
                 "song_history": None,
+                "backfill": None,
             }
         if not collector.task_alive():
             status = "stopped"
@@ -129,6 +143,24 @@ class RuntimeState:
             "last_poll_ok": collector.last_poll_ok,
             "last_poll_at": collector.last_poll_at,
             "song_history": collector.song_history,
+            "backfill": self._backfill_summary(collector),
+        }
+
+    @staticmethod
+    def _backfill_summary(
+        collector: CollectorRuntimeState,
+    ) -> Optional[dict]:
+        if collector.backfill_run_count == 0 and collector.backfill_error_count == 0:
+            return None
+        return {
+            "run_count": collector.backfill_run_count,
+            "imported_total": collector.backfill_imported_total,
+            "error_count": collector.backfill_error_count,
+            "last_at": (
+                collector.last_backfill_at.isoformat()
+                if collector.last_backfill_at
+                else None
+            ),
         }
 
 

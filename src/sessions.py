@@ -8,6 +8,10 @@ PLAY_THRESHOLD_SEC = 30
 STALE_THRESHOLD_SEC = 30
 PAUSE_GRACE_SEC = 30
 
+# OpenSubsonic playbackReport terminal states: a stopped (or expired) entry
+# ends the session immediately instead of entering the pause grace window.
+TERMINAL_PLAYBACK_STATES = frozenset({"stopped", "expired"})
+
 # Constructor defaults are read from the environment once at import time.
 _DEFAULT_PLAY_THRESHOLD_SEC = env_int(
     "PLAY_THRESHOLD_SEC", default=30, min_value=1, max_value=3600
@@ -188,6 +192,7 @@ class PlaybackSessionTracker:
             "track_id": entry.get("id"),
             "title": entry.get("title"),
             "artist": entry.get("artist"),
+            "artist_id": entry.get("artistId"),
             "album": entry.get("album"),
             "is_transcoding": 1 if entry.get("transcodedContentType") else 0,
             "paused": False,
@@ -226,6 +231,12 @@ class PlaybackSessionTracker:
             if isinstance(state, str):
                 return state.lower() in {"starting", "playing"}
         return bool(entry.get("isPlaying", True))
+
+    def _is_terminal_state(self, entry: dict) -> bool:
+        if not self.supports_playback_report:
+            return False
+        state = entry.get("state")
+        return isinstance(state, str) and state.lower() in TERMINAL_PLAYBACK_STATES
 
     def _active_delta(self, session: dict, entry: dict, current_time: datetime) -> float:
         wall_delta = (current_time - session["last_active_at"]).total_seconds()
@@ -267,6 +278,13 @@ class PlaybackSessionTracker:
 
             player_id = str(player_id_raw)
             track_id = entry.get("id")
+
+            if self._is_terminal_state(entry):
+                # stopped/expired end the session at once; do not linger in
+                # the pause grace window after playback actually ended.
+                await self.finalize_session(player_id)
+                continue
+
             is_playing = self._is_playing(entry)
 
             if not is_playing:

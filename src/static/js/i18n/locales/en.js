@@ -234,6 +234,10 @@ export default {
         ['source.passwordPlaceholder', 'Required for a new connection'],
         ['source.passwordConfigured', 'Configured · leave blank to keep current'],
         ['source.passwordRequired', 'Enter a password for a new connection.'],
+        ['source.backfillPlaylist', 'Backfill playlist ID'],
+        ['source.backfillPlaceholder', 'Optional smart playlist ID (.nsp)'],
+        ['source.backfillHelp', 'Optional. Create a "Recently Played" smart playlist in Navidrome and paste its ID to recover pre-install history over the public API only.'],
+        ['source.backfillStatus', 'Backfill · {runs} runs · {imported} imported · {errors} failed'],
         ['source.enabled', 'Collect from this server'],
         ['source.enabledHelp', 'Disabled connections remain saved but do not run a collector.'],
         ['source.enabledStatus', 'Enabled'],
@@ -363,5 +367,7 @@ export default {
         ['localeName.zh-TW', 'Traditional Chinese'],
         ['localeName.en', 'English'],
         ['localeName.ja', 'Japanese'],
+        ['localeName.es', 'Spanish'],
+        ['localeName.fr', 'French'],
     ],
 };

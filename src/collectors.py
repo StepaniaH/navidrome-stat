@@ -7,6 +7,7 @@ no server entries exist, and reconciled onto the collector manager.
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 
 import anyio
@@ -14,7 +15,15 @@ import anyio
 from src.client import NavidromeClient
 from src.collector_manager import CollectorManager as BaseCollectorManager
 from src.config import env_int
-from src.database import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME, list_servers, ping_db
+from src.database import (
+    LEGACY_SOURCE_ID,
+    LEGACY_SOURCE_NAME,
+    get_earliest_poller_played_at,
+    list_servers,
+    ping_db,
+)
+from src.importers.backfill_service import BackfillRunner, watch_forever
+from src.importers.song_history import run_song_history
 from src.runtime_state import runtime_state
 from src.sessions import PlaybackPersistenceError, PlaybackSessionTracker
 from src.source_config import has_full_config, resolve_effective_source_config
@@ -52,6 +61,40 @@ session_tracker = PlaybackSessionTracker(
     checkpoint_interval_sec=CHECKPOINT_INTERVAL_SEC,
     save_attempt=stats_service.record_attempt,
 )
+
+# getSongHistory seam: per-process guard so the initial import runs once
+# per source even when the polling loop restarts (config changes).
+_song_history_imports_done: set[str] = set()
+
+
+def _reset_song_history_import_guard() -> None:
+    """Test hook: clear the one-shot import guard between tests."""
+    _song_history_imports_done.clear()
+
+
+async def _run_initial_song_history(source_id: str, source_name: str, client) -> None:
+    if source_id in _song_history_imports_done:
+        return
+    _song_history_imports_done.add(source_id)
+    username = getattr(client, "user", "") or ""
+    try:
+        earliest = await get_earliest_poller_played_at(source_id, username)
+        result = await run_song_history(
+            client,
+            record=stats_service.record_imported_events,
+            source_id=source_id,
+            source_name=source_name,
+            username=username,
+            earliest_poller_played_at=earliest,
+        )
+        runtime_state.record_backfill_result(source_id, result.get("imported", 0))
+        logger.info("getSongHistory initial import completed")
+    except Exception as exc:
+        runtime_state.record_backfill_error(source_id)
+        logger.error(
+            "getSongHistory initial import failed (type=%s)",
+            exception_kind(exc),
+        )
 
 # Trackers created for saved server connections; empty when only the legacy
 # environment fallback is in use.
@@ -93,6 +136,9 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
     runtime_state.set_song_history(tracker.source_id, song_history)
     if song_history:
         logger.info("OpenSubsonic getSongHistory endpoint: available")
+        await _run_initial_song_history(
+            tracker.source_id, tracker.source_name, client
+        )
 
     while True:
         current_time = datetime.now(timezone.utc)
@@ -160,16 +206,30 @@ def _tracker_for_server(server: dict) -> PlaybackSessionTracker:
     )
 
 
+backfill_runner = BackfillRunner(
+    client_factory=lambda **config: NavidromeClient(**config)
+)
+
+
+def _watch_factory_for_server(server: dict, client):
+    """Spawn the smart-playlist watch loop when a playlist is configured."""
+    if not server.get("backfill_playlist_id"):
+        return None
+    return watch_forever(backfill_runner, server, client)
+
+
 class CollectorManager(BaseCollectorManager):
     """Collector manager bound to the application factories and runtime state."""
 
-    def __init__(self, client_factory, poller, tracker_registry: list):
+    def __init__(self, client_factory, poller, tracker_registry: list, **kwargs):
+        kwargs.setdefault("watch_factory", _watch_factory_for_server)
         super().__init__(
             client_factory,
             poller,
             tracker_registry,
             tracker_factory=_tracker_for_server,
             runtime_state=runtime_state,
+            **kwargs,
         )
 
 
@@ -183,6 +243,7 @@ collector_manager = CollectorManager(
 async def _desired_collector_configs() -> list[dict]:
     configured = await list_servers()
     if configured:
+        _warn_if_env_connection_shadowed(len(configured))
         return [server for server in configured if server.get("enabled", True)]
     config = await resolve_effective_source_config()
     if not has_full_config(config):
@@ -193,6 +254,25 @@ async def _desired_collector_configs() -> list[dict]:
         **config,
         "enabled": True,
     }]
+
+
+# Logged at most once per process so reconcile churn cannot spam the log.
+_env_shadow_warning_emitted = False
+
+
+def _warn_if_env_connection_shadowed(server_count: int) -> None:
+    global _env_shadow_warning_emitted
+    if _env_shadow_warning_emitted:
+        return
+    env_names = ("NAVIDROME_URL", "NAVIDROME_USER", "NAVIDROME_PASS")
+    if any(os.getenv(name) for name in env_names):
+        _env_shadow_warning_emitted = True
+        logger.warning(
+            "%s environment variables are ignored while %d saved connection(s) "
+            "exist; manage connections in the settings page",
+            "/".join(env_names),
+            server_count,
+        )
 
 
 async def reconcile_collectors() -> None:
@@ -302,5 +382,14 @@ async def build_readiness_report() -> dict:
             "collector_count": len(collectors),
             "healthy_collector_count": healthy_collectors,
             "degraded_collector_count": degraded_collectors,
+            "backfill_run_total": sum(
+                collector.backfill_run_count for collector in collectors
+            ),
+            "backfill_imported_total": sum(
+                collector.backfill_imported_total for collector in collectors
+            ),
+            "backfill_error_total": sum(
+                collector.backfill_error_count for collector in collectors
+            ),
         },
     }

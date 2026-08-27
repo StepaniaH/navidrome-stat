@@ -18,6 +18,7 @@ def _entry(
     is_playing=True,
     username="user_a",
     title="Song 1",
+    artist_id=None,
 ):
     entry = {
         "playerId": player_id,
@@ -30,6 +31,8 @@ def _entry(
     }
     if is_playing is not None:
         entry["isPlaying"] = is_playing
+    if artist_id is not None:
+        entry["artistId"] = artist_id
     return entry
 
 
@@ -54,6 +57,18 @@ async def test_same_track_updates_last_seen(tracker, save_mock):
     assert "p1" in tracker._sessions
     assert tracker._sessions["p1"]["last_seen_at"] == t1
     save_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_session_captures_artist_id(tracker, save_mock):
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
+
+    await tracker.process_poll([_entry(artist_id="ar-9")], t0)
+    await tracker.process_poll([_entry(artist_id="ar-9")], t1)
+
+    saved = save_mock.await_args.args[0]
+    assert saved["artist_id"] == "ar-9"
 
 
 @pytest.mark.asyncio
@@ -501,6 +516,64 @@ async def test_legacy_mode_ignores_unadvertised_playback_report_fields():
 
     saved = save.await_args.args[0]
     assert saved["duration_confidence"] == "estimated"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("terminal_state", ["stopped", "expired", "Stopped"])
+async def test_playback_report_terminal_state_finalizes_immediately(terminal_state):
+    save = AsyncMock()
+    tracker = PlaybackSessionTracker(
+        save,
+        play_threshold_sec=10,
+        pause_grace_sec=60,
+        supports_playback_report=True,
+    )
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    await tracker.process_poll(
+        [{**_entry(), "state": "playing", "positionMs": 0, "playbackRate": 1}],
+        t0,
+    )
+    await tracker.process_poll(
+        [{**_entry(), "state": "playing", "positionMs": 12_000, "playbackRate": 1}],
+        t0 + timedelta(seconds=12),
+    )
+    await tracker.process_poll(
+        [{**_entry(), "state": terminal_state, "positionMs": 12_000}],
+        t0 + timedelta(seconds=13),
+    )
+
+    saved = save.await_args.args[0]
+    assert saved["duration_sec"] == 12
+    assert saved["finalized"] is True
+    assert saved["duration_confidence"] == "reported"
+    assert "p1" not in tracker._sessions
+
+
+@pytest.mark.asyncio
+async def test_playback_report_terminal_state_below_threshold_records_attempt():
+    save_attempt = AsyncMock()
+    tracker = PlaybackSessionTracker(
+        AsyncMock(),
+        play_threshold_sec=30,
+        supports_playback_report=True,
+        save_attempt=save_attempt,
+    )
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    await tracker.process_poll(
+        [{**_entry(), "state": "playing", "positionMs": 0}],
+        t0,
+    )
+    await tracker.process_poll(
+        [{**_entry(), "state": "expired", "positionMs": 8_000}],
+        t0 + timedelta(seconds=8),
+    )
+
+    attempt = save_attempt.await_args.args[0]
+    assert attempt["duration_sec"] < 30
+    assert attempt["outcome"] == "short_play"
+    assert not tracker._sessions
 
 
 @pytest.mark.asyncio

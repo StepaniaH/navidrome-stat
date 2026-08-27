@@ -8,7 +8,11 @@ from fastapi import APIRouter, HTTPException
 
 from src.client import NavidromeClient
 from src.collector_manager import CollectorManager  # noqa: F401  (docs parity)
-from src.collectors import CollectorApplyError, apply_collector_runtime_or_rollback
+from src.collectors import (
+    CollectorApplyError,
+    apply_collector_runtime_or_rollback,
+    backfill_runner,
+)
 from src.database import (
     SCHEMA_VERSION,
     delete_server,
@@ -40,6 +44,32 @@ from src.version import APP_VERSION, LICENSE, PROJECT_NAME, PROJECT_URL
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _clean_playlist_id(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+@router.post("/api/servers/{server_id}/backfill/run")
+async def api_server_backfill_run(server_id: str):
+    """Run one importer sync against the server's configured smart playlist."""
+    server = await get_server(server_id)
+    if server is None or not server.get("enabled", True):
+        raise HTTPException(status_code=404, detail="Server not found")
+    if not server.get("backfill_playlist_id"):
+        raise HTTPException(
+            status_code=409,
+            detail="No backfill playlist configured for this server",
+        )
+    try:
+        result = await backfill_runner.run_once(server)
+    except Exception as exc:
+        logger.error("Manual backfill run failed (type=%s)", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Backfill run failed") from exc
+    return result
 
 
 @router.get("/api/source/config", response_model=SourceConfigResponse)
@@ -147,6 +177,8 @@ def _server_view(server: dict) -> ServerResponse:
         id=server["id"], display_name=server["display_name"], url=server["url"],
         username=server["username"], password_configured=bool(server.get("password")),
         enabled=bool(server.get("enabled", True)),
+        backfill_playlist_id=server.get("backfill_playlist_id"),
+        backfill_summary=snapshot.get("backfill"),
         runtime_status=snapshot["status"],
         last_poll_ok=snapshot["last_poll_ok"],
         seconds_since_last_poll=seconds_since_last_poll,
@@ -167,7 +199,8 @@ async def api_servers_create(body: ServerRequest):
     if not body.password:
         raise HTTPException(status_code=422, detail="password is required")
     server = {"id": uuid.uuid4().hex, "display_name": body.display_name.strip(), "url": url,
-              "username": body.username.strip(), "password": body.password, "enabled": body.enabled}
+              "username": body.username.strip(), "password": body.password, "enabled": body.enabled,
+              "backfill_playlist_id": _clean_playlist_id(body.backfill_playlist_id)}
     async with server_mutation_lock():
         await stats_service.create_server(server)
         try:
@@ -196,7 +229,8 @@ async def api_servers_update(server_id: str, body: ServerRequest):
             raise HTTPException(status_code=404, detail="Server not found")
         server = {"id": server_id, "display_name": body.display_name.strip(), "url": url,
                   "username": body.username.strip(), "password": body.password or existing["password"],
-                  "enabled": body.enabled}
+                  "enabled": body.enabled,
+                  "backfill_playlist_id": _clean_playlist_id(body.backfill_playlist_id)}
         await stats_service.update_server(server)
         try:
             await apply_collector_runtime_or_rollback(

@@ -1164,14 +1164,12 @@ import { getFilters, setFilters } from './js/filters.js';
             labelCell.textContent = labelValue || '-';
             labelCell.title = labelValue;
 
-            const cover = panel === 'albums'
-                ? createCoverImage({
-                    sourceId,
-                    id: item.album_id,
-                    className: 'ranking-cover',
-                    onError: (image) => image.replaceWith(createRankingFallback(labelValue)),
-                })
-                : null;
+            const cover = createCoverImage({
+                sourceId,
+                id: panel === 'albums' ? item.album_id : item.artist_id,
+                className: 'ranking-cover',
+                onError: (image) => image.replaceWith(createRankingFallback(labelValue)),
+            });
 
             const barCell = document.createElement('div');
             barCell.className = 'ranking-bar-cell';

@@ -169,3 +169,35 @@ async def test_polling_task_up_requires_every_collector_alive(monkeypatch):
         both_alive.cancel()
         other_alive.cancel()
         await asyncio.gather(both_alive, other_alive, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_readiness_reports_backfill_counter_totals(monkeypatch):
+    import asyncio
+    from datetime import datetime, timezone
+
+    import src.collectors as collectors
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState(client_initialized=True)
+    alive = asyncio.create_task(asyncio.Event().wait())
+    finished = asyncio.create_task(asyncio.sleep(0))
+    await finished
+    state.set_collector_task("server-a", alive)
+    state.set_collector_task("server-idle", finished)
+    now = datetime.now(timezone.utc)
+    state.record_poll_success(now, "server-a")
+    state.record_backfill_result("server-a", 5)
+    state.record_backfill_result("server-a", 0)
+    state.record_backfill_error("server-idle")
+    monkeypatch.setattr(collectors, "runtime_state", state)
+    monkeypatch.setattr(collectors, "ping_db", AsyncMock(return_value=True))
+    try:
+        report = await collectors.build_readiness_report()
+    finally:
+        alive.cancel()
+        await asyncio.gather(alive, return_exceptions=True)
+
+    assert report["metrics"]["backfill_run_total"] == 2
+    assert report["metrics"]["backfill_imported_total"] == 5
+    assert report["metrics"]["backfill_error_total"] == 1

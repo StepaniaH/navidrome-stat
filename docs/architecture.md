@@ -21,11 +21,13 @@ The implementation is split along its natural seams:
 | Write paths, cache invalidation, cached snapshot builds | `src/stats_service.py` |
 | HTTP routes: system/auth, statistics, privacy, connections | `src/routes/*.py` |
 | Playback session tracking | `src/sessions.py` |
+| History importers: event normalization, playlist bridge, `getSongHistory` seam | `src/importers/*.py` |
 | SQLite schema, migrations, shared metadata store | `src/schema.py` |
 | Local-time windows and SQL predicate composition | `src/windows.py` |
 | Durable playback writes | `src/persistence.py` |
 | Statistics read queries | `src/stats_queries.py` |
-| Server registry CRUD | `src/server_registry.py` |
+| Year-in-review aggregation | `src/review_queries.py` |
+| Server registry CRUD with credential encryption | `src/server_registry.py`, `src/secretbox.py` |
 | Retention, export, import, and deletion | `src/privacy_ops.py` |
 | Dashboard and settings UI | `src/static/`, `src/static/js/` |
 
@@ -35,13 +37,22 @@ A session starts when an active `getNowPlaying` entry with a player ID is first 
 
 Once active time reaches `PLAY_THRESHOLD_SEC`, the session is stored as one counted play. The same random session ID is used for periodic checkpoints and finalization, so a long session updates one row instead of adding duplicate plays. Sessions that end below the threshold are stored separately as playback attempts.
 
-When the upstream server advertises the OpenSubsonic `playbackReport` extension, position, state, and playback-rate fields improve duration accounting. Otherwise the tracker estimates duration from polling intervals.
+When the upstream server advertises the OpenSubsonic `playbackReport` extension, position, state, and playback-rate fields improve duration accounting: `playing` and `starting` advance listening time, `paused` keeps the session in the pause grace window, and the terminal `stopped` and `expired` states finalize the session immediately. Otherwise the tracker estimates duration from polling intervals.
 
 Active sessions exist only in application memory; they are exposed to routes through a small behavioral surface (`now_playing()`, `active_count()`) rather than raw state. Counted sessions have durable checkpoints, but a process exit can still lose an uncommitted below-threshold session.
 
+## History importers
+
+Two optional importers fill the gap before live polling started. Both emit the same normalized listen event (provenance columns, unknown duration left NULL, `duration_confidence` set to `estimated`) and write through a single idempotent path: `StatsService.record_imported_events` inserts with an `external_event_key`, whose partial unique index makes re-runs no-ops. Import rows use `source = 'backfill'` or `'song_history'`, and add plays without inflating listening minutes.
+
+- **Backfill bridge**: each enabled server may point at a Navidrome smart playlist (`.nsp`). A watch task reads it through public `getPlaylist` on `BACKFILL_INTERVAL_SEC` and converts one estimated event per track from its last-played timestamp; only the newest play per track is exact, so older plays under `playCount` are never invented. A manual **sync** endpoint runs once immediately.
+- **`getSongHistory` seam**: the adapter paginates the proposed OpenSubsonic endpoint (upstream Navidrome PR #5650, not merged). The polling loop already probes for it; when a server ever advertises it, a one-shot initial import runs automatically.
+
+To avoid double counting, imports never land on or after live-poller coverage: events must predate the oldest `source = 'poller'` row of that source and username, minus a small safety margin (`BACKFILL_CUTOFF_MARGIN_SEC`).
+
 ## Storage
 
-SQLite stores listening records, source information, retention settings, and any Navidrome credentials saved through the server list or compatible fallback API. Schema migrations run during startup. Connections use write-ahead logging, foreign-key checks, and a bounded busy timeout.
+SQLite stores listening records, source information, retention settings, and any Navidrome credentials saved through the server list or compatible fallback API. Saved credentials are encrypted at rest with AES-256-GCM using a per-installation key file (`secret.key`, mode 0600) next to the database; startup migrations re-wrap legacy plaintext values once. Schema migrations run during startup; schema v11 adds the importer dedup key and the per-server backfill playlist reference. Connections use write-ahead logging, foreign-key checks, and a bounded busy timeout.
 
 Dashboard history is read through aggregate queries. A short-lived in-process cache reduces repeated work for identical dashboard filters. The cache lives behind the stats service: every playback write, retention purge, user import or deletion, and server mutation invalidates it inside the service, so callers cannot forget.
 

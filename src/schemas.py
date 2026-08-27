@@ -104,6 +104,7 @@ class TopArtistItem(BaseModel):
     count: int
     total_listen_sec: Optional[int] = None
     value: Optional[int] = None
+    artist_id: Optional[str] = None
 
 
 class TopAlbumItem(BaseModel):
@@ -147,6 +148,9 @@ class ReadinessMetrics(BaseModel):
     collector_count: int = 0
     healthy_collector_count: int = 0
     degraded_collector_count: int = 0
+    backfill_run_total: int = 0
+    backfill_imported_total: int = 0
+    backfill_error_total: int = 0
 
 
 class ReadinessResponse(BaseModel):
@@ -273,6 +277,8 @@ class ServerResponse(BaseModel):
     username: str
     password_configured: bool
     enabled: bool = True
+    backfill_playlist_id: Optional[str] = None
+    backfill_summary: Optional[dict] = None
     runtime_status: Optional[str] = None
     last_poll_ok: Optional[bool] = None
     seconds_since_last_poll: Optional[int] = None
@@ -285,6 +291,7 @@ class ServerRequest(BaseModel):
     username: str = Field(min_length=1, max_length=255)
     password: Optional[str] = Field(default=None, max_length=4096)
     enabled: bool = True
+    backfill_playlist_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class ServerTestResponse(BaseModel):

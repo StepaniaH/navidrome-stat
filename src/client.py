@@ -43,6 +43,14 @@ class NavidromeClient:
     async def get_now_playing(self):
         return await self._get_json("getNowPlaying")
 
+    async def get_playlist(self, playlist_id: str):
+        """Return the full playlist envelope (smart-playlist backfill source)."""
+        return await self._get_json("getPlaylist", id=playlist_id)
+
+    async def get_song_history(self, *, size: int, offset: int):
+        """Return one getSongHistory page (endpoint proposed upstream, PR #5650)."""
+        return await self._get_json("getSongHistory", size=str(size), offset=str(offset))
+
     async def get_cover_art(self, item_id: str, size: int):
         """Return raw cover art bytes and their content type."""
         params = self.get_auth_params()

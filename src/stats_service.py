@@ -26,6 +26,7 @@ from src.database import (
     get_top_artists,
     get_transcoding_stats,
     list_servers,
+    save_imported_events,
     save_play_attempt,
     save_play_session,
     save_server,
@@ -50,11 +51,11 @@ def exception_kind(exc: Exception) -> str:
     return type(exc).__name__
 
 
-async def retry_save(operation, *, kind: str, attempts: int) -> None:
+async def retry_save(operation, *, kind: str, attempts: int):
+    """Run ``operation`` with backoff; returns its result on success."""
     for attempt in range(1, attempts + 1):
         try:
-            await operation()
-            return
+            return await operation()
         except Exception as exc:
             if attempt >= attempts:
                 logger.error(
@@ -131,6 +132,19 @@ class StatsService:
             attempts=self._retry_attempts,
         )
         await self._cache.invalidate()
+
+    async def record_imported_events(self, events: list[dict]) -> int:
+        """Write importer events through the idempotent dedup path."""
+        if not events:
+            return 0
+        imported = await retry_save(
+            lambda: save_imported_events(events),
+            kind="imported_events",
+            attempts=self._retry_attempts,
+        )
+        if imported:
+            await self._cache.invalidate()
+        return imported
 
     async def purge_retention(self) -> dict:
         result = await apply_retention_purge()

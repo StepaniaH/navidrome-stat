@@ -234,6 +234,10 @@ export default {
         ['source.passwordPlaceholder', '新規接続では必須'],
         ['source.passwordConfigured', '設定済み · 空欄のままなら変更なし'],
         ['source.passwordRequired', '新規接続にはパスワードが必要です。'],
+        ['source.backfillPlaylist', 'バックフィル用プレイリスト ID'],
+        ['source.backfillPlaceholder', '任意のスマートプレイリスト ID（.nsp）'],
+        ['source.backfillHelp', '省略可。Navidrome で「最近再生した曲」のスマートプレイリストを作成し、その ID を貼り付けると公開 API のみで導入前の履歴を取り込みます。'],
+        ['source.backfillStatus', 'バックフィル · 実行 {runs} 回 · 取込 {imported} 件 · 失敗 {errors} 件'],
         ['source.enabled', 'このサーバーから収集'],
         ['source.enabledHelp', '無効化された接続は保存されますが、コレクターは動作しません。'],
         ['source.enabledStatus', '有効'],
@@ -363,5 +367,7 @@ export default {
         ['localeName.zh-TW', '繁体字中国語'],
         ['localeName.en', '英語'],
         ['localeName.ja', '日本語'],
+        ['localeName.es', 'スペイン語'],
+        ['localeName.fr', 'フランス語'],
     ],
 };

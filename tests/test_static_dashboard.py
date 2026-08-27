@@ -699,7 +699,7 @@ def test_history_column_visibility_persisted_with_min_one_rule(source):
 
 
 def test_history_column_menu_messages_exist_in_all_locales(catalog_source):
-    assert catalog_source.count("['history.columns'") == 5
+    assert catalog_source.count("['history.columns'") == 7
 
 
 def test_header_shows_brand_name_and_live_version(source):

@@ -16,6 +16,7 @@ class Collector:
     tracker: object
     task: asyncio.Task
     config_key: tuple
+    watch_task: "asyncio.Task | None" = None
 
 
 class CollectorCleanupError(RuntimeError):
@@ -33,12 +34,14 @@ class CollectorManager:
         *,
         tracker_factory: Callable,
         runtime_state,
+        watch_factory: Callable | None = None,
     ):
         self._client_factory = client_factory
         self._poller = poller
         self._tracker_registry = tracker_registry
         self._tracker_factory = tracker_factory
         self._runtime_state = runtime_state
+        self._watch_factory = watch_factory
         self._lock = asyncio.Lock()
         self.collectors: dict[str, Collector] = {}
 
@@ -62,6 +65,7 @@ class CollectorManager:
             server.get("password"),
             server.get("display_name"),
             bool(server.get("enabled", True)),
+            server.get("backfill_playlist_id"),
         )
 
     @staticmethod
@@ -91,9 +95,18 @@ class CollectorManager:
         client,
         tracker,
         config_key: tuple,
+        server: dict,
     ) -> None:
         task = asyncio.create_task(self._poller(client, tracker))
-        self.collectors[server_id] = Collector(client, tracker, task, config_key)
+        watch_coro = (
+            self._watch_factory(server, client)
+            if self._watch_factory is not None
+            else None
+        )
+        watch_task = asyncio.create_task(watch_coro) if watch_coro else None
+        self.collectors[server_id] = Collector(
+            client, tracker, task, config_key, watch_task=watch_task
+        )
         self._tracker_registry.append(tracker)
         self._sync_runtime_state()
 
@@ -103,18 +116,21 @@ class CollectorManager:
             self._sync_runtime_state()
             return
         errors: list[Exception] = []
-        collector.task.cancel()
-        try:
+        tasks = [collector.task]
+        if collector.watch_task is not None:
+            tasks.append(collector.watch_task)
+        for pending_task in tasks:
+            pending_task.cancel()
             try:
-                await collector.task
+                await pending_task
             except asyncio.CancelledError:
                 pass
             except Exception as exc:
                 errors.append(exc)
-            try:
-                await collector.tracker.finalize_all()
-            except Exception as exc:
-                errors.append(exc)
+        try:
+            await collector.tracker.finalize_all()
+        except Exception as exc:
+            errors.append(exc)
         finally:
             try:
                 await collector.client.close()
@@ -145,6 +161,7 @@ class CollectorManager:
                     client,
                     tracker,
                     self._config_key(server),
+                    server,
                 )
             except Exception:
                 await client.close()
@@ -163,6 +180,7 @@ class CollectorManager:
                     client,
                     tracker,
                     self._config_key(server),
+                    server,
                 )
             except Exception:
                 await client.close()
@@ -200,6 +218,7 @@ class CollectorManager:
                         client,
                         tracker,
                         config_key,
+                        desired[source_id],
                     )
             except Exception:
                 for source_id, (client, _tracker, _key) in replacements.items():

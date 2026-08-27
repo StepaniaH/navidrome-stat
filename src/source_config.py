@@ -6,13 +6,17 @@ SQLite values. Saved passwords are never returned by GET endpoints or logged.
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Optional
 from urllib.parse import urlparse
 
 from src import config
 from src.schema import LEGACY_SOURCE_ID, set_meta_value
+from src.secretbox import decrypt, encrypt, is_encrypted, read_key_if_present
 from src.sqlite import connect_db
+
+logger = logging.getLogger(__name__)
 
 SOURCE_URL_KEY = "source_url"
 SOURCE_USER_KEY = "source_user"
@@ -27,6 +31,19 @@ def _path(db_path: str | None = None) -> str:
     return config.DATABASE_PATH if db_path is None else db_path
 
 
+def _decrypt_saved_password(value: Optional[str], key: Optional[bytes]) -> Optional[str]:
+    if not value:
+        return None
+    if not is_encrypted(value):
+        logger.error("Saved credential is not encrypted (key=%s)", SOURCE_PASSWORD_KEY)
+        return None
+    try:
+        return decrypt(value, key)
+    except Exception as exc:
+        logger.error("Saved credential decryption failed (type=%s)", type(exc).__name__)
+        return None
+
+
 async def get_saved_source_config(
     db_path: str | None = None,
 ) -> dict[str, Optional[str]]:
@@ -38,10 +55,14 @@ async def get_saved_source_config(
             (SOURCE_URL_KEY, SOURCE_USER_KEY, SOURCE_PASSWORD_KEY),
         ) as cursor:
             saved = dict(await cursor.fetchall())
+    try:
+        key = read_key_if_present(path)
+    except Exception:
+        key = None
     return {
         "url": saved.get(SOURCE_URL_KEY),
         "user": saved.get(SOURCE_USER_KEY),
-        "password": saved.get(SOURCE_PASSWORD_KEY),
+        "password": _decrypt_saved_password(saved.get(SOURCE_PASSWORD_KEY), key),
     }
 
 
@@ -59,7 +80,7 @@ async def set_saved_source_config(
             await set_meta_value(db, SOURCE_URL_KEY, url)
             await set_meta_value(db, SOURCE_USER_KEY, user)
             if password:
-                await set_meta_value(db, SOURCE_PASSWORD_KEY, password)
+                await set_meta_value(db, SOURCE_PASSWORD_KEY, encrypt(password, db_path=path))
             await db.commit()
         except BaseException:
             await db.rollback()
@@ -75,10 +96,11 @@ async def replace_saved_source_config(
 ) -> None:
     """Atomically replace the saved tuple, deleting fields set to None."""
     path = _path(db_path)
+    stored_password = encrypt(password, db_path=path) if password else None
     values = {
         SOURCE_URL_KEY: url,
         SOURCE_USER_KEY: user,
-        SOURCE_PASSWORD_KEY: password,
+        SOURCE_PASSWORD_KEY: stored_password,
     }
     async with connect_db(path) as db:
         await db.execute("BEGIN IMMEDIATE")

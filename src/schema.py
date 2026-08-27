@@ -2,10 +2,10 @@
 
 import aiosqlite
 
-from src.config import DATABASE_PATH
+from src import config
 from src.sqlite import connect_db
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 11
 LEGACY_SOURCE_ID = "legacy"
 LEGACY_SOURCE_NAME = "Legacy environment source"
 
@@ -19,6 +19,7 @@ TEXT_COLUMNS = (
     "title",
     "artist",
     "album",
+    "artist_id",
 )
 PAYLOAD_BYTES_SQL = " + ".join(
     f"COALESCE(LENGTH({column}), 0)" for column in TEXT_COLUMNS
@@ -26,7 +27,7 @@ PAYLOAD_BYTES_SQL = " + ".join(
 
 
 def _path(db_path: str | None = None) -> str:
-    return DATABASE_PATH if db_path is None else db_path
+    return config.DATABASE_PATH if db_path is None else db_path
 
 
 async def get_meta_value(db: aiosqlite.Connection, key: str) -> str | None:
@@ -68,7 +69,7 @@ async def _set_schema_version(db: aiosqlite.Connection, version: int) -> None:
     await set_meta_value(db, "schema_version", str(version))
 
 
-async def _apply_migrations(db: aiosqlite.Connection) -> None:
+async def _apply_migrations(db: aiosqlite.Connection, db_path: str) -> None:
     version = await _get_schema_version(db)
 
     if version < 1:
@@ -218,6 +219,62 @@ async def _apply_migrations(db: aiosqlite.Connection) -> None:
         """)
         await _set_schema_version(db, 8)
 
+    if version < 9:
+        for table in ("play_history", "play_attempts"):
+            async with db.execute(f"PRAGMA table_info({table})") as cursor:
+                columns = {row[1] for row in await cursor.fetchall()}
+            if "artist_id" not in columns:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN artist_id TEXT")
+        await _set_schema_version(db, 9)
+
+    if version < 10:
+        await _encrypt_saved_credentials(db, db_path)
+        await _set_schema_version(db, 10)
+
+    if version < 11:
+        for table in ("play_history",):
+            async with db.execute(f"PRAGMA table_info({table})") as cursor:
+                columns = {row[1] for row in await cursor.fetchall()}
+            if "external_event_key" not in columns:
+                await db.execute(
+                    "ALTER TABLE play_history ADD COLUMN external_event_key TEXT"
+                )
+        async with db.execute("PRAGMA table_info(servers)") as cursor:
+            server_columns = {row[1] for row in await cursor.fetchall()}
+        if "backfill_playlist_id" not in server_columns:
+            await db.execute(
+                "ALTER TABLE servers ADD COLUMN backfill_playlist_id TEXT"
+            )
+        await db.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_play_history_external_event_key
+            ON play_history(external_event_key)
+            WHERE external_event_key IS NOT NULL
+        """)
+        await _set_schema_version(db, 11)
+
+
+async def _encrypt_saved_credentials(db: aiosqlite.Connection, db_path: str) -> None:
+    """Re-wrap legacy plaintext credentials as enc:v1 AES-GCM payloads."""
+    from src.secretbox import encrypt, is_encrypted, load_or_create_key
+
+    key = load_or_create_key(db_path)
+
+    async with db.execute(
+        "SELECT id, password FROM servers WHERE password IS NOT NULL AND password != ''"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    for server_id, password in rows:
+        if is_encrypted(password):
+            continue
+        await db.execute(
+            "UPDATE servers SET password = ? WHERE id = ?",
+            (encrypt(password, key), server_id),
+        )
+
+    fallback = await get_meta_value(db, "source_password")
+    if fallback and not is_encrypted(fallback):
+        await set_meta_value(db, "source_password", encrypt(fallback, key))
+
 
 async def init_db(db_path: str | None = None):
     """Initialize the schema and recover durable playback checkpoints."""
@@ -237,7 +294,7 @@ async def init_db(db_path: str | None = None):
                 listen_duration_sec INTEGER
             )
         """)
-        await _apply_migrations(db)
+        await _apply_migrations(db, path)
         await _recover_incomplete_sessions(db)
         await db.commit()
 

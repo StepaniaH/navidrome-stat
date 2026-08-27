@@ -13,3 +13,6 @@ playwright-report/
 # Local cover art disk cache
 coverart-cache/
 .openchamber/
+
+# Local credential key
+secret.key

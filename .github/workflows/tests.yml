@@ -31,7 +31,7 @@ jobs:
         run: .venv/bin/ruff check .
 
       - name: Pytest with coverage
-        run: .venv/bin/python -m pytest -q --cov=src --cov-report=term-missing:skip-covered
+        run: .venv/bin/python -m pytest -q --cov=src --cov-fail-under=80 --cov-report=term-missing:skip-covered
 
       - uses: actions/setup-node@v7
         with:

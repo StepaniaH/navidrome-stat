@@ -8,7 +8,7 @@ from src.database import get_top_albums, get_top_artists, init_db, save_play_ses
 from src.main import app
 
 
-def _session(played_at: str, track_id: str = "t1", artist: str = "Artist", album: str = "Album", duration_sec: int = 30, transcoding: int = 0):
+def _session(played_at: str, track_id: str = "t1", artist: str = "Artist", album: str = "Album", duration_sec: int = 30, transcoding: int = 0, artist_id=None):
     return {
         "last_seen_at": played_at,
         "username": "testuser",
@@ -19,11 +19,12 @@ def _session(played_at: str, track_id: str = "t1", artist: str = "Artist", album
         "album": album,
         "is_transcoding": transcoding,
         "duration_sec": duration_sec,
+        "artist_id": artist_id,
     }
 
 
-def _row(name_key: str, name: str, count: int, total_listen_sec: int, value: int):
-    return {name_key: name, "count": count, "total_listen_sec": total_listen_sec, "value": value}
+def _row(name_key: str, name: str, count: int, total_listen_sec: int, value: int, **extra):
+    return {name_key: name, "count": count, "total_listen_sec": total_listen_sec, "value": value, **extra}
 
 
 def test_get_top_artists_groups_and_orders(db_path):
@@ -35,9 +36,21 @@ def test_get_top_artists_groups_and_orders(db_path):
     rows = asyncio.run(get_top_artists(db_path=db_path))
 
     assert rows == [
-        _row("artist", "Alpha", 2, 70, 2),
-        _row("artist", "Beta", 1, 10, 1),
+        _row("artist", "Alpha", 2, 70, 2, artist_id=None),
+        _row("artist", "Beta", 1, 10, 1, artist_id=None),
     ]
+
+
+def test_get_top_artists_keeps_artist_id_for_ranking_row(db_path):
+    asyncio.run(init_db(db_path))
+    asyncio.run(save_play_session(_session("2024-03-24T01:00:00Z", "t1", artist="Alpha", artist_id="ar-7"), db_path=db_path))
+    asyncio.run(save_play_session(_session("2024-03-24T02:00:00Z", "t2", artist="Alpha", artist_id="ar-3"), db_path=db_path))
+
+    rows = asyncio.run(get_top_artists(db_path=db_path))
+
+    assert len(rows) == 1
+    assert rows[0]["artist"] == "Alpha"
+    assert rows[0]["artist_id"] == "ar-7"
 
 
 def test_get_top_albums_groups_and_orders(db_path):
@@ -55,20 +68,20 @@ def test_get_top_albums_groups_and_orders(db_path):
 
 
 @pytest.mark.parametrize(
-    ("name_key", "default_name", "get_entity"),
+    ("name_key", "default_name", "get_entity", "expected_extra"),
     [
-        ("artist", "Alpha", get_top_artists),
-        ("album", "Record A", get_top_albums),
+        ("artist", "Alpha", get_top_artists, {"artist_id": None}),
+        ("album", "Record A", get_top_albums, {}),
     ],
 )
-def test_get_top_entity_skips_empty_name(db_path, name_key, default_name, get_entity):
+def test_get_top_entity_skips_empty_name(db_path, name_key, default_name, get_entity, expected_extra):
     asyncio.run(init_db(db_path))
     asyncio.run(save_play_session(_session("2024-03-24T01:00:00Z", "t1", **{name_key: ""}), db_path=db_path))
     asyncio.run(save_play_session(_session("2024-03-24T02:00:00Z", "t2", **{name_key: default_name}), db_path=db_path))
 
     rows = asyncio.run(get_entity(db_path=db_path))
 
-    assert rows == [_row(name_key, default_name, 1, 30, 1)]
+    assert rows == [_row(name_key, default_name, 1, 30, 1, **expected_extra)]
 
 
 @pytest.mark.parametrize(
@@ -95,7 +108,7 @@ async def test_api_top_artists(mock_get):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/top-artists")
     assert response.status_code == 200
-    assert response.json() == [{"artist": "Alpha", "count": 5, "total_listen_sec": 120, "value": 5}]
+    assert response.json() == [{"artist": "Alpha", "count": 5, "total_listen_sec": 120, "value": 5, "artist_id": None}]
     mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="plays")
 
 

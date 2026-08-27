@@ -134,7 +134,7 @@ def test_top_artists_listen_time_respects_timezone_window(db_path):
 
     rows = asyncio.run(get_top_artists(limit=10, days=7, timezone_name="Asia/Shanghai", metric="listen_time", db_path=db_path))
 
-    assert rows == [{"artist": "Beta", "count": 1, "total_listen_sec": 600, "value": 600}]
+    assert rows == [{"artist": "Beta", "count": 1, "total_listen_sec": 600, "value": 600, "artist_id": None}]
 
 
 @pytest.mark.asyncio

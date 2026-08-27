@@ -4,6 +4,8 @@
 // page code.
 import de from './locales/de.js';
 import en from './locales/en.js';
+import es from './locales/es.js';
+import fr from './locales/fr.js';
 import ja from './locales/ja.js';
 import zhCN from './locales/zh-CN.js';
 import zhTW from './locales/zh-TW.js';
@@ -14,6 +16,8 @@ const localeModules = {
     en,
     ja,
     de,
+    es,
+    fr,
 };
 
 export function pageMessages(...domains) {

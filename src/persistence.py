@@ -23,8 +23,8 @@ async def save_play_session(session: dict, db_path: str | None = None):
     path = _path(db_path)
     async with connect_db(path) as db:
         columns = (
-            "played_at, username, client_name, track_id, title, artist, album, "
-            "is_transcoding, listen_duration_sec, source, source_id, source_name, "
+            "played_at, username, client_name, track_id, title, artist, artist_id, "
+            "album, is_transcoding, listen_duration_sec, source, source_id, source_name, "
             "session_id, duration_confidence, finalized, finalized_at, checkpointed_at"
         )
         values = (
@@ -34,6 +34,7 @@ async def save_play_session(session: dict, db_path: str | None = None):
             session.get("track_id"),
             session.get("title"),
             session.get("artist"),
+            session.get("artist_id"),
             session.get("album"),
             session.get("is_transcoding"),
             session.get("duration_sec"),
@@ -50,7 +51,7 @@ async def save_play_session(session: dict, db_path: str | None = None):
             await db.execute(
                 f"""
                 INSERT INTO play_history ({columns})
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) WHERE session_id IS NOT NULL DO UPDATE SET
                     played_at=CASE
                         WHEN play_history.played_at IS NULL THEN excluded.played_at
@@ -65,6 +66,7 @@ async def save_play_session(session: dict, db_path: str | None = None):
                     track_id=excluded.track_id,
                     title=excluded.title,
                     artist=excluded.artist,
+                    artist_id=excluded.artist_id,
                     album=excluded.album,
                     is_transcoding=excluded.is_transcoding,
                     listen_duration_sec=MAX(
@@ -115,11 +117,63 @@ async def save_play_session(session: dict, db_path: str | None = None):
             await db.execute(
                 f"""
                 INSERT INTO play_history ({columns})
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )
         await db.commit()
+
+
+async def save_imported_events(events: list[dict], db_path: str | None = None) -> int:
+    """Insert listen events keyed by ``external_event_key``; returns new rows.
+
+    Re-runs with the same events are a no-op: the partial unique index
+    (schema v11) makes every insert conflict-safe via DO NOTHING.
+    """
+    if not events:
+        return 0
+    path = _path(db_path)
+    columns = (
+        "played_at, username, client_name, track_id, title, artist, artist_id, "
+        "album, is_transcoding, listen_duration_sec, source, source_id, source_name, "
+        "duration_confidence, external_event_key"
+    )
+    inserted = 0
+    async with connect_db(path) as db:
+        await db.execute("BEGIN")
+        try:
+            for event in events:
+                cursor = await db.execute(
+                    f"""
+                    INSERT INTO play_history ({columns})
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(external_event_key) WHERE external_event_key IS NOT NULL
+                    DO NOTHING
+                    """,
+                    (
+                        event.get("played_at"),
+                        event.get("username"),
+                        event.get("client_name"),
+                        event.get("track_id"),
+                        event.get("title"),
+                        event.get("artist"),
+                        event.get("artist_id"),
+                        event.get("album"),
+                        int(bool(event.get("is_transcoding", 0))),
+                        event.get("listen_duration_sec"),
+                        event.get("source", "backfill"),
+                        event.get("source_id"),
+                        event.get("source_name"),
+                        event.get("duration_confidence", "estimated"),
+                        event["external_event_key"],
+                    ),
+                )
+                inserted += max(cursor.rowcount, 0)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+    return inserted
 
 
 async def save_play_attempt(attempt: dict, db_path: str | None = None):
@@ -130,11 +184,12 @@ async def save_play_attempt(attempt: dict, db_path: str | None = None):
             INSERT INTO play_attempts (
                 played_at, username, client_name, track_id, title, artist,
                 album, is_transcoding, duration_sec, outcome, source_id, source_name,
-                attempt_id, duration_confidence
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                attempt_id, duration_confidence, artist_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(attempt_id) WHERE attempt_id IS NOT NULL DO UPDATE SET
                 played_at=excluded.played_at,
                 duration_sec=excluded.duration_sec,
+                artist_id=excluded.artist_id,
                 duration_confidence=excluded.duration_confidence
         """, (
             attempt.get("last_seen_at"), attempt.get("username"),
@@ -146,5 +201,6 @@ async def save_play_attempt(attempt: dict, db_path: str | None = None):
             attempt.get("source_name", LEGACY_SOURCE_NAME),
             attempt.get("session_id"),
             attempt.get("duration_confidence", "estimated"),
+            attempt.get("artist_id"),
         ))
         await db.commit()

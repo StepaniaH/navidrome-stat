@@ -29,7 +29,7 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 - Shows listening time, play history, hourly and daily trends, a weekday × hour heatmap, client usage, transcoding, and artist, album, or track rankings.
 - A year-in-review page with totals, listening streaks, monthly and time-of-day charts, and top lists.
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.
-- Ten built-in themes (Catppuccin, Nord, Dracula, Tokyo Night, Gruvbox, Solarized) that apply instantly across tabs, plus five interface languages with an Apple-style language picker.
+- Ten built-in themes (Catppuccin, Nord, Dracula, Tokyo Night, Gruvbox, Solarized) that apply instantly across tabs, plus seven interface languages with an Apple-style language picker.
 - Dashboard filters persist in the URL, so views survive reloads and can be shared as links.
 - The recent-plays table has configurable column visibility, saved per browser.
 - Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
@@ -49,7 +49,7 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 
 - Run a single Navidrome Statistic instance for a set of sources. Multiple instances polling the same sources can double-count plays.
 - Active sessions are held in one process. Multi-worker Uvicorn deployments are not supported.
-- SQLite and any credentials saved through the settings page are stored in plaintext.
+- Listening records in SQLite are stored unencrypted; saved server credentials are encrypted at rest with a local key file (`secret.key`) that is not a defense against a fully compromised host.
 - The application does not provide TLS. Use a trusted network or an HTTPS reverse proxy for remote access.
 
 ## Docker deployment
@@ -84,7 +84,7 @@ PAUSE_GRACE_SEC=30
 
 The three `NAVIDROME_*` variables provide one fallback connection when no server entries have been saved. For this fallback, each non-empty environment value takes precedence over the corresponding value already stored in SQLite. Once any entry exists under **Settings > Connections**, only enabled entries from that list are collected; the fallback is not used, even when every saved entry is disabled.
 
-To aggregate multiple servers, add each connection from **Settings > Connections** after startup. Credentials saved there are stored in plaintext in SQLite. If that storage model is unsuitable, use only the single environment-configured connection and do not save connections through the settings page.
+To aggregate multiple servers, add each connection from **Settings > Connections** after startup. Credentials saved there are encrypted at rest with a per-installation key file (`secret.key`) generated beside the SQLite database. Back up that file together with the database, or plan to re-enter passwords after restoring a database-only copy; the encryption protects database copies and backups from casual inspection, not a fully compromised host. If that storage model is unsuitable, use only the single environment-configured connection and do not save connections through the settings page.
 
 ### 3. Create `compose.yaml`
 
@@ -160,6 +160,8 @@ Open `http://localhost:39421`. When `STATS_API_TOKEN` is configured, enter it in
 | `CHECKPOINT_INTERVAL_SEC` | `60` | Refresh interval for durable active-session checkpoints, limited to 10–3600 seconds. |
 | `SAVE_RETRY_ATTEMPTS` | `3` | Database save attempts for a session, limited to 1–10. |
 | `MAX_POLL_BACKOFF_SEC` | `60` | Maximum upstream failure backoff, limited to 1–3600 seconds. |
+| `BACKFILL_INTERVAL_SEC` | `3600` | How often a configured smart-playlist backfill is re-checked, limited to 300–86400 seconds. |
+| `BACKFILL_CUTOFF_MARGIN_SEC` | `60` | Safety margin subtracted from live-poller coverage before importing, limited to 0–3600 seconds. |
 | `RETENTION_MAINTENANCE_SEC` | `86400` | Automatic retention cleanup interval, limited to 60–604800 seconds. |
 | `SESSION_COOKIE_SECURE` | `false` | Marks the login cookie Secure; enable it when users access the service through HTTPS. |
 
@@ -170,6 +172,10 @@ Environment variables are parsed when the application starts. Restart the contai
 A track counts once its accumulated active observation time reaches `PLAY_THRESHOLD_SEC`. Paused and missing intervals are excluded. Reaching the threshold creates a checkpoint; later checkpoints and session finalization update the same database row instead of adding another play.
 
 When a server advertises the OpenSubsonic `playbackReport` extension, position and playback-state fields improve duration accounting. Other servers continue to work through regular polling. Sessions that end below the play threshold are stored separately as playback attempts.
+
+## Recovering pre-install history
+
+Optionally, a saved connection can watch a Navidrome smart playlist (an `.nsp` such as "Recently Played"). On each check the service reads that playlist through the public `getPlaylist` API and stores one estimated play per track from its last-played timestamp. Re-runs never duplicate rows, listens already covered by live polling are skipped, and only plays that actually happened before installation are imported — older repeats implied by a track's play count are never invented. Configure the playlist ID per connection on the settings page.
 
 More detail is available in [Architecture](docs/architecture.md).
 
@@ -203,7 +209,7 @@ Back up the database and review the changelog before updating a pinned version.
 
 ### Backup and restore
 
-The data volume contains listening history and may contain saved Navidrome credentials. Treat backups as sensitive.
+The data volume contains listening history and the credential key file and may contain saved Navidrome credentials. Treat backups as sensitive.
 
 Stop the service before copying the SQLite file:
 
@@ -218,7 +224,7 @@ docker run --rm \
 docker compose start navidrome-stat
 ```
 
-To restore, stop the service, preserve the current database, copy a verified backup to `/data/navidrome_stats.db`, ensure UID and GID `1000:1000` can write it, and start the service. Test restores away from the production volume first.
+To restore, stop the service, preserve the current database, copy a verified backup to `/data/navidrome_stats.db`, ensure UID and GID `1000:1000` can write it, and start the service. Restore `secret.key` from the same backup if it exists; otherwise re-enter saved passwords in Settings. Test restores away from the production volume first.
 
 ## Security and privacy
 

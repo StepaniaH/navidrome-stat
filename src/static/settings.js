@@ -612,6 +612,17 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
             const detailLine = document.createElement('div');
             detailLine.className = 'server-detail-line';
             detailLine.append(url, statusBadge);
+            if (server.backfill_playlist_id) {
+                const backfillStatus = document.createElement('span');
+                backfillStatus.className = 'server-backfill-status';
+                const summary = server.backfill_summary || {};
+                backfillStatus.textContent = t('source.backfillStatus', {
+                    runs: summary.run_count || 0,
+                    imported: summary.imported_total || 0,
+                    errors: summary.error_count || 0,
+                });
+                detailLine.append(backfillStatus);
+            }
             const testStatus = document.createElement('span');
             testStatus.className = 'server-test-status';
             testStatus.hidden = true;
@@ -656,6 +667,8 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
                 document.getElementById('sourceUrl').value = server.url;
                 document.getElementById('sourceUser').value = server.username;
                 document.getElementById('sourcePass').value = '';
+                document.getElementById('sourceBackfillPlaylist').value =
+                    server.backfill_playlist_id || '';
                 document.getElementById('sourceEnabled').checked = Boolean(server.enabled);
                 document.getElementById('sourceForm').dataset.editingId = server.id;
                 state.sourcePasswordConfigured = Boolean(server.password_configured);
@@ -1053,6 +1066,8 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
             const username = document.getElementById('sourceUser').value.trim();
             const password = document.getElementById('sourcePass').value;
             const enabled = document.getElementById('sourceEnabled').checked;
+            const backfillPlaylistId =
+                document.getElementById('sourceBackfillPlaylist').value.trim() || null;
             const editingId = form.dataset.editingId;
             if (!displayName) return setSourceMessage('source.nameRequired', 'error');
             if (!url) return setSourceMessage('source.urlRequired', 'error');
@@ -1073,6 +1088,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
                             username,
                             password,
                             enabled,
+                            backfill_playlist_id: backfillPlaylistId,
                         }),
                     },
                 );

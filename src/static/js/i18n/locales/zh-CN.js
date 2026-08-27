@@ -234,6 +234,10 @@ export default {
         ['source.passwordPlaceholder', '新增连接时必填'],
         ['source.passwordConfigured', '已配置 · 留空则保持不变'],
         ['source.passwordRequired', '新增连接需要填写密码。'],
+        ['source.backfillPlaylist', '回填播放列表 ID'],
+        ['source.backfillPlaceholder', '可选的智能播放列表 ID（.nsp）'],
+        ['source.backfillHelp', '可选。在 Navidrome 中创建一个「最近播放」智能播放列表并粘贴其 ID，即可仅通过公开 API 恢复安装前的收听历史。'],
+        ['source.backfillStatus', '回填 · 运行 {runs} 次 · 导入 {imported} 条 · 失败 {errors} 次'],
         ['source.enabled', '采集此服务器'],
         ['source.enabledHelp', '禁用的连接仍会保留，但不会启动采集器。'],
         ['source.enabledStatus', '已启用'],
@@ -363,5 +367,7 @@ export default {
         ['localeName.zh-TW', '繁體中文'],
         ['localeName.en', '英语'],
         ['localeName.ja', '日语'],
+        ['localeName.es', '西班牙语'],
+        ['localeName.fr', '法语'],
     ],
 };

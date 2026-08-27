@@ -47,7 +47,7 @@ def test_schema_migration_is_idempotent(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'")
-    assert cursor.fetchone()[0] == "8"
+    assert cursor.fetchone()[0] == "11"
     cursor.execute("SELECT value FROM schema_meta WHERE key = 'retention_days'")
     assert cursor.fetchone()[0] == "permanent"
     cursor.execute("PRAGMA index_list(play_history)")
@@ -56,6 +56,21 @@ def test_schema_migration_is_idempotent(db_path):
 
     assert "idx_play_history_user_track" in index_names
     assert "idx_play_history_played_at" in index_names
+
+
+def test_schema_migration_adds_artist_id_columns(db_path):
+    asyncio.run(init_db(db_path))
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(play_history)")
+    history_columns = {row[1] for row in cursor.fetchall()}
+    cursor.execute("PRAGMA table_info(play_attempts)")
+    attempt_columns = {row[1] for row in cursor.fetchall()}
+    conn.close()
+
+    assert "artist_id" in history_columns
+    assert "artist_id" in attempt_columns
 
 
 def test_startup_recovers_incomplete_checkpoint_without_duplicate(db_path):
