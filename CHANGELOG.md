@@ -2,7 +2,24 @@
 
 All notable user-facing changes are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.8.4] - 2026-08-27
+
+### Added
+
+- Optional backfill bridge: point any saved server at a Navidrome smart playlist and its watched contents are imported as estimated pre-install listens through the public `getPlaylist` API only. One estimated event per track derives from the exact last-played timestamp; re-runs never double count, and events inside live-poller coverage are excluded. Configure per connection on the settings page, watch continuously, or trigger a one-off sync from the API.
+- A `getSongHistory` importer seam is wired end to end: once upstream Navidrome ships the proposed endpoint (PR #5650), an initial native-history import runs automatically when the server advertises it.
+- Top-artist lists now show cover art when Navidrome provides an artist image: collected sessions persist the upstream artist ID, and the dashboard and year-in-review rankings resolve artwork through the authenticated cover-art proxy with the usual letter-tile fallback.
+- Spanish and French interface localization across the dashboard, review, and settings pages; all languages now label one another in the settings picker.
+
+### Changed
+
+- With the OpenSubsonic `playbackReport` extension, a terminal `stopped` or `expired` entry finalizes its session immediately instead of lingering through the pause grace window, so ended tracks no longer inflate active-session counts.
+- Reconciling collectors logs a single warning when `NAVIDROME_*` environment variables are set but ignored because saved server connections exist.
+- Review-page aggregation moved to a dedicated query module and year-in-review restore paths are covered by repeatable migration fixtures and export/import round-trip checks (internal test coverage; no behavior change).
+
+### Security
+
+- Saved Navidrome credentials (server connections and the saved fallback password) are encrypted at rest with AES-256-GCM using a per-installation key file, `secret.key`, generated beside the SQLite database. Startup migration re-wraps previously stored plaintext once. Back up the key file together with the database; restoring a database without it leaves saved passwords unrecoverable by design.
 
 ## [0.8.3] - 2026-08-26
 
@@ -160,7 +177,8 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.4...HEAD
+[0.8.4]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.0...v0.8.1
