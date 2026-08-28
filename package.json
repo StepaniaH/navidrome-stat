@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build:assets": "mkdir -p src/static/vendor && tailwindcss -i assets/tailwind.input.css -o src/static/vendor/tailwind.css --minify && cp node_modules/echarts/dist/echarts.min.js src/static/vendor/echarts.min.js && cp node_modules/echarts/LICENSE src/static/vendor/ECHARTS-LICENSE.txt && cp node_modules/echarts/NOTICE src/static/vendor/ECHARTS-NOTICE.txt && cp node_modules/tailwindcss/LICENSE src/static/vendor/TAILWINDCSS-LICENSE.txt",
-    "test:unit": "node --test \"tests/node/*.test.mjs\"",
+    "test:unit": "node --test tests/node/*.test.mjs",
     "test:e2e": "npm run build:assets && playwright test"
   },
   "dependencies": {
