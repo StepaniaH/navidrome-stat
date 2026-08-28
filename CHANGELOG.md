@@ -4,7 +4,7 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
-## [0.8.5] - 2026-08-28
+## [0.8.5] - 2026-08-29
 
 ### Changed
 
