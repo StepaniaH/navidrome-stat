@@ -36,7 +36,7 @@ SQLite uses write-ahead logging. The database file, `-wal` and `-shm` files, vol
 
 ## Browser and network behavior
 
-Language, theme, timezone, and reduced-motion preferences are stored in browser `localStorage`. They do not include listening history or Navidrome credentials. The selected timezone is sent with statistics requests to calculate local date and hour buckets.
+Language, theme, timezone, and reduced-motion preferences are stored in browser `localStorage`. The theme runtime recognizes three keys: `navidrome-theme-mode` and `navidrome-theme-palette` hold the current choices, while `navidrome-theme` is read and maintained as a compatibility value for earlier releases. These keys contain only appearance identifiers, not listening history or Navidrome credentials. System theme mode reads the browser's `prefers-color-scheme` media query and cannot read or change operating-system settings. Theme preferences are not sent to the server. The selected timezone is sent with statistics requests to calculate local date and hour buckets.
 
 Frontend assets are served by the application. Normal dashboard use does not load JavaScript or CSS from a public CDN, and the project does not include usage analytics or telemetry.
 

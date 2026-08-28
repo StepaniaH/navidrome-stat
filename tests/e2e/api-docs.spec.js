@@ -41,3 +41,20 @@ test("API reference has no horizontal overflow on a narrow viewport", async ({ p
   }));
   expect(widths.scroll).toBeLessThanOrEqual(widths.client);
 });
+
+test("API reference uses the shared appearance preference", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("navidrome-theme-mode", "light");
+    localStorage.setItem("navidrome-theme-palette", "gruvbox");
+  });
+  await page.goto("/docs");
+
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "gruvbox-light");
+  await expect(page.locator("html")).toHaveAttribute("data-scheme", "light");
+  const colors = await page.evaluate(() => ({
+    body: getComputedStyle(document.body).backgroundColor,
+    theme: getComputedStyle(document.documentElement).getPropertyValue("--page-bg").trim(),
+  }));
+  expect(colors.theme).toBe("#fbf1c7");
+  expect(colors.body).not.toBe("rgb(15, 23, 42)");
+});

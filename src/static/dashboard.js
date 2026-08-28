@@ -2,16 +2,17 @@ import { pageMessages } from './js/i18n/index.js';
 import { createI18n } from './localization.js';
 import { applyAppVersion } from './js/app-info.js';
 import { buildStatsQuery, coverArtUrl, escapeHtml, formatChangeText, formatDuration, validateCustomRange } from './js/format.js';
-import { chartPalette, createThemeTokens } from './js/charts.js';
+import { createThemeTokens } from './js/charts.js';
 import { onPreferenceChange, readPreference, writePreference } from './js/prefs.js';
 import { attachPopover, createListbox } from './js/listbox.js';
 import { getFilters, setFilters } from './js/filters.js';
+import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
 
 
     const REFRESH_MS = 60000;
     const HIDDEN_REFRESH_MS = 300000;
     const NOW_PLAYING_REFRESH_MS = 10000;
-    let colorPalette = [...chartPalette];
+    let colorPalette = [];
 
     const playerChart = echarts.init(document.getElementById('playerChart'), null, { renderer: 'canvas' });
     const transcodingChart = echarts.init(document.getElementById('transcodingChart'), null, { renderer: 'canvas' });
@@ -252,18 +253,18 @@ import { getFilters, setFilters } from './js/filters.js';
     }
 
     // Theme tokens stay mutable so a preference change can re-color charts live.
-    let chartBase = createThemeTokens();
+    let chartTheme = createThemeTokens();
+    let chartBase = chartTheme.base;
+    colorPalette = [...chartTheme.palette];
 
     function applyChartTheme() {
-        colorPalette = [...chartPalette];
-        chartBase = createThemeTokens();
+        chartTheme = createThemeTokens();
+        chartBase = chartTheme.base;
+        colorPalette = [...chartTheme.palette];
         if (lastStatsSnapshot) renderStatPanels(lastStatsSnapshot);
     }
 
-    onPreferenceChange('navidrome-theme', (value) => {
-        if (value) document.documentElement.dataset.theme = value;
-        applyChartTheme();
-    });
+    window.addEventListener(THEME_CHANGE_EVENT, applyChartTheme);
 
 
     const dashboardI18n = createI18n({
@@ -822,7 +823,7 @@ import { getFilters, setFilters } from './js/filters.js';
             animationEasingUpdate: 'cubicInOut',
             animationTypeUpdate: 'transition',
             color: colorPalette,
-            legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+            legend: { bottom: 0, textStyle: { color: chartTheme.axisText, fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
             tooltip: {
                 ...chartBase.tooltip,
                 formatter: (params) => {
@@ -838,8 +839,8 @@ import { getFilters, setFilters } from './js/filters.js';
                 animationDurationUpdate: 650,
                 animationEasingUpdate: 'cubicInOut',
                 universalTransition: true,
-                itemStyle: { borderRadius: 6, borderColor: '#12121a', borderWidth: 2 },
-                label: { color: '#94a3b8', fontSize: 11 },
+                itemStyle: { borderRadius: 6, borderColor: chartTheme.panel, borderWidth: 2 },
+                label: { color: chartTheme.axisText, fontSize: 11 },
                 data: data.map(item => ({
                     name: item.client_name || dashboardMessage('label.unknownClient'),
                     value: item.count,
@@ -877,8 +878,8 @@ import { getFilters, setFilters } from './js/filters.js';
             animationDurationUpdate: 450,
             animationEasingUpdate: 'cubicInOut',
             animationTypeUpdate: 'transition',
-            color: ['#34d399', '#f472b6'],
-            legend: { bottom: 0, textStyle: { color: '#64748b', fontSize: 11 } },
+            color: [colorPalette[2], colorPalette[5]],
+            legend: { bottom: 0, textStyle: { color: chartTheme.axisText, fontSize: 11 } },
             tooltip: {
                 ...chartBase.tooltip,
                 formatter: (params) => {
@@ -894,8 +895,8 @@ import { getFilters, setFilters } from './js/filters.js';
                 animationDurationUpdate: 650,
                 animationEasingUpdate: 'cubicInOut',
                 universalTransition: true,
-                itemStyle: { borderRadius: 4, borderColor: '#12121a', borderWidth: 2 },
-                label: { color: '#94a3b8', fontSize: 11 },
+                itemStyle: { borderRadius: 4, borderColor: chartTheme.panel, borderWidth: 2 },
+                label: { color: chartTheme.axisText, fontSize: 11 },
                 data: transformed,
             }],
         });
@@ -925,7 +926,7 @@ import { getFilters, setFilters } from './js/filters.js';
             ...chartBase,
             animationDurationUpdate: 450,
             animationEasingUpdate: 'cubicInOut',
-            color: ['#a78bfa'],
+            color: [colorPalette[0]],
             grid: { left: 40, right: 16, top: 16, bottom: 32 },
             tooltip: {
                 ...chartBase.tooltip,
@@ -939,14 +940,14 @@ import { getFilters, setFilters } from './js/filters.js';
             xAxis: {
                 type: 'category',
                 data: buckets.map(b => String(b.hour)),
-                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
-                axisLabel: { color: '#64748b', fontSize: 11 },
+                axisLine: { lineStyle: { color: chartTheme.axisLine } },
+                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
                 axisTick: { show: false },
             },
             yAxis: {
                 type: 'value',
-                splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
-                axisLabel: { color: '#64748b', fontSize: 11 },
+                splitLine: { lineStyle: { color: chartTheme.gridLine } },
+                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
             },
             series: [{
                 name: dashboardMessage('metric.plays'),
@@ -958,8 +959,8 @@ import { getFilters, setFilters } from './js/filters.js';
                         type: 'linear',
                         x: 0, y: 0, x2: 0, y2: 1,
                         colorStops: [
-                            { offset: 0, color: '#c4b5fd' },
-                            { offset: 1, color: '#7c5fd4' },
+                            { offset: 0, color: chartTheme.barGradient[0] },
+                            { offset: 1, color: chartTheme.barGradient[1] },
                         ],
                     },
                 },
@@ -989,7 +990,7 @@ import { getFilters, setFilters } from './js/filters.js';
             ...chartBase,
             animationDurationUpdate: 450,
             animationEasingUpdate: 'cubicInOut',
-            color: ['#34d399'],
+            color: [colorPalette[2]],
             grid: { left: 40, right: 16, top: 16, bottom: 32 },
             tooltip: {
                 ...chartBase.tooltip,
@@ -1003,14 +1004,14 @@ import { getFilters, setFilters } from './js/filters.js';
                 type: 'category',
                 boundaryGap: false,
                 data: dates,
-                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
-                axisLabel: { color: '#64748b', fontSize: 11 },
+                axisLine: { lineStyle: { color: chartTheme.axisLine } },
+                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
                 axisTick: { show: false },
             },
             yAxis: {
                 type: 'value',
-                splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
-                axisLabel: { color: '#64748b', fontSize: 11 },
+                splitLine: { lineStyle: { color: chartTheme.gridLine } },
+                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
             },
             series: [{
                 name: dashboardMessage('metric.plays'),
@@ -1025,8 +1026,8 @@ import { getFilters, setFilters } from './js/filters.js';
                         type: 'linear',
                         x: 0, y: 0, x2: 0, y2: 1,
                         colorStops: [
-                            { offset: 0, color: 'rgba(52,211,153,0.35)' },
-                            { offset: 1, color: 'rgba(52,211,153,0.02)' },
+                            { offset: 0, color: chartTheme.areaGradient[0] },
+                            { offset: 1, color: chartTheme.areaGradient[1] },
                         ],
                     },
                 },
@@ -1040,10 +1041,7 @@ import { getFilters, setFilters } from './js/filters.js';
     }
 
     function heatmapRamp() {
-        const light = document.documentElement.dataset.scheme === 'light';
-        return light
-            ? ['rgba(124,95,212,0.10)', '#8b72e0', '#4c3a9e']
-            : ['rgba(167,139,250,0.07)', '#7c5fd4', '#ddd4ff'];
+        return chartTheme.heatmap;
     }
 
     function renderWeekdayHourChart(data) {
@@ -1079,8 +1077,8 @@ import { getFilters, setFilters } from './js/filters.js';
                 type: 'category',
                 data: HOUR_LABELS,
                 splitArea: { show: false },
-                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
-                axisLabel: { color: '#64748b', fontSize: 11 },
+                axisLine: { lineStyle: { color: chartTheme.axisLine } },
+                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
                 axisTick: { show: false },
             },
             yAxis: {
@@ -1088,8 +1086,8 @@ import { getFilters, setFilters } from './js/filters.js';
                 data: weekdayLabels,
                 inverse: true,
                 splitArea: { show: false },
-                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
-                axisLabel: { color: '#64748b', fontSize: 11 },
+                axisLine: { lineStyle: { color: chartTheme.axisLine } },
+                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
                 axisTick: { show: false },
             },
             visualMap: {
@@ -1100,7 +1098,7 @@ import { getFilters, setFilters } from './js/filters.js';
                 left: 'center',
                 bottom: 0,
                 itemWidth: 12,
-                textStyle: { color: '#64748b', fontSize: 11 },
+                textStyle: { color: chartTheme.axisText, fontSize: 11 },
                 inRange: { color: heatmapRamp() },
             },
             series: [{
@@ -1109,7 +1107,7 @@ import { getFilters, setFilters } from './js/filters.js';
                 data: points,
                 label: { show: false },
                 itemStyle: { borderRadius: 3, borderWidth: 2, borderColor: 'transparent' },
-                emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.4)' } },
+                emphasis: { itemStyle: { shadowBlur: 10, shadowColor: chartTheme.shadow } },
             }],
         });
         const peak = rows.reduce((best, item) => (

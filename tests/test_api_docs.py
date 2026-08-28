@@ -14,10 +14,12 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "src" / "static"
 def test_api_reference_uses_only_local_assets():
     html = (STATIC_DIR / "api-docs.html").read_text(encoding="utf-8")
     assert '<link rel="stylesheet" href="/static/api-docs.css">' in html
+    assert '<link rel="stylesheet" href="/static/themes.css">' in html
+    assert '<script type="module" src="/static/theme-bootstrap.js"></script>' in html
     assert '<script src="/static/api-docs.js" defer></script>' in html
     assert "https://" not in html
     assert "<style" not in html
-    assert html.count("<script") == 1
+    assert html.count("<script") == 2
 
 
 def test_api_reference_renders_schema_without_html_injection():

@@ -1,230 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="frappe" data-motion="system">
+<html lang="en" data-theme="builtin-dark" data-scheme="dark" data-motion="system">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title data-i18n="page.title">Settings · Navidrome Statistic</title>
+    <script type="module" src="/static/theme-bootstrap.js"></script>
     <style>
-        :root,
-        [data-theme="frappe"] {
-            color-scheme: dark;
-            --page-bg: #303446;
-            --surface: #292c3c;
-            --surface-raised: #303446;
-            --field-bg: #414559;
-            --field-hover: #494d64;
-            --border: #51576d;
-            --border-soft: rgba(165, 173, 206, 0.16);
-            --text: #c6d0f5;
-            --text-muted: #a5adce;
-            --text-dim: #838ba7;
-            --accent: #ca9ee6;
-            --accent-soft: rgba(202, 158, 230, 0.13);
-            --accent-strong: #f4b8e4;
-            --success: #a6d189;
-            --warning: #e5c890;
-            --danger: #e78284;
-            --focus: rgba(202, 158, 230, 0.35);
-            --shadow: 0 18px 44px rgba(20, 20, 30, 0.2);
-        }
-
-        [data-theme="latte"] {
-            color-scheme: light;
-            --page-bg: #eff1f5;
-            --surface: #ffffff;
-            --surface-raised: #f5f6fa;
-            --field-bg: #e6e9ef;
-            --field-hover: #dce0e8;
-            --border: #bcc0cc;
-            --border-soft: rgba(76, 79, 105, 0.13);
-            --text: #4c4f69;
-            --text-muted: #5c5f77;
-            --text-dim: #7c7f93;
-            --accent: #8839ef;
-            --accent-soft: rgba(136, 57, 239, 0.09);
-            --accent-strong: #ea76cb;
-            --success: #40a02b;
-            --warning: #df8e1d;
-            --danger: #d20f39;
-            --focus: rgba(136, 57, 239, 0.24);
-            --shadow: 0 18px 44px rgba(76, 79, 105, 0.12);
-        }
-
-        [data-theme="macchiato"] {
-            color-scheme: dark;
-            --page-bg: #24273a;
-            --surface: #1e2030;
-            --surface-raised: #24273a;
-            --field-bg: #363a4f;
-            --field-hover: #494d64;
-            --border: #494d64;
-            --border-soft: rgba(184, 192, 224, 0.16);
-            --text: #cad3f5;
-            --text-muted: #b8c0e0;
-            --text-dim: #a5adcb;
-            --accent: #c6a0f6;
-            --accent-soft: rgba(198, 160, 246, 0.13);
-            --accent-strong: #f5bde6;
-            --success: #a6da95;
-            --warning: #eed49f;
-            --danger: #ed8796;
-            --focus: rgba(198, 160, 246, 0.35);
-            --shadow: 0 18px 44px rgba(15, 15, 25, 0.22);
-        }
-
-        [data-theme="mocha"] {
-            color-scheme: dark;
-            --page-bg: #1e1e2e;
-            --surface: #181825;
-            --surface-raised: #1e1e2e;
-            --field-bg: #313244;
-            --field-hover: #45475a;
-            --border: #45475a;
-            --border-soft: rgba(186, 194, 222, 0.16);
-            --text: #cdd6f4;
-            --text-muted: #bac2de;
-            --text-dim: #a6adc8;
-            --accent: #cba6f7;
-            --accent-soft: rgba(203, 166, 247, 0.13);
-            --accent-strong: #f5c2e7;
-            --success: #a6e3a1;
-            --warning: #f9e2af;
-            --danger: #f38ba8;
-            --focus: rgba(203, 166, 247, 0.35);
-            --shadow: 0 18px 44px rgba(10, 10, 18, 0.24);
-        }
-
-        [data-theme="nord"] {
-            color-scheme: dark;
-            --page-bg: #2e3440;
-            --surface: #3b4252;
-            --surface-raised: #353c4a;
-            --field-bg: #434c5e;
-            --field-hover: #4c566a;
-            --border: #4c566a;
-            --border-soft: rgba(216, 222, 233, 0.16);
-            --text: #eceff4;
-            --text-muted: #d8dee9;
-            --text-dim: #b8c2d1;
-            --accent: #88c0d0;
-            --accent-soft: rgba(136, 192, 208, 0.14);
-            --accent-strong: #81a1c1;
-            --success: #a3be8c;
-            --warning: #ebcb8b;
-            --danger: #bf616a;
-            --focus: rgba(136, 192, 208, 0.35);
-            --shadow: 0 18px 44px rgba(20, 24, 32, 0.24);
-        }
-
-        [data-theme="dracula"] {
-            color-scheme: dark;
-            --page-bg: #282a36;
-            --surface: #21222c;
-            --surface-raised: #2f3141;
-            --field-bg: #44475a;
-            --field-hover: #52566e;
-            --border: #6272a4;
-            --border-soft: rgba(248, 248, 242, 0.14);
-            --text: #f8f8f2;
-            --text-muted: #b8bfce;
-            --text-dim: #8b93ab;
-            --accent: #bd93f9;
-            --accent-soft: rgba(189, 147, 249, 0.14);
-            --accent-strong: #ff79c6;
-            --success: #50fa7b;
-            --warning: #f1fa8c;
-            --danger: #ff5555;
-            --focus: rgba(189, 147, 249, 0.36);
-            --shadow: 0 18px 44px rgba(10, 10, 16, 0.26);
-        }
-
-        [data-theme="tokyo-night"] {
-            color-scheme: dark;
-            --page-bg: #1a1b26;
-            --surface: #16161e;
-            --surface-raised: #1f212f;
-            --field-bg: #292e42;
-            --field-hover: #343a55;
-            --border: #414868;
-            --border-soft: rgba(192, 202, 245, 0.15);
-            --text: #c0caf5;
-            --text-muted: #a9b1d6;
-            --text-dim: #7982a9;
-            --accent: #7aa2f7;
-            --accent-soft: rgba(122, 162, 247, 0.14);
-            --accent-strong: #bb9af7;
-            --success: #9ece6a;
-            --warning: #e0af68;
-            --danger: #f7768e;
-            --focus: rgba(122, 162, 247, 0.35);
-            --shadow: 0 18px 44px rgba(8, 9, 14, 0.26);
-        }
-
-        [data-theme="gruvbox-dark"] {
-            color-scheme: dark;
-            --page-bg: #282828;
-            --surface: #1d2021;
-            --surface-raised: #32302f;
-            --field-bg: #3c3836;
-            --field-hover: #504945;
-            --border: #504945;
-            --border-soft: rgba(235, 219, 178, 0.15);
-            --text: #ebdbb2;
-            --text-muted: #d5c4a1;
-            --text-dim: #bdae93;
-            --accent: #fe8019;
-            --accent-soft: rgba(254, 128, 25, 0.14);
-            --accent-strong: #fabd2f;
-            --success: #b8bb26;
-            --warning: #fabd2f;
-            --danger: #fb4934;
-            --focus: rgba(254, 128, 25, 0.34);
-            --shadow: 0 18px 44px rgba(12, 12, 10, 0.26);
-        }
-
-        [data-theme="solarized-dark"] {
-            color-scheme: dark;
-            --page-bg: #002b36;
-            --surface: #01212a;
-            --surface-raised: #073642;
-            --field-bg: #0a3f4c;
-            --field-hover: #0e4a55;
-            --border: #1a5561;
-            --border-soft: rgba(147, 161, 161, 0.16);
-            --text: #93a1a1;
-            --text-muted: #839496;
-            --text-dim: #657b83;
-            --accent: #268bd2;
-            --accent-soft: rgba(38, 139, 210, 0.15);
-            --accent-strong: #2aa198;
-            --success: #859900;
-            --warning: #b58900;
-            --danger: #dc322f;
-            --focus: rgba(38, 139, 210, 0.35);
-            --shadow: 0 18px 44px rgba(0, 8, 10, 0.3);
-        }
-
-        [data-theme="solarized-light"] {
-            color-scheme: light;
-            --page-bg: #fdf6e3;
-            --surface: #eee8d5;
-            --surface-raised: #fdf6e3;
-            --field-bg: #eee8d5;
-            --field-hover: #e3dcc3;
-            --border: #cfc8b2;
-            --border-soft: rgba(7, 54, 66, 0.12);
-            --text: #586e75;
-            --text-muted: #657b83;
-            --text-dim: #93a1a1;
-            --accent: #268bd2;
-            --accent-soft: rgba(38, 139, 210, 0.1);
-            --accent-strong: #2aa198;
-            --success: #859900;
-            --warning: #b58900;
-            --danger: #dc322f;
-            --focus: rgba(38, 139, 210, 0.28);
-            --shadow: 0 18px 44px rgba(88, 110, 117, 0.16);
-        }
+        /* Theme tokens are shared by every page through themes.css. */
 
         *,
         *::before,
@@ -568,6 +350,215 @@
             font-size: 12px;
         }
 
+        .theme-setting-row {
+            display: block;
+            padding-top: 22px;
+            padding-bottom: 22px;
+        }
+
+        .theme-setting-row > .setting-copy {
+            margin-bottom: 16px;
+        }
+
+        .theme-setting-row > .setting-copy span {
+            max-width: 680px;
+        }
+
+        .theme-picker {
+            display: flex;
+            width: 100%;
+            max-width: 760px;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .theme-picker-section + .theme-picker-section {
+            margin-top: 12px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-soft);
+        }
+
+        .theme-picker-heading strong {
+            display: block;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 650;
+        }
+
+        .theme-picker-heading span {
+            display: block;
+            max-width: 680px;
+            margin-top: 3px;
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .theme-mode-grid,
+        .theme-palette-grid {
+            display: grid;
+            gap: 8px;
+        }
+
+        .theme-mode-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .theme-palette-grid {
+            grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+        }
+
+        .theme-swatch {
+            position: relative;
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 6px;
+            padding: 7px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--surface-raised);
+            color: inherit;
+            cursor: pointer;
+            transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+        }
+
+        .theme-swatch input {
+            position: absolute;
+            z-index: 1;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            opacity: 0;
+            cursor: inherit;
+        }
+
+        .theme-swatch:hover {
+            border-color: var(--accent);
+            background: var(--field-hover);
+        }
+
+        .theme-swatch:has(input:checked) {
+            border-color: var(--accent);
+            box-shadow: inset 0 0 0 1px var(--accent);
+        }
+
+        .theme-swatch:focus-within {
+            outline: none;
+            box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+        }
+
+        .theme-swatch-preview {
+            display: flex;
+            height: 42px;
+            align-items: flex-end;
+            gap: 4px;
+            overflow: hidden;
+            padding: 8px;
+            border-radius: 7px;
+            background: var(--preview-bg, #0f141b);
+        }
+
+        .theme-mode-grid .theme-swatch-preview {
+            height: 52px;
+        }
+
+        .theme-swatch-preview i {
+            height: 12px;
+            flex: 1;
+            border-radius: 3px;
+            background: var(--preview-accent, #38bdf8);
+        }
+
+        .theme-swatch-preview i:nth-child(2) {
+            background: var(--preview-warning, #f7c65c);
+        }
+
+        .theme-swatch-preview i:nth-child(3) {
+            background: var(--preview-success, #9bd65d);
+        }
+
+        .theme-swatch-preview.is-system {
+            padding: 0;
+            background: #0f141b;
+        }
+
+        .theme-swatch-name {
+            overflow: hidden;
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.25;
+            text-align: center;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .theme-swatch.is-unavailable {
+            opacity: 0.38;
+            cursor: not-allowed;
+        }
+
+        .theme-swatch.is-unavailable:hover {
+            border-color: var(--border);
+            background: var(--surface-raised);
+        }
+
+        .theme-swatch.is-unavailable .theme-swatch-preview {
+            background: color-mix(in srgb, var(--text) 28%, var(--surface));
+        }
+
+        .theme-swatch.is-unavailable .theme-swatch-preview i {
+            background: color-mix(in srgb, var(--surface) 82%, var(--text));
+        }
+
+        .theme-save-state {
+            min-height: 18px;
+            margin: 0;
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .theme-swatch[data-theme-preview="builtin-dark"] {
+            --preview-bg: #0f141b; --preview-accent: #38bdf8; --preview-warning: #f7c65c; --preview-success: #9bd65d;
+        }
+        .theme-swatch[data-theme-preview="builtin-light"] {
+            --preview-bg: #f5f7fa; --preview-accent: #0369a1; --preview-warning: #8a5a00; --preview-success: #3f701b;
+        }
+        .theme-swatch[data-theme-preview="frappe"] {
+            --preview-bg: #292c3c; --preview-accent: #d6a8ee; --preview-warning: #e5c890; --preview-success: #a6d189;
+        }
+        .theme-swatch[data-theme-preview="latte"] {
+            --preview-bg: #f3f4f8; --preview-accent: #6f2dbd; --preview-warning: #8a5a00; --preview-success: #25751d;
+        }
+        .theme-swatch[data-theme-preview="macchiato"] {
+            --preview-bg: #1e2030; --preview-accent: #c6a0f6; --preview-warning: #eed49f; --preview-success: #a6da95;
+        }
+        .theme-swatch[data-theme-preview="mocha"] {
+            --preview-bg: #181825; --preview-accent: #cba6f7; --preview-warning: #f9e2af; --preview-success: #a6e3a1;
+        }
+        .theme-swatch[data-theme-preview="nord"] {
+            --preview-bg: #242933; --preview-accent: #9acbd8; --preview-warning: #ebcb8b; --preview-success: #aec99a;
+        }
+        .theme-swatch[data-theme-preview="dracula"] {
+            --preview-bg: #20212b; --preview-accent: #c8a4fb; --preview-warning: #f1fa8c; --preview-success: #50fa7b;
+        }
+        .theme-swatch[data-theme-preview="tokyo-night"] {
+            --preview-bg: #15161f; --preview-accent: #7aa2f7; --preview-warning: #e0af68; --preview-success: #9ece6a;
+        }
+        .theme-swatch[data-theme-preview="gruvbox-dark"] {
+            --preview-bg: #1d2021; --preview-accent: #fe8019; --preview-warning: #fabd2f; --preview-success: #b8bb26;
+        }
+        .theme-swatch[data-theme-preview="gruvbox-light"] {
+            --preview-bg: #fbf1c7; --preview-accent: #076678; --preview-warning: #815400; --preview-success: #526100;
+        }
+        .theme-swatch[data-theme-preview="solarized-dark"] {
+            --preview-bg: #002b36; --preview-accent: #75c1ef; --preview-warning: #e6bd55; --preview-success: #b4c94a;
+        }
+        .theme-swatch[data-theme-preview="solarized-light"] {
+            --preview-bg: #fdf6e3; --preview-accent: #00629f; --preview-warning: #7a5a00; --preview-success: #536b00;
+        }
+
         .settings-select {
             position: relative;
             min-width: 0;
@@ -640,7 +631,7 @@
             border: 1px solid var(--border);
             border-radius: 10px;
             background: var(--surface-raised);
-            box-shadow: 0 16px 36px rgba(17, 18, 28, 0.28);
+            box-shadow: var(--shadow);
         }
 
         .settings-option {
@@ -747,7 +738,7 @@
         .primary-button {
             padding: 8px 15px;
             background: var(--accent);
-            color: var(--page-bg);
+            color: var(--accent-contrast);
         }
 
         .primary-button:hover {
@@ -1233,7 +1224,7 @@
             display: grid;
             place-items: center;
             padding: 20px;
-            background: rgba(20, 21, 32, 0.82);
+            background: var(--overlay);
             backdrop-filter: blur(8px);
         }
 
@@ -1469,6 +1460,7 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="/static/themes.css">
 </head>
 <body>
     <div class="settings-shell">
@@ -1779,17 +1771,27 @@
                                     <div id="settingsTimezoneSelectMenu" class="settings-options" role="listbox" aria-label="Statistics timezone" data-i18n-attr="aria-label:preferences.timezone" hidden></div>
                                 </div>
                             </div>
-                            <div class="setting-row">
+                            <div class="setting-row theme-setting-row">
                                 <div class="setting-copy">
                                     <strong data-i18n="preferences.theme">Theme</strong>
                                     <span data-i18n="preferences.themeHelp">Choose a dark or light palette for the current environment.</span>
                                 </div>
-                                <div id="themeSelect" class="settings-select" data-open="false" data-value="frappe">
-                                    <button id="themeSelectButton" class="settings-select-trigger" type="button" data-listbox-trigger aria-haspopup="listbox" aria-expanded="false" aria-controls="themeSelectMenu">
-                                        <span data-listbox-label>Frappe · Dark</span>
-                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>
-                                    </button>
-                                    <div id="themeSelectMenu" class="settings-options" role="listbox" aria-label="Theme" data-i18n-attr="aria-label:preferences.theme" hidden></div>
+                                <div id="themePicker" class="theme-picker">
+                                    <section class="theme-picker-section" aria-labelledby="themeModeHeading">
+                                        <div class="theme-picker-heading">
+                                            <strong id="themeModeHeading" data-i18n="preferences.themeMode">Theme mode</strong>
+                                        </div>
+                                        <div id="themeModePicker" class="theme-mode-grid" role="radiogroup" aria-labelledby="themeModeHeading"></div>
+                                        <p class="theme-save-state" data-i18n="preferences.themeSavedLocal">Saved in this browser</p>
+                                    </section>
+                                    <section class="theme-picker-section" aria-labelledby="themePaletteHeading">
+                                        <div class="theme-picker-heading">
+                                            <strong id="themePaletteHeading" data-i18n="preferences.palette">Palette</strong>
+                                            <span data-i18n="preferences.paletteHelp">Color families without a matching mode are dimmed.</span>
+                                        </div>
+                                        <div id="themePalettePicker" class="theme-palette-grid" role="radiogroup" aria-labelledby="themePaletteHeading"></div>
+                                        <p class="theme-save-state" data-i18n="preferences.themeSavedLocal">Saved in this browser</p>
+                                    </section>
                                 </div>
                             </div>
                             <div class="setting-row">

@@ -86,6 +86,7 @@ test("privacy policy settles and remains dynamic after locale changes", async ({
 test("custom listboxes support keyboard selection and preferences persist", async ({
   page,
 }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/settings#preferences");
   await expect(page.locator("select")).toHaveCount(0);
 
@@ -98,8 +99,8 @@ test("custom listboxes support keyboard selection and preferences persist", asyn
   await expect(page.locator("html")).toHaveAttribute("lang", "fr");
   await expect(languageButton).toHaveAttribute("aria-expanded", "false");
 
-  await page.locator("#themeSelectButton").click();
-  await page.getByRole("option", { name: /Latte/ }).click();
+  await page.locator('#themeModePicker input[value="light"]').check();
+  await page.locator('#themePalettePicker input[value="catppuccin"]').check();
   await page.locator("#settingsTimezoneSelectButton").click();
   await page.getByRole("option", { name: "UTC" }).click();
   await page.locator("#motionToggle").click();
@@ -116,9 +117,40 @@ test("custom listboxes support keyboard selection and preferences persist", asyn
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.locator("#resetPreferencesBtn").click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "frappe");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "builtin-dark");
+  await expect(page.locator("html")).toHaveAttribute("data-theme-mode", "system");
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "builtin");
   await expect(page.locator("html")).toHaveAttribute("data-motion", "system");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
+});
+
+test("system mode follows the OS and keeps an unavailable palette selected", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/settings#preferences");
+
+  const nord = page.locator('#themePalettePicker input[value="nord"]');
+  await nord.check();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "nord");
+  await expect(nord).toBeChecked();
+
+  const systemMode = page.locator('#themeModePicker input[value="system"]');
+  const darkMode = page.locator('#themeModePicker input[value="dark"]');
+  await systemMode.focus();
+  await systemMode.press("ArrowRight");
+  await expect(darkMode).toBeChecked();
+  await systemMode.check();
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "builtin-light");
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "nord");
+  await expect(nord).toBeChecked();
+  await expect(nord).toBeDisabled();
+  await expect(nord.locator("..")).toHaveClass(/is-unavailable/);
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "nord");
+  await expect(nord).toBeEnabled();
 });
 
 test("privacy load failure resolves to an explicit retry state", async ({
@@ -168,6 +200,19 @@ test("mobile settings keep all four sections inside the viewport", async ({
   expect(layout.pageOverflow).toBeLessThanOrEqual(0);
   expect(layout.panelRight).toBeLessThanOrEqual(layout.viewport);
   expect(layout.navRight).toBeLessThanOrEqual(layout.viewport);
+
+  const paletteBounds = await page.locator("#themePalettePicker").evaluate(
+    (picker) => {
+      const bounds = picker.getBoundingClientRect();
+      return {
+        left: Math.round(bounds.left),
+        right: Math.round(bounds.right),
+        viewport: document.documentElement.clientWidth,
+      };
+    },
+  );
+  expect(paletteBounds.left).toBeGreaterThanOrEqual(0);
+  expect(paletteBounds.right).toBeLessThanOrEqual(paletteBounds.viewport);
 
   await page.locator("#settingsTimezoneSelectButton").click();
   const menuBounds = await page.locator("#settingsTimezoneSelectMenu").evaluate(

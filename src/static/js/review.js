@@ -1,12 +1,13 @@
 import { apiFetch, isAbortError } from './http.js';
 import { createLoginController } from './auth.js';
 import { UNAUTHORIZED_EVENT } from './http.js';
-import { readPreference, onPreferenceChange } from './prefs.js';
+import { readPreference } from './prefs.js';
 import { createI18n } from '../localization.js';
 import { pageMessages } from './i18n/index.js';
-import { chartPalette, createThemeTokens } from './charts.js';
+import { createThemeTokens } from './charts.js';
 import { formatDuration } from './format.js';
 import { createListbox } from './listbox.js';
+import { THEME_CHANGE_EVENT } from '../theme-bootstrap.js';
 
 const i18n = createI18n({ messages: pageMessages('dashboard', 'review'), fallbackLocale: 'en' });
 const t = (key, values) => i18n.t(key, values);
@@ -29,10 +30,6 @@ let hourlyChart = null;
 let weekdayChart = null;
 let currentYear = new Date().getFullYear();
 
-function chartBase() {
-    return createThemeTokens(document.documentElement.dataset.theme);
-}
-
 function initCharts() {
     const mount = (id) => echarts.init(document.getElementById(id), null, { renderer: 'canvas' });
     monthlyChart = mount('reviewMonthlyChart');
@@ -41,12 +38,14 @@ function initCharts() {
 }
 
 function barOption(categories, values, { horizontal = false, categoryInterval = 0, seriesName = '', valueFormatter = null } = {}) {
+    const theme = createThemeTokens();
+    const base = theme.base;
     const categoryAxis = {
         type: 'category',
         data: categories,
-        axisLine: { lineStyle: { color: 'rgba(128,128,140,0.25)' } },
+        axisLine: { lineStyle: { color: theme.axisLine } },
         axisLabel: {
-            color: chartBase().textStyle.color,
+            color: theme.axisText,
             fontSize: 11,
             hideOverlap: true,
             interval: categoryInterval,
@@ -55,14 +54,13 @@ function barOption(categories, values, { horizontal = false, categoryInterval = 
     };
     const valueAxis = {
         type: 'value',
-        axisLabel: { color: chartBase().textStyle.color, fontSize: 11, hideOverlap: true },
-        splitLine: { lineStyle: { color: 'rgba(128,128,140,0.15)' } },
+        axisLabel: { color: theme.axisText, fontSize: 11, hideOverlap: true },
+        splitLine: { lineStyle: { color: theme.gridLine } },
     };
     return {
-        backgroundColor: 'transparent',
-        textStyle: chartBase().textStyle,
+        ...base,
         tooltip: {
-            ...chartBase().tooltip,
+            ...base.tooltip,
             trigger: 'axis',
             ...(valueFormatter ? { valueFormatter } : {}),
         },
@@ -74,7 +72,7 @@ function barOption(categories, values, { horizontal = false, categoryInterval = 
             type: 'bar',
             ...(seriesName ? { name: seriesName } : {}),
             data: values,
-            itemStyle: { color: chartPalette[0], borderRadius: horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0] },
+            itemStyle: { color: theme.palette[0], borderRadius: horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0] },
             barMaxWidth: 26,
         }],
     };
@@ -271,19 +269,8 @@ const login = createLoginController({
 
 window.addEventListener(UNAUTHORIZED_EVENT, () => login.show());
 
-function applyTheme() {
-    const base = chartBase();
-    [monthlyChart, hourlyChart, weekdayChart].forEach((chart) => {
-        if (!chart) return;
-        const option = chart.getOption();
-        if (!option || !option.series || !option.series.length) return;
-        chart.setOption({ backgroundColor: base.backgroundColor, textStyle: base.textStyle, tooltip: base.tooltip });
-    });
-}
-
-onPreferenceChange('navidrome-theme', (value) => {
-    if (value) document.documentElement.dataset.theme = value;
-    applyTheme();
+window.addEventListener(THEME_CHANGE_EVENT, () => {
+    if (lastReview && lastReview.total_plays > 0) renderCharts(lastReview);
 });
 
 function localize() {

@@ -1,18 +1,3 @@
-:root {
-    color-scheme: dark;
-    --page: #1e2030;
-    --panel: #292c3c;
-    --field: #303446;
-    --border: #51576d;
-    --text: #c6d0f5;
-    --muted: #a5adce;
-    --dim: #838ba7;
-    --accent: #ca9ee6;
-    --success: #a6d189;
-    --warning: #e5c890;
-    --danger: #e78284;
-}
-
 * { box-sizing: border-box; }
 
 body {
@@ -79,7 +64,7 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 3rem); letter-spacing: -0.04em; }
     color: var(--text);
     font: inherit;
 }
-.api-tools input:focus { border-color: var(--accent); outline: 3px solid color-mix(in srgb, var(--accent) 24%, transparent); }
+.api-tools input:focus { border-color: var(--accent); outline: 3px solid var(--focus); outline-offset: 2px; }
 #apiStatus { margin: 0; color: var(--dim); font-size: 0.8rem; white-space: nowrap; }
 
 .api-groups { display: grid; gap: 2rem; }

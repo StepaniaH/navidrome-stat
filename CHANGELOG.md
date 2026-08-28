@@ -2,6 +2,14 @@
 
 All notable user-facing changes are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Theme selection now separates system, dark, and light modes from nine palette families. Thirteen concrete variants share one resolver and one set of theme tokens across the dashboard, year-in-review, settings, and API reference.
+- Built-in, Gruvbox, Catppuccin, and Solarized include matching light and dark variants; dark-only palettes are clearly unavailable in light mode instead of applying an unsuitable color scheme.
+- Existing browser theme preferences remain compatible, while new mode and palette choices continue to stay in the browser. Theme surfaces, text, controls, and charts now use the same semantic colors on every page.
+
 ## [0.8.4] - 2026-08-27
 
 ### Added

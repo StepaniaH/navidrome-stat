@@ -10,6 +10,7 @@ LOCALES_DIR = Path(__file__).resolve().parent.parent / "src" / "static" / "js" /
 DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
 LISTBOX_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "listbox.js"
 THEME_BOOTSTRAP_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "theme-bootstrap.js"
+THEMES_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "themes.css"
 TAILWIND_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "vendor" / "tailwind.css"
 
 
@@ -17,7 +18,7 @@ TAILWIND_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "vend
 def source() -> str:
     return "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (INDEX_HTML, DASHBOARD_JS, DASHBOARD_CSS, THEME_BOOTSTRAP_JS)
+        for path in (INDEX_HTML, DASHBOARD_JS, DASHBOARD_CSS, THEMES_CSS, THEME_BOOTSTRAP_JS)
     )
 
 
@@ -32,6 +33,7 @@ def catalog_source() -> str:
 def test_dashboard_loads_split_static_resources():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert '<link rel="stylesheet" href="/static/dashboard.css">' in html
+    assert '<link rel="stylesheet" href="/static/themes.css">' in html
     assert '<script type="module" src="/static/dashboard.js"></script>' in html
     assert '<script type="module" src="/static/theme-bootstrap.js"></script>' in html
     assert '<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">' in html
@@ -322,11 +324,14 @@ def test_dashboard_has_local_i18n_and_theme_palette(source):
     assert "readPreference('navidrome-language', 'en')" in source
     charts_src = (DASHBOARD_JS.parent / "js" / "charts.js").read_text(encoding="utf-8")
     assert "createThemeTokens" in charts_src
-    assert "navidrome-theme" in DASHBOARD_JS.read_text(encoding="utf-8")
+    dashboard_script = DASHBOARD_JS.read_text(encoding="utf-8")
+    assert "THEME_CHANGE_EVENT" in dashboard_script
+    assert "window.addEventListener(THEME_CHANGE_EVENT" in dashboard_script
     assert "readPreference('navidrome-motion', 'system')" in source
     assert '[data-motion="reduced"] *' in source
-    for token in ("#303446", "#292c3c", "#ca9ee6", "#a6d189", "#eff1f5", "#e6e9ef", "#8839ef", "#40a02b"):
-        assert token in source
+    theme_css = THEMES_CSS.read_text(encoding="utf-8")
+    for token in ("--page-bg:", "--text:", "--accent:", "--app-on-accent:", "--chart-1:", "--chart-8:"):
+        assert token in theme_css
 
 
 def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(source, catalog_source):

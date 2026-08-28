@@ -11,6 +11,12 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def test_review_loads_shared_theme_assets():
+    html = _read(REVIEW_HTML)
+    assert '<link rel="stylesheet" href="/static/themes.css">' in html
+    assert '<script type="module" src="/static/theme-bootstrap.js"></script>' in html
+
+
 def test_year_selector_uses_custom_listbox_not_native_select():
     assert "<select" not in _read(REVIEW_HTML)
     assert 'id="reviewYearMenu"' in _read(REVIEW_HTML)
@@ -38,6 +44,14 @@ def test_review_covers_use_per_item_source_with_letter_fallback():
 def test_review_charts_resize_after_render():
     js = _read(REVIEW_JS)
     assert "resizeCharts()" in js
+
+
+def test_review_charts_rerender_when_the_resolved_theme_changes():
+    js = _read(REVIEW_JS)
+    assert "THEME_CHANGE_EVENT" in js
+    assert "window.addEventListener(THEME_CHANGE_EVENT" in js
+    theme_change = js[js.index("window.addEventListener(THEME_CHANGE_EVENT") :]
+    assert "renderCharts(lastReview)" in theme_change
 
 
 def test_review_distribution_charts_support_metric_toggle():

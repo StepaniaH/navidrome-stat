@@ -615,9 +615,14 @@ test("changing the theme preference recolors charts without a reload", async ({ 
     echarts.getInstanceByDom(document.getElementById("hourlyChart")).getOption().textStyle.color,
   );
   await page.evaluate(() => {
-    localStorage.setItem("navidrome-theme", "latte");
-    window.dispatchEvent(new StorageEvent("storage", { key: "navidrome-theme", newValue: "latte" }));
+    localStorage.setItem("navidrome-theme-mode", "light");
+    localStorage.setItem("navidrome-theme-palette", "catppuccin");
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: "navidrome-theme-mode",
+      newValue: "light",
+    }));
   });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "latte");
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -625,6 +630,18 @@ test("changing the theme preference recolors charts without a reload", async ({ 
       ),
     )
     .not.toBe(before);
+  const themedColors = await page.evaluate(() => {
+    const styles = getComputedStyle(document.documentElement);
+    const option = echarts.getInstanceByDom(document.getElementById("hourlyChart")).getOption();
+    return {
+      chart: option.series[0].itemStyle.color.colorStops[1].color,
+      expectedChart: styles.getPropertyValue("--chart-1").trim(),
+      text: option.textStyle.color,
+      expectedText: styles.getPropertyValue("--text-muted").trim(),
+    };
+  });
+  expect(themedColors.chart).toBe(themedColors.expectedChart);
+  expect(themedColors.text).toBe(themedColors.expectedText);
 });
 
 test("dashboard filters persist across a reload and are shareable", async ({ page }) => {

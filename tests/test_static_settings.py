@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SETTINGS_HTML = ROOT / "src" / "static" / "settings.html"
 SETTINGS_JS = ROOT / "src" / "static" / "settings.js"
 LOCALIZATION_JS = ROOT / "src" / "static" / "localization.js"
+THEMES_JS = ROOT / "src" / "static" / "js" / "themes.js"
 
 
 def _read(path: Path) -> str:
@@ -57,19 +58,30 @@ def test_all_settings_selectors_use_the_shared_custom_listbox():
     assert "<select" not in html
     for control_id in (
         "languageSelect",
-        "themeSelect",
         "settingsTimezoneSelect",
         "userSelect",
     ):
         assert f'id="{control_id}"' in html
         assert f"createListbox('{control_id}'" in script
-    assert html.count('aria-haspopup="listbox"') == 4
-    assert html.count('role="listbox"') == 4
+    assert html.count('aria-haspopup="listbox"') == 3
+    assert html.count('role="listbox"') == 3
+    assert 'id="themeSelect"' not in html
+    assert "createListbox('themeSelect'" not in script
     assert "function createListbox(" in script
     for key in ("ArrowDown", "ArrowUp", "Home", "End", "Escape", "Tab"):
         assert f"event.key === '{key}'" in script
     assert "aria-selected" in script
     assert "restoreFocus" in script
+
+
+def test_theme_controls_use_separate_mode_and_palette_pickers():
+    html = _read(SETTINGS_HTML)
+    script = _read(SETTINGS_JS)
+    for picker_id in ("themeModePicker", "themePalettePicker"):
+        assert f'id="{picker_id}"' in html
+        assert picker_id in script
+    assert "THEME_MODES" in script
+    assert "PALETTES" in script
 
 
 def test_dynamic_privacy_policy_is_not_a_static_translation_target():
@@ -109,11 +121,18 @@ def test_local_preferences_include_motion_and_reset_without_server_writes():
     html = _read(SETTINGS_HTML)
     for key in (
         "navidrome-language",
-        "navidrome-theme",
         "navidrome-timezone",
         "navidrome-motion",
     ):
         assert key in script
+    themes = _read(THEMES_JS)
+    for key in (
+        "navidrome-theme",
+        "navidrome-theme-mode",
+        "navidrome-theme-palette",
+    ):
+        assert key in themes
+    assert "APPEARANCE_PREFERENCE_KEYS" in script
     assert 'id="motionToggle"' in html
     assert 'id="privacyFirstRun"' in html
     assert 'data-i18n="privacy.firstRunNote"' in html
@@ -121,7 +140,9 @@ def test_local_preferences_include_motion_and_reset_without_server_writes():
     assert "privacyFirstRun" in script_block
     assert 'role="switch"' in html
     assert 'id="resetPreferencesBtn"' in html
-    assert "Object.values(preferenceKeys).forEach(removePreference)" in script
+    assert "Object.values(preferenceKeys)" in script
+    assert "Object.values(APPEARANCE_PREFERENCE_KEYS)" in script
+    assert "removePreference" in script
     assert "document.documentElement.dataset.motion = motion" in script
     preferences_block = script[
         script.index("function bindPreferenceControls()")
@@ -131,21 +152,15 @@ def test_local_preferences_include_motion_and_reset_without_server_writes():
     assert "fetch(" not in preferences_block
 
 
-def test_settings_has_timezone_and_catppuccin_palette_tokens():
+def test_settings_loads_shared_theme_assets_and_registry():
     html = _read(SETTINGS_HTML)
     script = _read(SETTINGS_JS)
+    assert '<link rel="stylesheet" href="/static/themes.css">' in html
+    assert '<script type="module" src="/static/theme-bootstrap.js"></script>' in html
     assert "{ value: 'browser'" in script
     assert "{ value: 'UTC'" in script
-    for token in (
-        "#303446",
-        "#292c3c",
-        "#ca9ee6",
-        "#a6d189",
-        "#eff1f5",
-        "#8839ef",
-        "#40a02b",
-    ):
-        assert token in html
+    assert "APPEARANCE_PREFERENCE_KEYS" in script
+    assert "applyStoredAppearance" in script
 
 
 def test_sensitive_values_use_safe_dom_apis_and_password_is_never_rendered():

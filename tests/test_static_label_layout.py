@@ -105,11 +105,11 @@ def test_ranking_rows_always_reserve_a_cover_slot(source):
     assert "onError: (image) => image.replaceWith(createRankingFallback(labelValue))" in block
 
 
-def test_ranking_bar_gradients_preserved(source):
+def test_ranking_bar_gradients_follow_shared_theme_tokens(source):
     artists_block = source[source.index(".ranking-bar-artists {") : source.index(".ranking-bar-albums {")]
     albums_block = source[source.index(".ranking-bar-albums {") : source.index(".ranking-count {")]
-    assert "#7c5fd4" in artists_block and "#c4b5fd" in artists_block
-    assert "#059669" in albums_block and "#34d399" in albums_block
+    assert "var(--chart-2)" in artists_block and "var(--chart-1)" in artists_block
+    assert "var(--chart-7)" in albums_block and "var(--chart-3)" in albums_block
 
 
 @pytest.mark.parametrize("container_id,aria_label", [

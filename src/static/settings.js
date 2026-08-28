@@ -3,7 +3,14 @@ import { createLoginController } from './js/auth.js';
 import { UNAUTHORIZED_EVENT } from './js/http.js';
 import { readPreference, removePreference, writePreference } from './js/prefs.js';
 import { createI18n } from './localization.js';
-import { DEFAULT_THEME, THEMES, resolveTheme, themeScheme } from './js/themes.js';
+import {
+    APPEARANCE_PREFERENCE_KEYS,
+    PALETTES,
+    THEME_MODES,
+    paletteSupportsScheme,
+    paletteTheme,
+} from './js/themes.js';
+import { THEME_CHANGE_EVENT, applyStoredAppearance } from './theme-bootstrap.js';
 import { SUPPORTED_LOCALES } from './js/locales.js';
 import { applyAppVersion } from './js/app-info.js';
 import { pageMessages } from './js/i18n/index.js';
@@ -11,7 +18,6 @@ import { pageMessages } from './js/i18n/index.js';
     const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
     const preferenceKeys = Object.freeze({
         language: 'navidrome-language',
-        theme: 'navidrome-theme',
         timezone: 'navidrome-timezone',
         motion: 'navidrome-motion',
     });
@@ -34,6 +40,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
     let previewTimer = null;
     let retentionPreviewController = null;
     let userPreviewController = null;
+    let currentAppearance = null;
 
     function isResponseOk(response) {
         return response && response.ok;
@@ -244,16 +251,104 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         return controller;
     }
 
+    function createThemeSwatch({
+        group,
+        value,
+        labelKey,
+        previewTheme,
+        systemPreview = false,
+    }) {
+        const swatch = document.createElement('label');
+        swatch.className = 'theme-swatch';
+        swatch.dataset.themeValue = value;
+        if (previewTheme) swatch.dataset.themePreview = previewTheme;
+
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = group;
+        input.value = value;
+
+        const preview = document.createElement('span');
+        preview.className = `theme-swatch-preview${systemPreview ? ' is-system' : ''}`;
+        preview.setAttribute('aria-hidden', 'true');
+        if (!systemPreview) preview.append(
+            document.createElement('i'),
+            document.createElement('i'),
+            document.createElement('i'),
+        );
+
+        const name = document.createElement('span');
+        name.className = 'theme-swatch-name';
+        name.dataset.themeLabelKey = labelKey;
+
+        swatch.append(input, preview, name);
+        return swatch;
+    }
+
+    function buildThemePickers() {
+        const modePicker = document.getElementById('themeModePicker');
+        modePicker.replaceChildren(...THEME_MODES.map((mode) => createThemeSwatch({
+            group: 'theme-mode',
+            value: mode,
+            labelKey: `preferences.themeMode.${mode}`,
+            previewTheme: mode === 'dark' ? 'builtin-dark' : (mode === 'light' ? 'builtin-light' : null),
+            systemPreview: mode === 'system',
+        })));
+
+        const palettePicker = document.getElementById('themePalettePicker');
+        palettePicker.replaceChildren(...PALETTES.map((palette) => createThemeSwatch({
+            group: 'theme-palette',
+            value: palette.id,
+            labelKey: `preferences.palette.${palette.id}`,
+            previewTheme: palette.variants.dark || palette.variants.light,
+        })));
+    }
+
+    function syncThemePickers(appearance) {
+        if (!appearance) return;
+        currentAppearance = appearance;
+        document.querySelectorAll('input[name="theme-mode"]').forEach((input) => {
+            input.checked = input.value === appearance.mode;
+            const label = t(`preferences.themeMode.${input.value}`);
+            input.setAttribute('aria-label', label);
+            input.closest('.theme-swatch').querySelector('.theme-swatch-name').textContent = label;
+        });
+        document.querySelectorAll('input[name="theme-palette"]').forEach((input) => {
+            const supported = paletteSupportsScheme(input.value, appearance.scheme);
+            const palette = PALETTES.find((entry) => entry.id === input.value);
+            const swatch = input.closest('.theme-swatch');
+            const label = t(`preferences.palette.${input.value}`);
+            const unavailable = t('preferences.paletteUnavailable');
+            input.checked = input.value === appearance.palette;
+            input.disabled = !supported;
+            input.setAttribute('aria-label', supported ? label : `${label} — ${unavailable}`);
+            swatch.classList.toggle('is-unavailable', !supported);
+            swatch.title = supported ? '' : unavailable;
+            swatch.dataset.themePreview = paletteTheme(input.value, appearance.scheme)
+                || palette?.variants.dark
+                || palette?.variants.light
+                || 'builtin-dark';
+            swatch.querySelector('.theme-swatch-name').textContent = label;
+        });
+    }
+
+    function saveAppearance(mode, palette) {
+        writePreference(APPEARANCE_PREFERENCE_KEYS.mode, mode);
+        writePreference(APPEARANCE_PREFERENCE_KEYS.palette, palette);
+        const appearance = applyStoredAppearance();
+        writePreference(APPEARANCE_PREFERENCE_KEYS.legacyTheme, appearance.theme);
+        syncThemePickers(appearance);
+    }
+
     function applyLocalPreferences() {
-        const theme = resolveTheme(readPreference(preferenceKeys.theme, DEFAULT_THEME));
+        const appearance = applyStoredAppearance();
         const motion = readPreference(preferenceKeys.motion, 'system') === 'reduced' ? 'reduced' : 'system';
-        document.documentElement.dataset.theme = theme;
-        document.documentElement.dataset.scheme = themeScheme(theme);
         document.documentElement.dataset.motion = motion;
         document.getElementById('motionToggle').setAttribute('aria-checked', motion === 'reduced' ? 'true' : 'false');
-        listboxes.get('themeSelect')?.setValue(theme);
+        syncThemePickers(appearance);
         listboxes.get('languageSelect')?.setValue(i18n.getLocale());
         listboxes.get('settingsTimezoneSelect')?.setValue(readPreference(preferenceKeys.timezone, 'browser'));
+        return appearance;
     }
 
     function formatBytes(bytes) {
@@ -416,6 +511,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
     function renderLocalizedState() {
         i18n.translate();
         listboxes.forEach((controller) => controller.refreshLabels());
+        syncThemePickers(currentAppearance);
         renderPolicySummary();
         renderSourceReadiness();
         renderSourceFormState();
@@ -791,6 +887,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
     }
 
     function bindPreferenceControls() {
+        buildThemePickers();
         createListbox('languageSelect', {
             value: i18n.getLocale(),
             options: SUPPORTED_LOCALES.map((locale) => ({
@@ -803,17 +900,13 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
                 renderLocalizedState();
             },
         });
-        createListbox('themeSelect', {
-            value: readPreference(preferenceKeys.theme, DEFAULT_THEME),
-            options: THEMES.map((theme) => ({
-                value: theme.id,
-                labelKey: `preferences.theme.${theme.id}`,
-                subtitleKey: `common.scheme.${theme.scheme}`,
-            })),
-            onChange: (theme) => {
-                writePreference(preferenceKeys.theme, theme);
-                applyLocalPreferences();
-            },
+        document.getElementById('themeModePicker').addEventListener('change', (event) => {
+            if (!event.target.matches('input[name="theme-mode"]')) return;
+            saveAppearance(event.target.value, currentAppearance?.palette || 'builtin');
+        });
+        document.getElementById('themePalettePicker').addEventListener('change', (event) => {
+            if (!event.target.matches('input[name="theme-palette"]')) return;
+            saveAppearance(currentAppearance?.mode || 'system', event.target.value);
         });
         createListbox('settingsTimezoneSelect', {
             value: readPreference(preferenceKeys.timezone, 'browser'),
@@ -846,6 +939,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         document.getElementById('resetPreferencesBtn').addEventListener('click', () => {
             if (!window.confirm(t('preferences.resetConfirm'))) return;
             Object.values(preferenceKeys).forEach(removePreference);
+            Object.values(APPEARANCE_PREFERENCE_KEYS).forEach(removePreference);
             i18n.setLocale('en', { persist: false });
             applyLocalPreferences();
             renderLocalizedState();
@@ -1211,5 +1305,9 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         renderLocalizedState();
         bootstrapData();
     }
+
+    window.addEventListener(THEME_CHANGE_EVENT, (event) => {
+        syncThemePickers(event.detail);
+    });
 
     initialize();

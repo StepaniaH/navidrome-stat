@@ -96,3 +96,35 @@ test("review distribution charts switch between plays and listening time", async
     )
     .toBe(40000);
 });
+
+test("review charts redraw from the resolved theme tokens", async ({ page }) => {
+  await page.goto("/review");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const chart = echarts.getInstanceByDom(document.getElementById("reviewMonthlyChart"));
+        return Boolean(chart && chart.getOption().series[0].data.length);
+      }),
+    )
+    .toBe(true);
+
+  await page.evaluate(() => {
+    localStorage.setItem("navidrome-theme-mode", "light");
+    localStorage.setItem("navidrome-theme-palette", "gruvbox");
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: "navidrome-theme-mode",
+      newValue: "light",
+    }));
+  });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "gruvbox-light");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const styles = getComputedStyle(document.documentElement);
+        const option = echarts.getInstanceByDom(document.getElementById("reviewMonthlyChart")).getOption();
+        return option.series[0].itemStyle.color
+          === styles.getPropertyValue("--chart-1").trim();
+      }),
+    )
+    .toBe(true);
+});
