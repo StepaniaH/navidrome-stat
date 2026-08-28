@@ -327,7 +327,6 @@ test('every concrete theme exposes the shared semantic and chart token contract'
         '--app-dim:',
         '--app-accent:',
         '--app-success:',
-        '--app-warning:',
         '--app-error:',
         '--page:',
         '--panel:',

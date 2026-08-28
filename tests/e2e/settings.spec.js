@@ -131,6 +131,17 @@ test("system mode follows the OS and keeps an unavailable palette selected", asy
   await page.goto("/settings#preferences");
 
   const nord = page.locator('#themePalettePicker input[value="nord"]');
+  const nordPreview = nord.locator("..").locator(".theme-swatch-preview");
+  const gruvboxPreview = page
+    .locator('#themePalettePicker input[value="gruvbox"]')
+    .locator("..")
+    .locator(".theme-swatch-preview");
+  await expect(nordPreview).toHaveAttribute("data-theme", "nord");
+  expect(
+    await nordPreview.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue("--page-bg").trim(),
+    ),
+  ).toBe("#242933");
   await nord.check();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "nord");
   await expect(nord).toBeChecked();
@@ -147,6 +158,12 @@ test("system mode follows the OS and keeps an unavailable palette selected", asy
   await expect(nord).toBeChecked();
   await expect(nord).toBeDisabled();
   await expect(nord.locator("..")).toHaveClass(/is-unavailable/);
+  await expect(gruvboxPreview).toHaveAttribute("data-theme", "gruvbox-light");
+  expect(
+    await gruvboxPreview.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue("--page-bg").trim(),
+    ),
+  ).toBe("#fbf1c7");
 
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "nord");

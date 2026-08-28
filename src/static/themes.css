@@ -395,7 +395,7 @@
     --accent-soft: color-mix(in srgb, var(--accent) 13%, transparent);
     --focus: var(--accent);
 
-    /* Existing page-level names remain aliases during the theme refactor. */
+    /* Page-specific styles consume these aliases. */
     --app-bg: var(--page-bg);
     --app-panel: var(--surface);
     --app-field: var(--field-bg);
@@ -407,7 +407,6 @@
     --app-accent: var(--accent);
     --app-on-accent: var(--accent-contrast);
     --app-success: var(--success);
-    --app-warning: var(--warning);
     --app-error: var(--danger);
 
     --page: var(--page-bg);

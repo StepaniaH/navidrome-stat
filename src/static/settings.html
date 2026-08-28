@@ -456,7 +456,7 @@
             overflow: hidden;
             padding: 8px;
             border-radius: 7px;
-            background: var(--preview-bg, #0f141b);
+            background: var(--page-bg);
         }
 
         .theme-mode-grid .theme-swatch-preview {
@@ -467,20 +467,19 @@
             height: 12px;
             flex: 1;
             border-radius: 3px;
-            background: var(--preview-accent, #38bdf8);
+            background: var(--accent);
         }
 
         .theme-swatch-preview i:nth-child(2) {
-            background: var(--preview-warning, #f7c65c);
+            background: var(--warning);
         }
 
         .theme-swatch-preview i:nth-child(3) {
-            background: var(--preview-success, #9bd65d);
+            background: var(--success);
         }
 
         .theme-swatch-preview.is-system {
             padding: 0;
-            background: #0f141b;
         }
 
         .theme-swatch-name {
@@ -517,46 +516,6 @@
             margin: 0;
             color: var(--text-dim);
             font-size: 12px;
-        }
-
-        .theme-swatch[data-theme-preview="builtin-dark"] {
-            --preview-bg: #0f141b; --preview-accent: #38bdf8; --preview-warning: #f7c65c; --preview-success: #9bd65d;
-        }
-        .theme-swatch[data-theme-preview="builtin-light"] {
-            --preview-bg: #f5f7fa; --preview-accent: #0369a1; --preview-warning: #8a5a00; --preview-success: #3f701b;
-        }
-        .theme-swatch[data-theme-preview="frappe"] {
-            --preview-bg: #292c3c; --preview-accent: #d6a8ee; --preview-warning: #e5c890; --preview-success: #a6d189;
-        }
-        .theme-swatch[data-theme-preview="latte"] {
-            --preview-bg: #f3f4f8; --preview-accent: #6f2dbd; --preview-warning: #8a5a00; --preview-success: #25751d;
-        }
-        .theme-swatch[data-theme-preview="macchiato"] {
-            --preview-bg: #1e2030; --preview-accent: #c6a0f6; --preview-warning: #eed49f; --preview-success: #a6da95;
-        }
-        .theme-swatch[data-theme-preview="mocha"] {
-            --preview-bg: #181825; --preview-accent: #cba6f7; --preview-warning: #f9e2af; --preview-success: #a6e3a1;
-        }
-        .theme-swatch[data-theme-preview="nord"] {
-            --preview-bg: #242933; --preview-accent: #9acbd8; --preview-warning: #ebcb8b; --preview-success: #aec99a;
-        }
-        .theme-swatch[data-theme-preview="dracula"] {
-            --preview-bg: #20212b; --preview-accent: #c8a4fb; --preview-warning: #f1fa8c; --preview-success: #50fa7b;
-        }
-        .theme-swatch[data-theme-preview="tokyo-night"] {
-            --preview-bg: #15161f; --preview-accent: #7aa2f7; --preview-warning: #e0af68; --preview-success: #9ece6a;
-        }
-        .theme-swatch[data-theme-preview="gruvbox-dark"] {
-            --preview-bg: #1d2021; --preview-accent: #fe8019; --preview-warning: #fabd2f; --preview-success: #b8bb26;
-        }
-        .theme-swatch[data-theme-preview="gruvbox-light"] {
-            --preview-bg: #fbf1c7; --preview-accent: #076678; --preview-warning: #815400; --preview-success: #526100;
-        }
-        .theme-swatch[data-theme-preview="solarized-dark"] {
-            --preview-bg: #002b36; --preview-accent: #75c1ef; --preview-warning: #e6bd55; --preview-success: #b4c94a;
-        }
-        .theme-swatch[data-theme-preview="solarized-light"] {
-            --preview-bg: #fdf6e3; --preview-accent: #00629f; --preview-warning: #7a5a00; --preview-success: #536b00;
         }
 
         .settings-select {
@@ -1774,7 +1733,7 @@
                             <div class="setting-row theme-setting-row">
                                 <div class="setting-copy">
                                     <strong data-i18n="preferences.theme">Theme</strong>
-                                    <span data-i18n="preferences.themeHelp">Choose a dark or light palette for the current environment.</span>
+                                    <span data-i18n="preferences.themeHelp">Choose a brightness mode and color family. The selection applies across every page.</span>
                                 </div>
                                 <div id="themePicker" class="theme-picker">
                                     <section class="theme-picker-section" aria-labelledby="themeModeHeading">
@@ -1804,7 +1763,7 @@
                             <div class="setting-row">
                                 <div class="setting-copy">
                                     <strong data-i18n="preferences.reset">Reset local preferences</strong>
-                                    <span data-i18n="preferences.resetHelp">Restores English, Frappe, browser timezone, and system motion defaults.</span>
+                                    <span data-i18n="preferences.resetHelp">Restores the default language, theme mode, palette, browser timezone, and motion preference.</span>
                                 </div>
                                 <button id="resetPreferencesBtn" class="secondary-button" type="button" data-i18n="preferences.resetButton">Restore defaults</button>
                             </div>

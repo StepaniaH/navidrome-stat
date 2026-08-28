@@ -82,6 +82,32 @@ def test_theme_controls_use_separate_mode_and_palette_pickers():
         assert picker_id in script
     assert "THEME_MODES" in script
     assert "PALETTES" in script
+    assert "preview.dataset.theme = previewTheme" in script
+    assert "querySelector('.theme-swatch-preview').dataset.theme" in script
+    assert "data-theme-preview" not in html
+    assert "data-theme-preview" not in script
+
+
+def test_theme_catalogs_do_not_keep_obsolete_concrete_variant_labels():
+    locale_dir = ROOT / "src" / "static" / "js" / "i18n" / "locales"
+    obsolete_keys = (
+        "common.scheme.dark",
+        "common.scheme.light",
+        "preferences.theme.frappe",
+        "preferences.theme.latte",
+        "preferences.theme.macchiato",
+        "preferences.theme.mocha",
+        "preferences.theme.nord",
+        "preferences.theme.dracula",
+        "preferences.theme.tokyo-night",
+        "preferences.theme.gruvbox-dark",
+        "preferences.theme.solarized-dark",
+        "preferences.theme.solarized-light",
+    )
+    for locale_file in locale_dir.glob("*.js"):
+        catalog = _read(locale_file)
+        for key in obsolete_keys:
+            assert key not in catalog, f"{key} is obsolete in {locale_file.name}"
 
 
 def test_dynamic_privacy_policy_is_not_a_static_translation_target():

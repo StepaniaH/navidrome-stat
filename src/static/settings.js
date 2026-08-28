@@ -261,7 +261,6 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         const swatch = document.createElement('label');
         swatch.className = 'theme-swatch';
         swatch.dataset.themeValue = value;
-        if (previewTheme) swatch.dataset.themePreview = previewTheme;
 
         const input = document.createElement('input');
         input.type = 'radio';
@@ -271,6 +270,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         const preview = document.createElement('span');
         preview.className = `theme-swatch-preview${systemPreview ? ' is-system' : ''}`;
         preview.setAttribute('aria-hidden', 'true');
+        if (previewTheme) preview.dataset.theme = previewTheme;
         if (!systemPreview) preview.append(
             document.createElement('i'),
             document.createElement('i'),
@@ -311,7 +311,11 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
             input.checked = input.value === appearance.mode;
             const label = t(`preferences.themeMode.${input.value}`);
             input.setAttribute('aria-label', label);
-            input.closest('.theme-swatch').querySelector('.theme-swatch-name').textContent = label;
+            const swatch = input.closest('.theme-swatch');
+            swatch.querySelector('.theme-swatch-name').textContent = label;
+            swatch.querySelector('.theme-swatch-preview').dataset.theme = input.value === 'light'
+                ? 'builtin-light'
+                : (input.value === 'dark' ? 'builtin-dark' : `builtin-${appearance.scheme}`);
         });
         document.querySelectorAll('input[name="theme-palette"]').forEach((input) => {
             const supported = paletteSupportsScheme(input.value, appearance.scheme);
@@ -324,7 +328,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
             input.setAttribute('aria-label', supported ? label : `${label} — ${unavailable}`);
             swatch.classList.toggle('is-unavailable', !supported);
             swatch.title = supported ? '' : unavailable;
-            swatch.dataset.themePreview = paletteTheme(input.value, appearance.scheme)
+            swatch.querySelector('.theme-swatch-preview').dataset.theme = paletteTheme(input.value, appearance.scheme)
                 || palette?.variants.dark
                 || palette?.variants.light
                 || 'builtin-dark';

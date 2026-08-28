@@ -20,7 +20,7 @@ These fields can reveal personal listening habits when combined, even when the m
 
 ## Navidrome credentials
 
-Credentials supplied through `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` remain in the process environment and memory. Credentials saved from **Settings > Connections** or through the compatible fallback `/api/source/config` endpoint are stored in plaintext in SQLite so the service can reconnect after a restart.
+Credentials supplied through `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` remain in the process environment and memory. Credentials saved from **Settings > Connections** or through the compatible fallback `/api/source/config` endpoint are encrypted at rest with AES-256-GCM. The per-installation key file, `secret.key`, is stored beside the SQLite database and must be backed up with it; restoring the database without that key leaves saved passwords unavailable until they are entered again.
 
 The settings APIs return configured URLs and usernames to authorized viewers, but never return saved passwords. Protect the database, Docker volume, `.env` file, and backups as credentials.
 

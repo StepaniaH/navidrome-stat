@@ -2,7 +2,7 @@
 
 All notable user-facing changes are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.8.5] - 2026-08-28
 
 ### Changed
 
@@ -185,7 +185,8 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.4...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.5...HEAD
+[0.8.5]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.1...v0.8.2
