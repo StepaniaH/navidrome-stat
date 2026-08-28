@@ -130,6 +130,20 @@ test("system mode follows the OS and keeps an unavailable palette selected", asy
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/settings#preferences");
 
+  const systemPreview = page
+    .locator('#themeModePicker input[value="system"]')
+    .locator("..")
+    .locator(".theme-swatch-preview");
+  await expect(systemPreview.locator(".theme-swatch-half")).toHaveCount(2);
+  await expect(systemPreview.locator(".theme-swatch-half").nth(0)).toHaveAttribute(
+    "data-theme",
+    "builtin-dark",
+  );
+  await expect(systemPreview.locator(".theme-swatch-half").nth(1)).toHaveAttribute(
+    "data-theme",
+    "builtin-light",
+  );
+
   const nord = page.locator('#themePalettePicker input[value="nord"]');
   const nordPreview = nord.locator("..").locator(".theme-swatch-preview");
   const gruvboxPreview = page

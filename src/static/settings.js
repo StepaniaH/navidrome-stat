@@ -254,13 +254,11 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
     function createThemeSwatch({
         group,
         value,
-        labelKey,
         previewTheme,
         systemPreview = false,
     }) {
         const swatch = document.createElement('label');
         swatch.className = 'theme-swatch';
-        swatch.dataset.themeValue = value;
 
         const input = document.createElement('input');
         input.type = 'radio';
@@ -271,15 +269,24 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         preview.className = `theme-swatch-preview${systemPreview ? ' is-system' : ''}`;
         preview.setAttribute('aria-hidden', 'true');
         if (previewTheme) preview.dataset.theme = previewTheme;
-        if (!systemPreview) preview.append(
-            document.createElement('i'),
-            document.createElement('i'),
-            document.createElement('i'),
-        );
+        if (systemPreview) {
+            const darkHalf = document.createElement('span');
+            darkHalf.className = 'theme-swatch-half';
+            darkHalf.dataset.theme = 'builtin-dark';
+            const lightHalf = document.createElement('span');
+            lightHalf.className = 'theme-swatch-half';
+            lightHalf.dataset.theme = 'builtin-light';
+            preview.append(darkHalf, lightHalf);
+        } else {
+            preview.append(
+                document.createElement('i'),
+                document.createElement('i'),
+                document.createElement('i'),
+            );
+        }
 
         const name = document.createElement('span');
         name.className = 'theme-swatch-name';
-        name.dataset.themeLabelKey = labelKey;
 
         swatch.append(input, preview, name);
         return swatch;
@@ -290,7 +297,6 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         modePicker.replaceChildren(...THEME_MODES.map((mode) => createThemeSwatch({
             group: 'theme-mode',
             value: mode,
-            labelKey: `preferences.themeMode.${mode}`,
             previewTheme: mode === 'dark' ? 'builtin-dark' : (mode === 'light' ? 'builtin-light' : null),
             systemPreview: mode === 'system',
         })));
@@ -299,7 +305,6 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         palettePicker.replaceChildren(...PALETTES.map((palette) => createThemeSwatch({
             group: 'theme-palette',
             value: palette.id,
-            labelKey: `preferences.palette.${palette.id}`,
             previewTheme: palette.variants.dark || palette.variants.light,
         })));
     }
@@ -313,9 +318,9 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
             input.setAttribute('aria-label', label);
             const swatch = input.closest('.theme-swatch');
             swatch.querySelector('.theme-swatch-name').textContent = label;
-            swatch.querySelector('.theme-swatch-preview').dataset.theme = input.value === 'light'
-                ? 'builtin-light'
-                : (input.value === 'dark' ? 'builtin-dark' : `builtin-${appearance.scheme}`);
+            const preview = swatch.querySelector('.theme-swatch-preview');
+            if (input.value === 'system') preview.removeAttribute('data-theme');
+            else preview.dataset.theme = `builtin-${input.value}`;
         });
         document.querySelectorAll('input[name="theme-palette"]').forEach((input) => {
             const supported = paletteSupportsScheme(input.value, appearance.scheme);

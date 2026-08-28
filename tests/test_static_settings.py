@@ -84,8 +84,13 @@ def test_theme_controls_use_separate_mode_and_palette_pickers():
     assert "PALETTES" in script
     assert "preview.dataset.theme = previewTheme" in script
     assert "querySelector('.theme-swatch-preview').dataset.theme" in script
+    assert "darkHalf.dataset.theme = 'builtin-dark'" in script
+    assert "lightHalf.dataset.theme = 'builtin-light'" in script
+    assert ".theme-swatch-half {" in html
     assert "data-theme-preview" not in html
     assert "data-theme-preview" not in script
+    assert "themeLabelKey" not in script
+    assert "themeValue" not in script
 
 
 def test_theme_catalogs_do_not_keep_obsolete_concrete_variant_labels():
