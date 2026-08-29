@@ -8,13 +8,14 @@ no server entries exist, and reconciled onto the collector manager.
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import anyio
 
 from src.client import NavidromeClient
 from src.collector_manager import CollectorManager as BaseCollectorManager
 from src.config import env_int
+from src.connection_diagnostics import classify_connection_exception
 from src.database import (
     LEGACY_SOURCE_ID,
     LEGACY_SOURCE_NAME,
@@ -177,7 +178,11 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
                 consecutive_failures = 0
 
         except Exception as exc:
-            runtime_state.record_poll_exception(current_time, tracker.source_id)
+            runtime_state.record_poll_exception(
+                current_time,
+                tracker.source_id,
+                classify_connection_exception(exc),
+            )
             logger.error(
                 "Polling cycle failed (type=%s)",
                 exception_kind(exc),
@@ -188,6 +193,14 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
                 MAX_POLL_BACKOFF_SEC,
             )
 
+        runtime_state.set_collector_retry(
+            tracker.source_id,
+            (
+                current_time + timedelta(seconds=sleep_for)
+                if consecutive_failures
+                else None
+            ),
+        )
         await asyncio.sleep(sleep_for)
 
 

@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.lock
 
 FROM python:3.11-slim AS runner
 
-ARG APP_VERSION=0.8.6
+ARG APP_VERSION=0.8.7
 ENV APP_VERSION=${APP_VERSION}
 
 WORKDIR /app
@@ -32,4 +32,4 @@ USER appuser
 
 EXPOSE 39421
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "39421"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "39421", "--no-access-log"]

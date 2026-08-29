@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -33,6 +33,28 @@ RANKING_METRICS = (RANKING_METRIC_PLAYS, RANKING_METRIC_LISTEN_TIME)
 RANKING_METRIC_VALIDATION_ERROR = (
     "metric must be one of: plays, listen_time"
 )
+
+SUBSONIC_AUTH_ERROR_CODES = frozenset({40, 41, 42, 43, 44, 50})
+
+ConnectionFailureCategory = Literal[
+    "auth_failed",
+    "tls_error",
+    "timeout",
+    "network_unreachable",
+    "upstream_error",
+    "invalid_response",
+    "unknown",
+]
+ConnectionTestCategory = Literal["ok", "incomplete", ConnectionFailureCategory]
+ConnectionDiagnosticCategory = Literal[
+    "unconfigured",
+    "disabled",
+    "starting",
+    "collector_degraded",
+    "connected_no_plays",
+    "ready",
+    ConnectionFailureCategory,
+]
 
 
 class PlayerStat(BaseModel):
@@ -268,6 +290,8 @@ class SourceTestRequest(BaseModel):
 class SourceTestResponse(BaseModel):
     ok: bool
     message: str
+    category: ConnectionTestCategory = "unknown"
+    upstream_code: Optional[int] = None
 
 
 class ServerResponse(BaseModel):
@@ -282,6 +306,10 @@ class ServerResponse(BaseModel):
     runtime_status: Optional[str] = None
     last_poll_ok: Optional[bool] = None
     seconds_since_last_poll: Optional[int] = None
+    seconds_since_last_success: Optional[int] = None
+    last_error_category: Optional[ConnectionFailureCategory] = None
+    last_upstream_error_code: Optional[int] = None
+    retry_in_seconds: Optional[int] = None
     song_history_ready: Optional[bool] = None
 
 
@@ -297,6 +325,20 @@ class ServerRequest(BaseModel):
 class ServerTestResponse(BaseModel):
     ok: bool
     message: str
+    category: ConnectionTestCategory = "unknown"
+    upstream_code: Optional[int] = None
+
+
+class ConnectionDiagnosticsResponse(BaseModel):
+    schema_version: int
+    category: ConnectionDiagnosticCategory
+    configured_connection_count: int
+    enabled_connection_count: int
+    history_record_count: int
+    healthy_collector_count: int
+    degraded_collector_count: int
+    last_success_at: Optional[str] = None
+    retry_in_seconds: Optional[int] = None
 
 
 class ServerStat(BaseModel):

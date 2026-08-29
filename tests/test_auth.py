@@ -100,6 +100,15 @@ async def test_health_remains_public_when_auth_enabled():
 
 
 @pytest.mark.asyncio
+async def test_connection_diagnostics_require_authentication():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):
+            response = await ac.get("/api/diagnostics")
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+
+
+@pytest.mark.asyncio
 async def test_openapi_routes_blocked_when_auth_enabled():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         with patch("src.auth.get_stats_api_token", return_value="synthetic-secret-token"):

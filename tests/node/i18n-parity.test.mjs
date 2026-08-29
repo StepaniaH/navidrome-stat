@@ -67,6 +67,21 @@ test("settings tables cover every supported locale name", () => {
   }
 });
 
+test("no-history guidance follows the configured play threshold", () => {
+  const keys = [
+    "history.emptyHint",
+    "source.diagnostics.connected_no_plays.description",
+  ];
+  for (const [code, module] of Object.entries(catalogs)) {
+    const messages = new Map([...module.dashboard, ...module.settings]);
+    for (const key of keys) {
+      const message = messages.get(key);
+      assert.ok(message, `${code} is missing ${key}`);
+      assert.doesNotMatch(message, /\d/, `${code}:${key} must not hard-code a threshold`);
+    }
+  }
+});
+
 test("pageMessages merges requested domains for every locale", () => {
   const messages = pageMessages(...DOMAINS);
   assert.deepEqual(Object.keys(messages).sort(), Object.keys(catalogs).sort());

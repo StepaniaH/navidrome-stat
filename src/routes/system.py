@@ -12,9 +12,11 @@ from src.auth import (
     verify_login_token,
 )
 from src.collectors import active_now_playing, build_readiness_report
+from src.connection_diagnostics import build_connection_diagnostics
 from src.metrics import format_prometheus_metrics
 from src.schemas import (
     AuthStatusResponse,
+    ConnectionDiagnosticsResponse,
     HealthLiveResponse,
     LoginRequest,
     ReadinessResponse,
@@ -77,6 +79,12 @@ async def health_ready():
     report = await build_readiness_report()
     status_code = 200 if report["status"] != "not_ready" else 503
     return JSONResponse(content=report, status_code=status_code)
+
+
+@router.get("/api/diagnostics", response_model=ConnectionDiagnosticsResponse)
+async def connection_diagnostics():
+    """Return redacted connection and first-run state for the settings UI."""
+    return await build_connection_diagnostics()
 
 
 

@@ -5,6 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS_HTML = ROOT / "src" / "static" / "settings.html"
 SETTINGS_JS = ROOT / "src" / "static" / "settings.js"
+APPEARANCE_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "appearance-settings.js"
+CONNECTION_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "connection-settings.js"
 LOCALIZATION_JS = ROOT / "src" / "static" / "localization.js"
 THEMES_JS = ROOT / "src" / "static" / "js" / "themes.js"
 
@@ -76,7 +78,7 @@ def test_all_settings_selectors_use_the_shared_custom_listbox():
 
 def test_theme_controls_use_separate_mode_and_palette_pickers():
     html = _read(SETTINGS_HTML)
-    script = _read(SETTINGS_JS)
+    script = _read(APPEARANCE_SETTINGS_JS)
     for picker_id in ("themeModePicker", "themePalettePicker"):
         assert f'id="{picker_id}"' in html
         assert picker_id in script
@@ -84,8 +86,7 @@ def test_theme_controls_use_separate_mode_and_palette_pickers():
     assert "PALETTES" in script
     assert "preview.dataset.theme = previewTheme" in script
     assert "querySelector('.theme-swatch-preview').dataset.theme" in script
-    assert "darkHalf.dataset.theme = 'builtin-dark'" in script
-    assert "lightHalf.dataset.theme = 'builtin-light'" in script
+    assert "for (const concrete of ['builtin-dark', 'builtin-light'])" in script
     assert ".theme-swatch-half {" in html
     assert "data-theme-preview" not in html
     assert "data-theme-preview" not in script
@@ -167,7 +168,8 @@ def test_local_preferences_include_motion_and_reset_without_server_writes():
     assert 'id="motionToggle"' in html
     assert 'id="privacyFirstRun"' in html
     assert 'data-i18n="privacy.firstRunNote"' in html
-    script_block = script[script.index("function renderServers()") :]
+    connection_script = _read(CONNECTION_SETTINGS_JS)
+    script_block = connection_script[connection_script.index("function renderServers()") :]
     assert "privacyFirstRun" in script_block
     assert 'role="switch"' in html
     assert 'id="resetPreferencesBtn"' in html
@@ -191,12 +193,13 @@ def test_settings_loads_shared_theme_assets_and_registry():
     assert "{ value: 'browser'" in script
     assert "{ value: 'UTC'" in script
     assert "APPEARANCE_PREFERENCE_KEYS" in script
-    assert "applyStoredAppearance" in script
+    assert "createAppearanceSettings" in script
+    assert "applyStoredAppearance" in _read(APPEARANCE_SETTINGS_JS)
 
 
 def test_sensitive_values_use_safe_dom_apis_and_password_is_never_rendered():
     html = _read(SETTINGS_HTML)
-    script = _read(SETTINGS_JS)
+    script = _read(SETTINGS_JS) + _read(CONNECTION_SETTINGS_JS)
     assert 'id="sourcePass"' in html
     assert 'type="password"' in html
     assert "innerHTML" not in script
@@ -237,18 +240,18 @@ def test_retention_copy_matches_automatic_cleanup_and_apply_uses_saved_policy():
 
 def test_source_form_has_explicit_create_and_edit_modes():
     html = _read(SETTINGS_HTML)
-    script = _read(SETTINGS_JS)
+    script = _read(CONNECTION_SETTINGS_JS)
     assert 'id="cancelSourceEditBtn"' in html
     source_pass_line = next(line for line in html.splitlines() if 'id="sourcePass"' in line)
     assert "required" in source_pass_line
     assert 'id="sourceEnabled"' in html
-    assert "function resetSourceForm()" in script
+    assert "function resetForm()" in script
     assert "password.required = !editing" in script
     assert "const enabled = document.getElementById('sourceEnabled').checked" in script
-    assert "statusBadge.dataset.enabled = String(Boolean(server.enabled))" in script
+    assert "status.dataset.enabled = String(Boolean(server.enabled))" in script
     assert "sourceEditingEnabled" not in script
     assert "`/api/servers/${encodeURIComponent(editingId)}/test`" in script
-    assert "state.fallbackSourceConfig = await response.json()" in script
+    assert "state.fallback = await response.json()" in script
     assert "always take precedence" not in script
 
 
@@ -294,7 +297,7 @@ def test_settings_runtime_fills_version_from_about_endpoint():
 
 
 def test_server_row_test_result_renders_inline_not_in_form():
-    js = _read(SETTINGS_JS)
+    js = _read(CONNECTION_SETTINGS_JS)
     assert "server-test-status" in js
     html = _read(SETTINGS_HTML)
     assert ".server-test-status" in html
@@ -309,12 +312,12 @@ def test_server_form_has_backfill_playlist_field_with_help():
 
 
 def test_settings_js_round_trips_backfill_playlist_id():
-    script = _read(SETTINGS_JS)
+    script = _read(CONNECTION_SETTINGS_JS)
     assert "sourceBackfillPlaylist" in script
     assert "backfill_playlist_id" in script
 
 
 def test_settings_row_surfaces_backfill_status_only_when_configured():
-    script = _read(SETTINGS_JS)
+    script = _read(CONNECTION_SETTINGS_JS)
     assert "backfillStatusLine" in script or "server-backfill-status" in script
     assert "source.backfillStatus" in script

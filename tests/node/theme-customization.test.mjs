@@ -7,6 +7,8 @@ import {
     applyStoredThemeCustomization,
     applyThemeCustomization,
     clearThemeCustomization,
+    decodeThemeDocument,
+    encodeThemeDocument,
     normalizeHexColor,
     parseThemeCustomizations,
     themeCustomizationFor,
@@ -73,17 +75,38 @@ test('hex values normalize to a strict six-digit contract', () => {
 });
 
 test('custom theme contrast validation rejects unreadable critical colors', () => {
-    assert.deepEqual(validateThemeCustomization(ACCESSIBLE_COLORS), {
-        colors: ACCESSIBLE_COLORS,
-        issues: [],
-        valid: true,
-    });
+    const accessible = validateThemeCustomization(ACCESSIBLE_COLORS);
+    assert.deepEqual(accessible.colors, ACCESSIBLE_COLORS);
+    assert.deepEqual(accessible.issues, []);
+    assert.equal(accessible.valid, true);
+    assert.equal(accessible.checks.length, 9);
+    assert.ok(accessible.checks.every((check) => check.pass && check.minimum === 4.5));
     const invalid = validateThemeCustomization({
         ...ACCESSIBLE_COLORS,
         text: '#f4f4f4',
     });
     assert.equal(invalid.valid, false);
     assert.ok(invalid.issues.includes('text:surface'));
+});
+
+test('single-theme documents round-trip through a strict versioned format', () => {
+    const encoded = encodeThemeDocument('nord-light', ACCESSIBLE_COLORS);
+    const decoded = decodeThemeDocument(encoded, 'nord-light');
+    assert.equal(decoded.valid, true);
+    assert.equal(decoded.theme, 'nord-light');
+    assert.deepEqual(decoded.colors, ACCESSIBLE_COLORS);
+});
+
+test('theme document imports reject mismatches and unknown fields', () => {
+    const encoded = encodeThemeDocument('nord-light', ACCESSIBLE_COLORS);
+    assert.equal(decodeThemeDocument(encoded, 'builtin-light').error, 'theme_mismatch');
+    const document = JSON.parse(encoded);
+    document.unexpected = true;
+    assert.equal(decodeThemeDocument(document, 'nord-light').error, 'invalid_document');
+    const nestedDocument = JSON.parse(encoded);
+    nestedDocument.colors.unexpected = '#000000';
+    assert.equal(decodeThemeDocument(nestedDocument, 'nord-light').error, 'invalid_colors');
+    assert.equal(decodeThemeDocument('{broken', 'nord-light').error, 'invalid_json');
 });
 
 test('every preset can seed a valid advanced-editor draft', () => {

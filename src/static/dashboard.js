@@ -131,6 +131,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
     let selectedUsername = initialFilters.username;
     const knownSources = new Map();
     let knownUsers = [];
+    let globalHistoryRecordCount = null;
     // Shared by the artist and album rankings; changing it refreshes both.
     let rankingMetric = initialFilters.metric;
 
@@ -246,7 +247,15 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         }
         hideLogin();
         applyAppVersion();
-        await Promise.all([fetchStats(), fetchNowPlaying()]);
+        await Promise.all([
+            Promise.allSettled([fetchUserOptions(), fetchDashboardDiagnostics()]),
+            fetchStats(),
+            fetchNowPlaying(),
+        ]);
+        if (lastStatsSnapshot) {
+            renderHistoryTable(lastStatsSnapshot.history, !selectedSourceId);
+            updateNewUserGuide(lastStatsSnapshot);
+        }
         if (document.getElementById('loginOverlay').classList.contains('hidden')) {
             scheduleRefresh();
         }
@@ -1361,14 +1370,41 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         renderUserOptions();
     }
 
+    async function fetchDashboardDiagnostics() {
+        const response = await fetch('/api/diagnostics', fetchOptions);
+        if (!response.ok) throw new Error('diagnostics request failed');
+        const payload = await response.json();
+        globalHistoryRecordCount = Number.isFinite(Number(payload.history_record_count))
+            ? Number(payload.history_record_count)
+            : null;
+    }
+
+    function currentEmptyStateIsFiltered() {
+        if (globalHistoryRecordCount !== null) return globalHistoryRecordCount > 0;
+        return knownUsers.length > 0 || Boolean(selectedSourceId || selectedUsername);
+    }
+
     function renderHistoryTable(data, showSources = !selectedSourceId) {
         const tbody = document.getElementById('historyTable');
         tbody.replaceChildren();
+        const filteredEmpty = currentEmptyStateIsFiltered();
+        const empty = document.getElementById('historyEmpty');
+        const emptyLines = empty.querySelectorAll('p');
+        if (emptyLines[0]) {
+            emptyLines[0].textContent = dashboardMessage(
+                filteredEmpty ? 'history.filterEmpty' : 'history.empty',
+            );
+        }
+        if (emptyLines[1]) {
+            emptyLines[1].textContent = dashboardMessage(
+                filteredEmpty ? 'history.filterEmptyHint' : 'history.emptyHint',
+            );
+        }
         const rows = beginArrayPanel(
             'history',
             data,
             (items) => items.length > 0,
-            dashboardMessage('history.empty'),
+            dashboardMessage(filteredEmpty ? 'history.filterEmpty' : 'history.empty'),
         );
         if (!rows) return;
 
@@ -1457,7 +1493,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
             && snapshot.history.length === 0;
         document.getElementById('newUserGuide').classList.toggle(
             'hidden',
-            !(noPlays && noHistory && !selectedSourceId),
+            !(noPlays && noHistory && !currentEmptyStateIsFiltered()),
         );
     }
 
@@ -1511,6 +1547,12 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
             }
             const snapshot = await snapshotRes.json();
             if (generation !== statsRequestGeneration || controller.signal.aborted) return;
+            if (
+                Number(snapshot.summary?.total_plays) > 0
+                || (Array.isArray(snapshot.history) && snapshot.history.length > 0)
+            ) {
+                globalHistoryRecordCount = Math.max(globalHistoryRecordCount ?? 0, 1);
+            }
             lastStatsSnapshot = snapshot;
             lastRankingMetric = requestState.metric;
             // Sources feed the cover-art URLs, so refresh them before rendering.
@@ -1830,8 +1872,15 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
             }
         }
 
-        fetchUserOptions().catch(() => renderUserOptions());
-        await Promise.all([fetchStats(), fetchNowPlaying()]);
+        await Promise.all([
+            Promise.allSettled([fetchUserOptions(), fetchDashboardDiagnostics()]),
+            fetchStats(),
+            fetchNowPlaying(),
+        ]);
+        if (lastStatsSnapshot) {
+            renderHistoryTable(lastStatsSnapshot.history, !selectedSourceId);
+            updateNewUserGuide(lastStatsSnapshot);
+        }
         scheduleRefresh();
     }
 

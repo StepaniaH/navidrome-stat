@@ -679,7 +679,9 @@ def test_empty_panels_are_compact_and_show_onboarding(source):
     block = _function_block(source, "updateNewUserGuide")
     assert "total_plays" in block
     assert "snapshot.history" in block
-    assert "selectedSourceId" in block
+    assert "currentEmptyStateIsFiltered()" in block
+    assert "globalHistoryRecordCount" in source
+    assert "history.filterEmpty" in source
 
 
 def test_ranking_uses_list_semantics(source):

@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+from src.schemas import SUBSONIC_AUTH_ERROR_CODES
+
 
 @dataclass
 class CollectorRuntimeState:
@@ -10,8 +12,11 @@ class CollectorRuntimeState:
     poll_success_count: int = 0
     poll_failure_count: int = 0
     last_poll_at: Optional[datetime] = None
+    last_success_at: Optional[datetime] = None
     last_poll_ok: Optional[bool] = None
     last_upstream_error_code: Optional[int] = None
+    last_error_category: Optional[str] = None
+    retry_at: Optional[datetime] = None
     song_history: Optional[bool] = None
     backfill_run_count: int = 0
     backfill_imported_total: int = 0
@@ -69,8 +74,11 @@ class RuntimeState:
         collector = self._collector(source_id)
         collector.poll_success_count += 1
         collector.last_poll_at = at
+        collector.last_success_at = at
         collector.last_poll_ok = True
         collector.last_upstream_error_code = None
+        collector.last_error_category = None
+        collector.retry_at = None
 
     def record_poll_upstream_error(
         self,
@@ -87,15 +95,35 @@ class RuntimeState:
         collector.last_poll_at = at
         collector.last_poll_ok = False
         collector.last_upstream_error_code = error_code
+        collector.last_error_category = (
+            "auth_failed"
+            if error_code in SUBSONIC_AUTH_ERROR_CODES
+            else "upstream_error"
+        )
 
-    def record_poll_exception(self, at: datetime, source_id: str = "legacy") -> None:
+    def record_poll_exception(
+        self,
+        at: datetime,
+        source_id: str = "legacy",
+        category: str = "unknown",
+    ) -> None:
         self.poll_failure_count += 1
         self.last_poll_at = at
         self.last_poll_ok = False
+        self.last_upstream_error_code = None
         collector = self._collector(source_id)
         collector.poll_failure_count += 1
         collector.last_poll_at = at
         collector.last_poll_ok = False
+        collector.last_upstream_error_code = None
+        collector.last_error_category = category
+
+    def set_collector_retry(
+        self,
+        source_id: str,
+        retry_at: Optional[datetime],
+    ) -> None:
+        self._collector(source_id).retry_at = retry_at
 
     def set_song_history(self, source_id: str, supported: bool) -> None:
         self._collector(source_id).song_history = bool(supported)
@@ -127,6 +155,10 @@ class RuntimeState:
                 "status": "not_running",
                 "last_poll_ok": None,
                 "last_poll_at": None,
+                "last_success_at": None,
+                "last_error_category": None,
+                "last_upstream_error_code": None,
+                "retry_at": None,
                 "song_history": None,
                 "backfill": None,
             }
@@ -142,6 +174,10 @@ class RuntimeState:
             "status": status,
             "last_poll_ok": collector.last_poll_ok,
             "last_poll_at": collector.last_poll_at,
+            "last_success_at": collector.last_success_at,
+            "last_error_category": collector.last_error_category,
+            "last_upstream_error_code": collector.last_upstream_error_code,
+            "retry_at": collector.retry_at,
             "song_history": collector.song_history,
             "backfill": self._backfill_summary(collector),
         }

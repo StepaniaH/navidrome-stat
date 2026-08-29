@@ -463,7 +463,8 @@ async def test_source_test_success_with_mocked_client(isolated_db, monkeypatch):
 
     body = response.json()
     assert body["ok"] is True
-    assert "成功" in body["message"]
+    assert body["category"] == "ok"
+    assert body["upstream_code"] is None
     mock_client.get_now_playing.assert_awaited_once()
     mock_client.close.assert_awaited_once()
 
@@ -491,6 +492,7 @@ async def test_source_test_failure_returns_generic_message(isolated_db):
 
     body = response.json()
     assert body["ok"] is False
+    assert body["category"] == "network_unreachable"
     assert "upstream" not in body["message"].lower()
     assert "ConnectionError" not in body["message"]
     assert "password" not in body["message"]
@@ -507,7 +509,8 @@ async def test_source_test_incomplete_config_returns_generic(isolated_db):
         response = await ac.post("/api/source/test", json={})
     body = response.json()
     assert body["ok"] is False
-    assert "不完整" in body["message"]
+    assert body["category"] == "incomplete"
+    assert "password" not in body["message"].lower()
 
 
 @pytest.mark.asyncio

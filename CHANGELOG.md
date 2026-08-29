@@ -4,6 +4,24 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-08-29
+
+### Added
+
+- The connection settings page now gives first-use guidance and authenticated, redacted diagnostic states for unconfigured, disabled, starting, authentication, TLS, timeout, network, upstream, collector, and connected-without-history conditions.
+- Advanced theme settings now show each contrast pair, copy individual HEX values, guard unsaved previews, and import or export a strict versioned JSON document for the selected preset.
+- The synthetic statistics benchmark supports multiple history sizes, filtered summary and history scenarios, query-plan checks, JSON output, and optional per-query time budgets.
+
+### Changed
+
+- Connection and appearance behavior now live in dedicated frontend modules; the settings entry point retains authentication, tabs, privacy composition, and page-level localization.
+- Dashboard empty states distinguish an installation with no history from a date, server, or user filter that has no matches.
+
+### Security
+
+- Connection test and collector failures expose stable diagnostic categories instead of raw upstream exception text. The aggregate diagnostics endpoint requires the same authentication as the dashboard API and omits connection identities and credentials.
+- The published container disables Uvicorn request access logs so dashboard filters, source identifiers, and usernames in application URLs are not written to container logs.
+
 ## [0.8.6] - 2026-08-29
 
 ### Added
@@ -198,7 +216,8 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.6...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.7...HEAD
+[0.8.7]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.3...v0.8.4

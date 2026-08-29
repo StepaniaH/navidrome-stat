@@ -317,6 +317,51 @@
             font-size: 12px;
         }
 
+        .connection-guidance {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px 18px;
+            align-items: center;
+            margin-top: 17px;
+            padding: 14px 15px;
+            border: 1px solid var(--border-soft);
+            border-left: 3px solid var(--warning);
+            border-radius: 10px;
+            background: var(--surface-raised);
+        }
+
+        .connection-guidance[data-category="unconfigured"],
+        .connection-guidance[data-category="connected_no_plays"] {
+            border-left-color: var(--accent);
+        }
+
+        .connection-guidance[data-category="auth_failed"],
+        .connection-guidance[data-category="tls_error"],
+        .connection-guidance[data-category="network_unreachable"],
+        .connection-guidance[data-category="upstream_error"],
+        .connection-guidance[data-category="invalid_response"],
+        .connection-guidance[data-category="unknown"] {
+            border-left-color: var(--danger);
+        }
+
+        .connection-guidance-copy strong {
+            display: block;
+            color: var(--text);
+            font-size: 13px;
+        }
+
+        .connection-guidance-copy p,
+        .connection-guidance-facts {
+            margin-top: 3px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .connection-guidance-facts {
+            grid-column: 1 / -1;
+            color: var(--text-dim);
+        }
+
         .setting-list {
             border-top: 1px solid var(--border-soft);
         }
@@ -592,7 +637,7 @@
 
         .theme-color-row {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) 42px minmax(92px, 112px);
+            grid-template-columns: minmax(0, 1fr) 42px minmax(92px, 112px) 34px;
             gap: 8px;
             align-items: center;
             min-width: 0;
@@ -630,6 +675,47 @@
 
         .theme-color-row input[aria-invalid="true"] {
             border-color: var(--danger);
+        }
+
+        .theme-copy-button {
+            display: inline-grid;
+            width: 34px;
+            height: 34px;
+            place-items: center;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--field-bg);
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .theme-copy-button:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .theme-contrast-checks {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 4px 12px;
+            margin: 10px 0 0;
+            padding: 0;
+            color: var(--success);
+            font-size: 11px;
+            list-style: none;
+        }
+
+        .theme-contrast-checks li::before {
+            content: "✓";
+            margin-right: 5px;
+        }
+
+        .theme-contrast-checks li[data-pass="false"] {
+            color: var(--danger);
+        }
+
+        .theme-contrast-checks li[data-pass="false"]::before {
+            content: "×";
         }
 
         .theme-customization-status {
@@ -1488,6 +1574,18 @@
                 padding: 20px 16px;
             }
 
+            .connection-guidance {
+                grid-template-columns: 1fr;
+            }
+
+            .connection-guidance-facts {
+                grid-column: auto;
+            }
+
+            .connection-guidance > button {
+                justify-self: start;
+            }
+
             .setting-row {
                 display: block;
                 min-height: 0;
@@ -1504,7 +1602,11 @@
             }
 
             .theme-color-row {
-                grid-template-columns: minmax(0, 1fr) 44px minmax(104px, 122px);
+                grid-template-columns: minmax(0, 1fr) 44px minmax(104px, 122px) 34px;
+            }
+
+            .theme-contrast-checks {
+                grid-template-columns: 1fr;
             }
 
             .theme-customization-actions > button {
@@ -1655,6 +1757,14 @@
                             </div>
                             <button class="text-button" id="refreshSourceStatus" type="button" data-i18n="common.refresh">Refresh</button>
                         </div>
+                        <aside id="connectionGuidance" class="connection-guidance" data-category="starting">
+                            <div class="connection-guidance-copy">
+                                <strong id="connectionGuidanceTitle">Checking connection</strong>
+                                <p id="connectionGuidanceDescription">Reviewing collector and playback history state.</p>
+                            </div>
+                            <button id="connectionGuidanceAction" class="secondary-button" type="button">Refresh</button>
+                            <p id="connectionGuidanceFacts" class="connection-guidance-facts"></p>
+                        </aside>
                     </div>
 
                     <section class="settings-section" aria-labelledby="savedConnectionsTitle">
@@ -1910,8 +2020,12 @@
                                         <div class="theme-customization-body">
                                             <p id="themeCustomizationBase" class="theme-customization-base"></p>
                                             <div id="themeCustomizationFields" class="theme-color-fields"></div>
+                                            <ul id="themeContrastChecks" class="theme-contrast-checks" aria-label="Contrast checks" data-i18n-attr="aria-label:preferences.themeEditor.contrastChecks"></ul>
                                             <p id="themeCustomizationStatus" class="theme-customization-status" role="status" aria-live="polite"></p>
                                             <div class="theme-customization-actions">
+                                                <input id="themeCustomizationFile" type="file" accept="application/json,.json" hidden>
+                                                <button id="importThemeCustomizationBtn" class="text-button" type="button" data-i18n="preferences.themeEditor.import">Import</button>
+                                                <button id="exportThemeCustomizationBtn" class="text-button" type="button" data-i18n="preferences.themeEditor.export">Export</button>
                                                 <button id="restoreThemePresetBtn" class="text-button" type="button" data-i18n="preferences.themeEditor.restore">Restore preset colors</button>
                                                 <button id="cancelThemePreviewBtn" class="secondary-button" type="button" data-i18n="common.cancel">Cancel</button>
                                                 <button id="saveThemeCustomizationBtn" class="primary-button" type="button" data-i18n="preferences.themeEditor.save">Save customization</button>

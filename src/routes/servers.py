@@ -13,6 +13,7 @@ from src.collectors import (
     apply_collector_runtime_or_rollback,
     backfill_runner,
 )
+from src.connection_diagnostics import probe_connection
 from src.database import (
     SCHEMA_VERSION,
     delete_server,
@@ -140,7 +141,11 @@ async def api_source_test(body: SourceTestRequest):
     }
     config = resolve_source_config(overrides=overrides, saved=saved)
     if not has_full_config(config):
-        return SourceTestResponse(ok=False, message="配置不完整，缺少 URL、用户名或密码")
+        return SourceTestResponse(
+            ok=False,
+            message="Configuration is incomplete",
+            category="incomplete",
+        )
 
     test_client = NavidromeClient(
         url=config["url"],
@@ -148,31 +153,40 @@ async def api_source_test(body: SourceTestRequest):
         password=config["password"],
     )
     try:
-        data = await test_client.get_now_playing()
-        if not NavidromeClient.response_is_ok(data):
-            return SourceTestResponse(ok=False, message="上游拒绝连接或返回错误")
-    except Exception:
-        return SourceTestResponse(ok=False, message="无法连接到上游 Navidrome")
+        result = await probe_connection(test_client)
     finally:
         try:
             await test_client.close()
         except Exception:
             logger.error("Failed to close test NavidromeClient")
-    return SourceTestResponse(ok=True, message="连接成功")
+    return SourceTestResponse(
+        **result,
+        message="Connection succeeded" if result["ok"] else "Connection test failed",
+    )
 
 
 def _server_view(server: dict) -> ServerResponse:
     snapshot = runtime_state.collector_snapshot(server["id"])
     seconds_since_last_poll = None
+    seconds_since_last_success = None
+    retry_in_seconds = None
+    now = datetime.now(timezone.utc)
     if snapshot["last_poll_at"] is not None:
         seconds_since_last_poll = max(
             0,
             int(
                 (
-                    datetime.now(timezone.utc) - snapshot["last_poll_at"]
+                    now - snapshot["last_poll_at"]
                 ).total_seconds()
             ),
         )
+    if snapshot["last_success_at"] is not None:
+        seconds_since_last_success = max(
+            0,
+            int((now - snapshot["last_success_at"]).total_seconds()),
+        )
+    if snapshot["retry_at"] is not None:
+        retry_in_seconds = max(0, int((snapshot["retry_at"] - now).total_seconds()))
     return ServerResponse(
         id=server["id"], display_name=server["display_name"], url=server["url"],
         username=server["username"], password_configured=bool(server.get("password")),
@@ -182,6 +196,10 @@ def _server_view(server: dict) -> ServerResponse:
         runtime_status=snapshot["status"],
         last_poll_ok=snapshot["last_poll_ok"],
         seconds_since_last_poll=seconds_since_last_poll,
+        seconds_since_last_success=seconds_since_last_success,
+        last_error_category=snapshot.get("last_error_category"),
+        last_upstream_error_code=snapshot.get("last_upstream_error_code"),
+        retry_in_seconds=retry_in_seconds,
         song_history_ready=snapshot.get("song_history"),
     )
 
@@ -282,17 +300,16 @@ async def api_servers_test(server_id: str, body: ServerRequest | None = None):
         password=password,
     )
     try:
-        data = await test_client.get_now_playing()
-        if not NavidromeClient.response_is_ok(data):
-            return ServerTestResponse(ok=False, message="上游拒绝连接或返回错误")
-    except Exception:
-        return ServerTestResponse(ok=False, message="无法连接到上游 Navidrome")
+        result = await probe_connection(test_client)
     finally:
         try:
             await test_client.close()
         except Exception:
             logger.error("Failed to close test NavidromeClient")
-    return ServerTestResponse(ok=True, message="连接成功")
+    return ServerTestResponse(
+        **result,
+        message="Connection succeeded" if result["ok"] else "Connection test failed",
+    )
 
 
 @router.get("/api/about", response_model=AboutResponse)

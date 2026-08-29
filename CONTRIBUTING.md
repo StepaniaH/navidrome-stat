@@ -38,8 +38,10 @@ npm run test:e2e
 Run the synthetic statistics benchmark after changing aggregate queries, indexes, or dashboard caching:
 
 ```bash
-python3 scripts/benchmark_stats.py --rows 100000
+python3 scripts/benchmark_stats.py --sizes 100000,1000000
 ```
+
+The report measures all-history time buckets plus source-and-user-filtered summary and history queries, and verifies the filtered history query plan. Use `--json` for machine-readable output and `--max-query-ms <budget>` when a stable CI host has an agreed performance budget. The older `--rows` single-size option remains available for compatibility.
 
 Run the container smoke test after changing the Dockerfile, runtime dependencies, startup behavior, or health endpoints. It requires Docker and uses an ephemeral loopback port by default. Set `SMOKE_HOST_PORT` only when a fixed host port is needed.
 

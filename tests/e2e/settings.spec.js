@@ -52,10 +52,79 @@ async function routeSyntheticSettings(page) {
       },
     }),
   );
+  await page.route("**/api/diagnostics", (route) =>
+    route.fulfill({
+      json: {
+        schema_version: 1,
+        category: "unconfigured",
+        configured_connection_count: 0,
+        enabled_connection_count: 0,
+        history_record_count: 0,
+        healthy_collector_count: 0,
+        degraded_collector_count: 0,
+        last_success_at: null,
+        retry_in_seconds: null,
+      },
+    }),
+  );
 }
 
 test.beforeEach(async ({ page }) => {
   await routeSyntheticSettings(page);
+});
+
+test("first use guidance explains the next connection step", async ({ page }) => {
+  await page.goto("/settings#source");
+  await expect(page.locator("#connectionGuidance")).toHaveAttribute(
+    "data-category",
+    "unconfigured",
+  );
+  await expect(page.locator("#connectionGuidanceTitle")).toHaveText(
+    "Connect your first server",
+  );
+  await page.locator("#connectionGuidanceAction").click();
+  await expect(page.locator("#sourceName")).toBeFocused();
+});
+
+test("healthy connections do not keep first-use guidance visible", async ({ page }) => {
+  await page.unroute("**/api/diagnostics");
+  await page.route("**/api/diagnostics", (route) =>
+    route.fulfill({
+      json: {
+        schema_version: 1,
+        category: "ready",
+        configured_connection_count: 1,
+        enabled_connection_count: 1,
+        history_record_count: 12,
+        healthy_collector_count: 1,
+        degraded_collector_count: 0,
+        last_success_at: "2026-08-29T12:00:00+00:00",
+        retry_in_seconds: null,
+      },
+    }),
+  );
+  await page.goto("/settings#source");
+  await expect(page.locator("#connectionGuidance")).toBeHidden();
+});
+
+test("a diagnostic refresh failure does not overwrite a successful connection test", async ({
+  page,
+}) => {
+  await page.route("**/api/source/test", (route) =>
+    route.fulfill({ json: { ok: true, category: "ok", message: "Connection succeeded" } }),
+  );
+  await page.goto("/settings#source");
+  await expect(page.locator("#connectionGuidance")).toHaveAttribute(
+    "data-category",
+    "unconfigured",
+  );
+  await page.unroute("**/api/diagnostics");
+  await page.route("**/api/diagnostics", (route) => route.fulfill({ status: 500 }));
+  await page.locator("#sourceUrl").fill("https://music.example.invalid");
+  await page.locator("#sourceUser").fill("listener");
+  await page.locator("#sourcePass").fill("synthetic-password");
+  await page.locator("#testSourceBtn").click();
+  await expect(page.locator("#sourceMessage")).toHaveText("Connection succeeded.");
 });
 
 test("privacy policy settles and remains dynamic after locale changes", async ({
@@ -207,9 +276,12 @@ test("advanced theme editor previews, validates, persists, and restores preset c
   await expect(background).toHaveValue("#e9edf2");
   await expect(accent).toHaveValue("#326783");
   await expect(save).toBeDisabled();
+  await expect(page.locator("#themeContrastChecks li")).toHaveCount(9);
+  await expect(page.locator('#themeContrastChecks li[data-pass="false"]')).toHaveCount(0);
 
   await text.fill("#ffffff");
   await expect(save).toBeDisabled();
+  await expect(page.locator('#themeContrastChecks li[data-pass="false"]')).not.toHaveCount(0);
   await expect(page.locator("#themeCustomizationStatus")).toContainText(
     "Increase the contrast",
   );
@@ -237,6 +309,65 @@ test("advanced theme editor previews, validates, persists, and restores preset c
   await page.locator("#saveThemeCustomizationBtn").click();
   await expect(page.locator("html")).not.toHaveAttribute("data-theme-customization", /.+/);
   await expect(page.locator("html")).toHaveCSS("--accent", "#326783");
+});
+
+test("advanced theme import is strict and unsaved previews are guarded", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/settings#preferences");
+  await page.locator('#themeModePicker input[value="light"]').check();
+  await page.locator('#themePalettePicker input[value="nord"]').check();
+  await page.locator("#themeCustomization > summary").click();
+
+  const colors = await page.locator("#themeCustomizationFields").evaluate(() =>
+    Object.fromEntries(
+      [...document.querySelectorAll("[data-theme-hex]")]
+        .map((input) => [input.dataset.themeHex, input.value]),
+    ),
+  );
+  colors.accent = "#275f7d";
+  await page.locator("#themeCustomizationFile").setInputFiles({
+    name: "nord-light.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({
+      schemaVersion: 1,
+      theme: "nord-light",
+      colors,
+    })),
+  });
+  await expect(page.locator('[data-theme-hex="accent"]')).toHaveValue("#275f7d");
+  await expect(page.locator("#themeCustomizationStatus")).toContainText(
+    "Imported colors are being previewed",
+  );
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#exportThemeCustomizationBtn").click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("navidrome-theme-nord-light.json");
+
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.locator('#themePalettePicker input[value="gruvbox"]').click();
+  await expect(page.locator('#themePalettePicker input[value="nord"]')).toBeChecked();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "nord-light");
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator('#themePalettePicker input[value="gruvbox"]').click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "gruvbox-light");
+});
+
+test("invalid theme drafts are protected from accidental palette changes", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/settings#preferences");
+  await page.locator('#themeModePicker input[value="light"]').check();
+  await page.locator('#themePalettePicker input[value="nord"]').check();
+  await page.locator("#themeCustomization > summary").click();
+  const text = page.locator('[data-theme-hex="text"]');
+  await text.fill("invalid");
+  await expect(text).toHaveAttribute("aria-invalid", "true");
+
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.locator('#themePalettePicker input[value="gruvbox"]').click();
+  await expect(page.locator('#themePalettePicker input[value="nord"]')).toBeChecked();
+  await expect(text).toHaveValue("invalid");
 });
 
 test("privacy load failure resolves to an explicit retry state", async ({

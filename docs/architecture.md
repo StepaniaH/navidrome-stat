@@ -17,6 +17,7 @@ The implementation is split along its natural seams:
 | --- | --- |
 | Application assembly: middleware, static pages, lifespan | `src/main.py` |
 | Polling collectors, tracker registry, readiness report | `src/collectors.py`, `src/collector_manager.py` |
+| Redacted connection probes and aggregate diagnosis | `src/connection_diagnostics.py` |
 | Retention background maintenance | `src/retention.py` |
 | Write paths, cache invalidation, cached snapshot builds | `src/stats_service.py` |
 | HTTP routes: system/auth, statistics, privacy, connections | `src/routes/*.py` |
@@ -69,6 +70,9 @@ The dashboard, settings, and API reference pages are plain ES modules served und
 | `themes.css` | Shared semantic theme tokens for the dashboard, year-in-review, settings, and API reference |
 | `js/themes.js` | Theme mode/palette registry, legacy preference compatibility, and pure appearance resolution |
 | `js/theme-customization.js` | Validated browser-local preset overrides, contrast checks, and root custom-property application |
+| `js/settings/appearance-settings.js` | Appearance picker and advanced-editor state, preview, import/export, and unsaved-change boundary |
+| `js/settings/connection-settings.js` | Connection status, saved-server list, editor actions, and redacted diagnostic composition |
+| `js/settings/connection-diagnostics.js` | Stable diagnostic-category presentation and first-use guidance |
 | `theme-bootstrap.js` | Browser-local theme runtime, system color-scheme listener, root attributes, and cross-tab synchronization |
 | `js/prefs.js` | Safe `localStorage` access for browser-local display preferences |
 | `js/i18n/` | Locale registry: one module per language under `js/i18n/locales/`, pages derive catalogs via `pageMessages(...)`; tests guard key parity |
@@ -80,7 +84,9 @@ The dashboard, settings, and API reference pages are plain ES modules served und
 
 Appearance has two independent preferences. The mode is `system`, `dark`, or `light`; system mode resolves the browser's read-only `prefers-color-scheme` media query. The palette is one of Built-in, Gruvbox, Catppuccin, Solarized, Nord, Dracula, Tokyo Night, Macchiato, or Mocha. Every family provides a concrete light and dark variant, so the resolver always maps the pair directly to one of 18 theme IDs.
 
-Every themed page loads `themes.css` and consumes the same resolved contract: `data-theme` names the concrete variant and `data-scheme` is `dark` or `light`. `theme-bootstrap.js` also exposes the selected mode and palette on the root element, applies validated custom overrides before emitting the theme-change event used for chart redraws, and updates system mode when the media query changes. Existing `navidrome-theme` values remain readable as a compatibility input. Mode, palette, and versioned per-theme color overrides stay in `localStorage` and are never sent to the server. The advanced editor changes six core semantic colors; invalid values and critical text/accent combinations below 4.5:1 contrast cannot be saved.
+Every themed page loads `themes.css` and consumes the same resolved contract: `data-theme` names the concrete variant and `data-scheme` is `dark` or `light`. `theme-bootstrap.js` also exposes the selected mode and palette on the root element, applies validated custom overrides before emitting the theme-change event used for chart redraws, and updates system mode when the media query changes. Existing `navidrome-theme` values remain readable as a compatibility input. Mode, palette, and versioned per-theme color overrides stay in `localStorage` and are never sent to the server. The advanced editor changes six core semantic colors; invalid values and critical text/accent combinations below 4.5:1 contrast cannot be saved. Its import/export document contains exactly one concrete theme ID, a schema version, and the six validated colors; imports for another preset or with unknown fields are rejected.
+
+`/api/diagnostics` is an authenticated adapter over saved-connection presence, collector runtime state, retry timing, and the aggregate history count. It returns stable categories and counts only: URLs, usernames, passwords, source IDs, upstream messages, and exception text remain behind the boundary. Public `/health/ready` retains its deployment-health role and does not gain listening-record counts.
 
 Pure frontend logic is covered by Node unit tests (`npm run test:unit`); page behavior is covered by Playwright end-to-end tests.
 

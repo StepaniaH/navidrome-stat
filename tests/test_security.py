@@ -1,7 +1,10 @@
+from pathlib import Path
 
 import pytest
 
 from src.database import get_playback_history, init_db, save_play_session
+
+ROOT = Path(__file__).resolve().parent.parent
 
 MALICIOUS_TITLE = '<img src=x onerror="alert(1)">'
 MALICIOUS_USER = '"><script>evil()</script>'
@@ -50,3 +53,10 @@ async def test_persistence_error_log_does_not_include_exception_text(
     assert "RuntimeError" in caplog.text
     assert "private" not in caplog.text
     assert "getNowPlaying" not in caplog.text
+
+
+def test_published_runtime_disables_request_access_logs():
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    main_source = (ROOT / "src" / "main.py").read_text(encoding="utf-8")
+    assert '"--no-access-log"' in dockerfile
+    assert "access_log=False" in main_source

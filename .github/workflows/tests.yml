@@ -48,14 +48,14 @@ jobs:
         if: github.event_name == 'schedule'
         continue-on-error: true
         run: |
-          .venv/bin/python scripts/benchmark_stats.py | tee benchmark-output.txt
+          .venv/bin/python scripts/benchmark_stats.py --sizes 100000,1000000 --json | tee benchmark-output.json
 
       - name: Upload benchmark results
         if: github.event_name == 'schedule' && steps.benchmark.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
-          path: benchmark-output.txt
+          path: benchmark-output.json
           retention-days: 7
           if-no-files-found: ignore
 

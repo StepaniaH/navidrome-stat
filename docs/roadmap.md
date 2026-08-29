@@ -7,12 +7,11 @@ This roadmap describes project direction, not release commitments. Shipped chang
 ## Near term
 
 - Keep contributor and maintainer workflows reproducible, including dependency-lock refresh, frontend asset builds, browser tests, the statistics benchmark, the container smoke test, and tag-only Docker releases.
-- Improve collector diagnostics while keeping health responses free of credentials and playback metadata.
+- Extend the redacted connection diagnosis only when a new operator action can be recommended without exposing credentials, source identity, or playback metadata.
 
 ## Medium term
 
-- Define pre-1.0 compatibility rules for HTTP endpoints, privacy export formats, and SQLite migrations.
-- Improve large-history query, cache, and retention performance within the existing single-host SQLite architecture, guided by synthetic benchmarks.
+- Improve large-history query, cache, and retention performance within the existing single-host SQLite architecture, using the multi-scale synthetic baseline and query-plan checks to evaluate changes.
 - Watch upstream for a public Navidrome listening-history read API (the `getSongHistory` proposal) so a native import can land once one exists.
 - Offer opt-in ListenBrainz-format scrobble forwarding with per-server deduplication.
 

@@ -2,6 +2,7 @@ import { readPreference, writePreference } from './prefs.js';
 import { APPEARANCE_PREFERENCE_KEYS, isKnownTheme } from './themes.js';
 
 export const THEME_CUSTOMIZATION_SCHEMA_VERSION = 1;
+export const THEME_DOCUMENT_SCHEMA_VERSION = 1;
 
 export const CUSTOM_THEME_FIELDS = Object.freeze([
     Object.freeze({ key: 'background', property: '--page-bg' }),
@@ -136,17 +137,64 @@ function accentContrast(accent) {
 
 export function validateThemeCustomization(input) {
     const colors = normalizeColors(input);
-    if (!colors) return { colors: null, issues: ['format'], valid: false };
+    if (!colors) return { checks: [], colors: null, issues: ['format'], valid: false };
 
     const issues = [];
+    const checks = [];
     for (const foreground of ['text', 'muted', 'accent']) {
         for (const background of ['background', 'surface', 'field']) {
-            if (contrastRatio(colors[foreground], colors[background]) < 4.5) {
+            const ratio = contrastRatio(colors[foreground], colors[background]);
+            const pass = ratio >= 4.5;
+            checks.push({ background, foreground, minimum: 4.5, pass, ratio });
+            if (!pass) {
                 issues.push(`${foreground}:${background}`);
             }
         }
     }
-    return { colors, issues, valid: issues.length === 0 };
+    return { checks, colors, issues, valid: issues.length === 0 };
+}
+
+export function encodeThemeDocument(themeId, colors) {
+    const validation = validateThemeCustomization(colors);
+    if (!isKnownTheme(themeId) || !validation.valid) return null;
+    return JSON.stringify({
+        schemaVersion: THEME_DOCUMENT_SCHEMA_VERSION,
+        theme: themeId,
+        colors: validation.colors,
+    }, null, 2);
+}
+
+export function decodeThemeDocument(raw, expectedThemeId) {
+    let parsed;
+    try {
+        parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch (_error) {
+        return { error: 'invalid_json', valid: false };
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return { error: 'invalid_document', valid: false };
+    }
+    const rootKeys = Object.keys(parsed).sort();
+    if (rootKeys.join(',') !== 'colors,schemaVersion,theme') {
+        return { error: 'invalid_document', valid: false };
+    }
+    if (parsed.schemaVersion !== THEME_DOCUMENT_SCHEMA_VERSION) {
+        return { error: 'unsupported_version', valid: false };
+    }
+    if (!isKnownTheme(parsed.theme) || parsed.theme !== expectedThemeId) {
+        return { error: 'theme_mismatch', valid: false };
+    }
+    const colorKeys = parsed.colors && typeof parsed.colors === 'object'
+        ? Object.keys(parsed.colors).sort()
+        : [];
+    const expectedColorKeys = CUSTOM_THEME_FIELDS.map(({ key }) => key).sort();
+    if (colorKeys.join(',') !== expectedColorKeys.join(',')) {
+        return { error: 'invalid_colors', valid: false };
+    }
+    const validation = validateThemeCustomization(parsed.colors);
+    if (!validation.colors) return { error: 'invalid_colors', ...validation };
+    if (!validation.valid) return { error: 'low_contrast', ...validation };
+    return { error: null, theme: parsed.theme, ...validation };
 }
 
 function fingerprint(themeId, colors) {

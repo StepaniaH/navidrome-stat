@@ -29,11 +29,11 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 - Shows listening time, play history, hourly and daily trends, a weekday × hour heatmap, client usage, transcoding, and artist, album, or track rankings.
 - A year-in-review page with totals, listening streaks, monthly and time-of-day charts, and top lists.
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.
-- System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview and contrast checks. Appearance choices stay in the browser and apply across the dashboard, year-in-review, settings, and API reference; seven interface languages are available.
+- System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview, per-pair contrast checks, HEX copy, unsaved-change protection, and strict per-preset JSON import or export. Appearance choices stay in the browser and apply across the dashboard, year-in-review, settings, and API reference; seven interface languages are available.
 - Dashboard filters persist in the URL, so views survive reloads and can be shared as links.
 - The recent-plays table has configurable column visibility, saved per browser.
 - Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
-- Supports per-server filtering, connection management, retention settings, and per-user JSON export, import, and deletion.
+- Supports per-server filtering, connection management with first-use guidance and redacted failure diagnosis, retention settings, and per-user JSON export, import, and deletion.
 - Filter the dashboard by user as well as server; the year-in-review charts switch between play counts and listening time.
 - Offers optional token authentication for dashboard data and APIs.
 - Serves pinned frontend assets locally and runs as a non-root user in the published container.
@@ -187,14 +187,14 @@ More detail is available in [Architecture](docs/architecture.md).
 docker compose logs -f --tail=100 navidrome-stat
 ```
 
-Application logs avoid playback metadata and upstream request URLs. Reverse proxies and Navidrome may still log Subsonic authentication query parameters, so review their logging configuration before sharing logs.
+The published container disables request access logs so dashboard filters, usernames, and source identifiers in application URLs are not written to container logs. Application logs also avoid playback metadata and upstream request URLs. Custom application servers, reverse proxies, and Navidrome may have their own access logs, so review their logging configuration before sharing logs.
 
 ### Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
 | `/health` is healthy but `/health/ready` is degraded or not ready | Confirm that at least one complete connection is enabled, inspect the checks and collector counts in `/health/ready`, and check container-to-Navidrome network access. |
-| A saved connection does not collect playback | Run its connection test in Settings, confirm it is enabled, and inspect `docker compose logs` for upstream failures. |
+| A saved connection does not collect playback | Open **Settings > Connections** and follow the diagnosis for authentication, TLS, timeout, network, or collector failures. Confirm the connection is enabled, then inspect `docker compose logs` if the issue remains. |
 | Login repeats or API requests return `401` | Enter the current `STATS_API_TOKEN`. Behind HTTPS, set `SESSION_COOKIE_SECURE=true`; leave it `false` when accessing the service over plain HTTP. |
 | SQLite cannot be opened or written | Confirm that `DATABASE_URL` points inside the mounted data volume and that UID and GID `1000:1000` can write the directory and database files. |
 
@@ -247,7 +247,7 @@ source .venv/bin/activate
 pip install -r requirements-dev.txt
 ruff check .
 pytest -q --cov=src --cov-report=term-missing --cov-fail-under=80
-uvicorn src.main:app --host 127.0.0.1 --port 39421
+uvicorn src.main:app --host 127.0.0.1 --port 39421 --no-access-log
 ```
 
 The repository also includes a development-oriented [`docker-compose.yml`](docker-compose.yml) that builds the current checkout:

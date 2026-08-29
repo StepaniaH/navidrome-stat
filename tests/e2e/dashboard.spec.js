@@ -97,6 +97,21 @@ test.beforeEach(async ({ page }) => {
       }],
     }),
   );
+  await page.route("**/api/diagnostics", (route) =>
+    route.fulfill({
+      json: {
+        schema_version: 1,
+        category: "ready",
+        configured_connection_count: 1,
+        enabled_connection_count: 1,
+        history_record_count: 3,
+        healthy_collector_count: 1,
+        degraded_collector_count: 0,
+        last_success_at: "2026-07-28T12:00:00+00:00",
+        retry_in_seconds: null,
+      },
+    }),
+  );
 });
 
 test("renders synthetic statistics without executing metadata", async ({ page }) => {
@@ -227,6 +242,7 @@ test("custom date range is encoded into the dashboard request", async ({
 test("mobile viewport keeps primary content inside the page", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await expect(page.locator("#historyTable tr")).toHaveCount(1);
   const layout = await page.evaluate(() => ({
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     historyOverflow:
@@ -283,6 +299,10 @@ function emptySnapshot() {
 }
 
 test("empty dashboard shows per-section empty states", async ({ page }) => {
+  await page.unroute("**/api/diagnostics");
+  await page.route("**/api/diagnostics", (route) =>
+    route.fulfill({ json: { history_record_count: 0 } }),
+  );
   await page.route("**/api/stats/dashboard?*", (route) =>
     route.fulfill({ json: emptySnapshot() }),
   );
@@ -303,6 +323,20 @@ test("empty dashboard shows per-section empty states", async ({ page }) => {
     (element) => Math.round(element.getBoundingClientRect().height),
   );
   expect(emptyChartHeight).toBeLessThan(200);
+});
+
+test("empty filtered results do not look like first use", async ({ page }) => {
+  await page.route("**/api/stats/dashboard?*", (route) =>
+    route.fulfill({ json: emptySnapshot() }),
+  );
+  await page.route("**/api/stats/now-playing*", (route) =>
+    route.fulfill({ json: [] }),
+  );
+  await page.goto("/?username=listener");
+  await expect(page.locator("#historyEmpty")).toContainText(
+    "No plays match these filters",
+  );
+  await expect(page.locator("#newUserGuide")).toBeHidden();
 });
 
 test("401 shows login instead of empty statistics", async ({ page }) => {
@@ -670,7 +704,7 @@ for (const theme of [
     await page.goto("/");
     await page.waitForFunction(() => {
       const chart = echarts.getInstanceByDom(document.getElementById("playerChart"));
-      return Boolean(chart && chart.getOption().series[0]?.data?.length);
+      return Boolean(chart?.getOption()?.series?.[0]?.data?.length);
     });
 
     const pieStyle = await page.evaluate(() => {
@@ -702,7 +736,7 @@ test("dashboard filters persist across a reload and are shareable", async ({ pag
   await page.goto("/");
   await page.waitForFunction(() => {
     const chart = echarts.getInstanceByDom(document.getElementById("hourlyChart"));
-    return Boolean(chart && chart.getOption().series[0]?.data?.length);
+    return Boolean(chart?.getOption()?.series?.[0]?.data?.length);
   });
   await page.locator("#statsWindowButton").click();
   await page.locator('.stats-window-option[data-days="7"]').click();
@@ -711,7 +745,7 @@ test("dashboard filters persist across a reload and are shareable", async ({ pag
   await page.reload();
   await page.waitForFunction(() => {
     const chart = echarts.getInstanceByDom(document.getElementById("hourlyChart"));
-    return Boolean(chart && chart.getOption().series[0]?.data?.length);
+    return Boolean(chart?.getOption()?.series?.[0]?.data?.length);
   });
   await expect(page.locator("#statsWindowButton")).toContainText("Last 7 days");
 });
