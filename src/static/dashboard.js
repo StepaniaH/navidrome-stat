@@ -839,7 +839,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
                 animationDurationUpdate: 650,
                 animationEasingUpdate: 'cubicInOut',
                 universalTransition: true,
-                itemStyle: { borderRadius: 6, borderColor: chartTheme.panel, borderWidth: 2 },
+                itemStyle: { borderRadius: 6, borderColor: chartTheme.pieSeparator, borderWidth: 2 },
                 label: { color: chartTheme.axisText, fontSize: 11 },
                 data: data.map(item => ({
                     name: item.client_name || dashboardMessage('label.unknownClient'),
@@ -895,7 +895,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
                 animationDurationUpdate: 650,
                 animationEasingUpdate: 'cubicInOut',
                 universalTransition: true,
-                itemStyle: { borderRadius: 4, borderColor: chartTheme.panel, borderWidth: 2 },
+                itemStyle: { borderRadius: 4, borderColor: chartTheme.pieSeparator, borderWidth: 2 },
                 label: { color: chartTheme.axisText, fontSize: 11 },
                 data: transformed,
             }],

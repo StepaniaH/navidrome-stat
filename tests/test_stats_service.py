@@ -43,6 +43,15 @@ def restore_module_symbols():
             "delete_user_data",
             "save_server",
             "delete_server",
+            "get_summary",
+            "get_player_stats",
+            "get_transcoding_stats",
+            "get_time_bucket_stats",
+            "get_playback_history",
+            "get_server_stats",
+            "list_servers",
+            "get_top_artists",
+            "get_top_albums",
         )
     }
     yield
@@ -185,3 +194,47 @@ async def test_dashboard_builds_through_cache(cache, service):
         "top_artists",
         "top_albums",
     }
+
+
+@pytest.mark.asyncio
+async def test_dashboard_keeps_local_stats_when_album_art_lookup_fails(
+    cache, service, monkeypatch
+):
+    stats_module.get_summary = AsyncMock(return_value={"total_plays": 7})
+    stats_module.get_player_stats = AsyncMock(return_value=[])
+    stats_module.get_transcoding_stats = AsyncMock(return_value=[])
+    stats_module.get_time_bucket_stats = AsyncMock(
+        return_value={"hourly": [], "daily": [], "heatmap": []}
+    )
+    stats_module.get_playback_history = AsyncMock(return_value=[])
+    stats_module.get_server_stats = AsyncMock(return_value=[])
+    stats_module.list_servers = AsyncMock(
+        return_value=[{"id": "server-1", "display_name": "Synthetic Server"}]
+    )
+    stats_module.get_top_artists = AsyncMock(return_value=[])
+    stats_module.get_top_albums = AsyncMock(
+        return_value=[
+            {"album": "Local Album", "count": 3, "total_listen_sec": 120, "value": 3}
+        ]
+    )
+    lookup = AsyncMock(side_effect=ValueError("upstream credentials unavailable"))
+    monkeypatch.setattr(stats_module.cover_art_service, "resolve_album_id", lookup)
+
+    result = await service.dashboard(
+        days=30,
+        timezone_name="UTC",
+        metric="plays",
+        source_id=None,
+    )
+
+    assert result["summary"] == {"total_plays": 7}
+    assert result["top_albums"] == [
+        {
+            "album": "Local Album",
+            "count": 3,
+            "total_listen_sec": 120,
+            "value": 3,
+            "album_id": None,
+        }
+    ]
+    lookup.assert_awaited_once_with("server-1", "Local Album", None)

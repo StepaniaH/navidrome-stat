@@ -644,6 +644,60 @@ test("changing the theme preference recolors charts without a reload", async ({ 
   expect(themedColors.text).toBe(themedColors.expectedText);
 });
 
+for (const theme of [
+  {
+    name: "built-in light",
+    mode: "light",
+    palette: "builtin",
+    separator: "rgba(255, 255, 255, 0.52)",
+    tooltipBorder: "rgba(122, 137, 154, 0.46)",
+    tooltipShadow: "rgba(24, 34, 48, 0.32) 0px 12px 30px -12px",
+  },
+  {
+    name: "Nord",
+    mode: "dark",
+    palette: "nord",
+    separator: "rgba(46, 52, 64, 0.52)",
+    tooltipBorder: "rgba(129, 145, 170, 0.46)",
+    tooltipShadow: "rgba(14, 18, 25, 0.32) 0px 12px 30px -12px",
+  },
+]) {
+  test(`${theme.name} pie charts use soft seams and theme-aware tooltip elevation`, async ({ page }) => {
+    await page.addInitScript(({ mode, palette }) => {
+      localStorage.setItem("navidrome-theme-mode", mode);
+      localStorage.setItem("navidrome-theme-palette", palette);
+    }, theme);
+    await page.goto("/");
+    await page.waitForFunction(() => {
+      const chart = echarts.getInstanceByDom(document.getElementById("playerChart"));
+      return Boolean(chart && chart.getOption().series[0]?.data?.length);
+    });
+
+    const pieStyle = await page.evaluate(() => {
+      const chart = echarts.getInstanceByDom(document.getElementById("playerChart"));
+      const series = chart.getOption().series[0];
+      chart.dispatchAction({ type: "showTip", seriesIndex: 0, dataIndex: 0 });
+      return series.itemStyle;
+    });
+    expect(pieStyle.borderWidth).toBe(2);
+    expect(pieStyle.borderColor).toBe(theme.separator);
+
+    const tooltip = page.locator('#playerChart div[style*="box-shadow"]').last();
+    await expect(tooltip).toBeVisible();
+    const tooltipStyle = await tooltip.evaluate((element) => {
+      const styles = getComputedStyle(element);
+      return {
+        borderColor: styles.borderColor,
+        borderWidth: styles.borderWidth,
+        boxShadow: styles.boxShadow,
+      };
+    });
+    expect(tooltipStyle.borderWidth).toBe("1px");
+    expect(tooltipStyle.borderColor).toBe(theme.tooltipBorder);
+    expect(tooltipStyle.boxShadow).toBe(theme.tooltipShadow);
+  });
+}
+
 test("dashboard filters persist across a reload and are shareable", async ({ page }) => {
   await page.goto("/");
   await page.waitForFunction(() => {

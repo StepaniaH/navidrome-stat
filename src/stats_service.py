@@ -243,10 +243,21 @@ class StatsService:
         if effective_source is None:
             return [{**entry, "album_id": None} for entry in albums]
         attached = []
-        for entry in albums:
-            album_id = await cover_art_service.resolve_album_id(
-                effective_source, entry.get("album"), None
-            )
+        for index, entry in enumerate(albums):
+            try:
+                album_id = await cover_art_service.resolve_album_id(
+                    effective_source, entry.get("album"), None
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Album cover enrichment skipped (type=%s)",
+                    exception_kind(exc),
+                )
+                attached.extend(
+                    {**remaining, "album_id": None}
+                    for remaining in albums[index:]
+                )
+                break
             attached.append({**entry, "album_id": album_id})
         return attached
 

@@ -4,6 +4,11 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Fixed
+
+- Pie-chart seams now blend with the active surface, while chart tooltips use theme-aware soft borders and ambient shadows instead of ECharts' fixed black shadow.
+- Historical dashboard and year-in-review data remain available when optional album-art enrichment cannot reach or authenticate to a saved server.
+
 ## [0.8.5] - 2026-08-29
 
 ### Changed
