@@ -271,6 +271,156 @@
     --chart-8: #ff8da1;
 }
 
+[data-theme="nord-light"] {
+    color-scheme: light;
+    --page-bg: #e9edf2;
+    --surface: #f8fafc;
+    --surface-raised: #eef2f6;
+    --field-bg: #dfe5eb;
+    --field-hover: #d4dce5;
+    --border: #68788d;
+    --border-soft: rgba(46, 52, 64, 0.16);
+    --text: #2e3440;
+    --text-muted: #3d4858;
+    --text-dim: #4c596b;
+    --accent: #326783;
+    --accent-strong: #295973;
+    --accent-contrast: #ffffff;
+    --success: #41651f;
+    --warning: #765400;
+    --danger: #a52d3d;
+    --shadow: 0 18px 40px rgba(46, 52, 64, 0.13);
+    --overlay: rgba(46, 52, 64, 0.42);
+    --chart-1: #326783;
+    --chart-2: #526f9e;
+    --chart-3: #41651f;
+    --chart-4: #765400;
+    --chart-5: #9a4d32;
+    --chart-6: #80527b;
+    --chart-7: #31716f;
+    --chart-8: #a52d3d;
+}
+
+[data-theme="dracula-light"] {
+    color-scheme: light;
+    --page-bg: #fffbeb;
+    --surface: #fffefa;
+    --surface-raised: #f5f2e6;
+    --field-bg: #efeddc;
+    --field-hover: #dedccf;
+    --border: #6c664b;
+    --border-soft: rgba(31, 31, 31, 0.16);
+    --text: #1f1f1f;
+    --text-muted: #494637;
+    --text-dim: #5b5641;
+    --accent: #644ac9;
+    --accent-strong: #5138b0;
+    --accent-contrast: #ffffff;
+    --success: #14710a;
+    --warning: #705c0f;
+    --danger: #a92f25;
+    --shadow: 0 18px 40px rgba(31, 31, 31, 0.12);
+    --overlay: rgba(31, 31, 31, 0.4);
+    --chart-1: #036a96;
+    --chart-2: #644ac9;
+    --chart-3: #14710a;
+    --chart-4: #705c0f;
+    --chart-5: #a34d14;
+    --chart-6: #a3144d;
+    --chart-7: #3e629d;
+    --chart-8: #a92f25;
+}
+
+[data-theme="tokyo-night-light"] {
+    color-scheme: light;
+    --page-bg: #e1e2e7;
+    --surface: #f7f8fb;
+    --surface-raised: #e9ebf2;
+    --field-bg: #d0d5e3;
+    --field-hover: #c4c8da;
+    --border: #6172a0;
+    --border-soft: rgba(37, 49, 86, 0.16);
+    --text: #253156;
+    --text-muted: #3d4b78;
+    --text-dim: #43517e;
+    --accent: #1f54aa;
+    --accent-strong: #19458e;
+    --accent-contrast: #ffffff;
+    --success: #3f6228;
+    --warning: #6c4d13;
+    --danger: #a21849;
+    --shadow: 0 18px 40px rgba(37, 49, 86, 0.13);
+    --overlay: rgba(37, 49, 86, 0.4);
+    --chart-1: #1f54aa;
+    --chart-2: #7040ae;
+    --chart-3: #3f6228;
+    --chart-4: #6c4d13;
+    --chart-5: #9a4f00;
+    --chart-6: #9854a8;
+    --chart-7: #007197;
+    --chart-8: #a21849;
+}
+
+[data-theme="macchiato-light"] {
+    color-scheme: light;
+    --page-bg: #f1f3f8;
+    --surface: #ffffff;
+    --surface-raised: #eceff6;
+    --field-bg: #e1e5ef;
+    --field-hover: #d6dbe8;
+    --border: #717991;
+    --border-soft: rgba(48, 50, 71, 0.15);
+    --text: #303247;
+    --text-muted: #484c68;
+    --text-dim: #5a607b;
+    --accent: #245eb5;
+    --accent-strong: #1d4f99;
+    --accent-contrast: #ffffff;
+    --success: #3e701e;
+    --warning: #805700;
+    --danger: #ae2947;
+    --shadow: 0 18px 40px rgba(48, 50, 71, 0.12);
+    --overlay: rgba(48, 50, 71, 0.4);
+    --chart-1: #245eb5;
+    --chart-2: #6f3eb3;
+    --chart-3: #3e701e;
+    --chart-4: #805700;
+    --chart-5: #aa4307;
+    --chart-6: #9d356e;
+    --chart-7: #08716e;
+    --chart-8: #ae2947;
+}
+
+[data-theme="mocha-light"] {
+    color-scheme: light;
+    --page-bg: #f4f1f7;
+    --surface: #fffaff;
+    --surface-raised: #eee9f2;
+    --field-bg: #e5dfea;
+    --field-hover: #d9d1e0;
+    --border: #776b82;
+    --border-soft: rgba(49, 44, 55, 0.15);
+    --text: #312c37;
+    --text-muted: #4f4658;
+    --text-dim: #62566c;
+    --accent: #7536a3;
+    --accent-strong: #622889;
+    --accent-contrast: #ffffff;
+    --success: #426d24;
+    --warning: #805700;
+    --danger: #ad294d;
+    --shadow: 0 18px 40px rgba(49, 44, 55, 0.12);
+    --overlay: rgba(49, 44, 55, 0.4);
+    --chart-1: #315fae;
+    --chart-2: #7536a3;
+    --chart-3: #426d24;
+    --chart-4: #805700;
+    --chart-5: #a8450d;
+    --chart-6: #a02c70;
+    --chart-7: #08716e;
+    --chart-8: #ad294d;
+}
+
 [data-theme="gruvbox-dark"] {
     color-scheme: dark;
     --page-bg: #1d2021;

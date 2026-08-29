@@ -7,9 +7,18 @@ import {
     APPEARANCE_PREFERENCE_KEYS,
     PALETTES,
     THEME_MODES,
-    paletteSupportsScheme,
     paletteTheme,
 } from './js/themes.js';
+import {
+    CUSTOM_THEME_FIELDS,
+    applyThemeCustomization,
+    normalizeHexColor,
+    readThemeCustomizations,
+    removeThemeCustomization,
+    saveThemeCustomization,
+    themeCustomizationFor,
+    validateThemeCustomization,
+} from './js/theme-customization.js';
 import { THEME_CHANGE_EVENT, applyStoredAppearance } from './theme-bootstrap.js';
 import { SUPPORTED_LOCALES } from './js/locales.js';
 import { applyAppVersion } from './js/app-info.js';
@@ -41,6 +50,10 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
     let retentionPreviewController = null;
     let userPreviewController = null;
     let currentAppearance = null;
+    let themeEditorBase = null;
+    let themeEditorCommitted = null;
+    let themeEditorDirty = false;
+    let themeEditorThemeId = null;
 
     function isResponseOk(response) {
         return response && response.ok;
@@ -312,6 +325,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
     function syncThemePickers(appearance) {
         if (!appearance) return;
         currentAppearance = appearance;
+        const customizations = readThemeCustomizations();
         document.querySelectorAll('input[name="theme-mode"]').forEach((input) => {
             input.checked = input.value === appearance.mode;
             const label = t(`preferences.themeMode.${input.value}`);
@@ -323,16 +337,15 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
             else preview.dataset.theme = `builtin-${input.value}`;
         });
         document.querySelectorAll('input[name="theme-palette"]').forEach((input) => {
-            const supported = paletteSupportsScheme(input.value, appearance.scheme);
             const palette = PALETTES.find((entry) => entry.id === input.value);
             const swatch = input.closest('.theme-swatch');
             const label = t(`preferences.palette.${input.value}`);
-            const unavailable = t('preferences.paletteUnavailable');
             input.checked = input.value === appearance.palette;
-            input.disabled = !supported;
-            input.setAttribute('aria-label', supported ? label : `${label} — ${unavailable}`);
-            swatch.classList.toggle('is-unavailable', !supported);
-            swatch.title = supported ? '' : unavailable;
+            input.setAttribute('aria-label', label);
+            swatch.classList.toggle(
+                'is-customized',
+                input.checked && Boolean(themeCustomizationFor(appearance.theme, customizations)),
+            );
             swatch.querySelector('.theme-swatch-preview').dataset.theme = paletteTheme(input.value, appearance.scheme)
                 || palette?.variants.dark
                 || palette?.variants.light
@@ -347,6 +360,231 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         const appearance = applyStoredAppearance();
         writePreference(APPEARANCE_PREFERENCE_KEYS.legacyTheme, appearance.theme);
         syncThemePickers(appearance);
+        syncThemeEditor(appearance);
+    }
+
+    function cloneThemeColors(colors) {
+        return colors ? { ...colors } : null;
+    }
+
+    function colorsMatch(first, second) {
+        return Boolean(first && second) && CUSTOM_THEME_FIELDS.every(
+            ({ key }) => first[key] === second[key],
+        );
+    }
+
+    function computedColorToHex(raw) {
+        const value = String(raw || '').trim();
+        const direct = normalizeHexColor(value);
+        if (direct) return direct;
+        const match = value.match(/^rgba?\(\s*(\d+)\s*[, ]\s*(\d+)\s*[, ]\s*(\d+)/i);
+        if (!match) return null;
+        return `#${match.slice(1, 4).map((channel) => (
+            Math.max(0, Math.min(255, Number(channel))).toString(16).padStart(2, '0')
+        )).join('')}`;
+    }
+
+    function snapshotPresetTheme(themeId) {
+        const probe = document.createElement('span');
+        probe.dataset.theme = themeId;
+        probe.hidden = true;
+        document.body.appendChild(probe);
+        const styles = window.getComputedStyle(probe);
+        const colors = {};
+        for (const { key, property } of CUSTOM_THEME_FIELDS) {
+            colors[key] = computedColorToHex(styles.getPropertyValue(property));
+        }
+        probe.remove();
+        return validateThemeCustomization(colors).colors;
+    }
+
+    function setThemeEditorStatus(key = '', kind = '', values) {
+        const status = document.getElementById('themeCustomizationStatus');
+        status.textContent = key ? t(key, values) : '';
+        if (kind) status.dataset.kind = kind;
+        else delete status.dataset.kind;
+    }
+
+    function themeEditorValues() {
+        const colors = {};
+        for (const { key } of CUSTOM_THEME_FIELDS) {
+            colors[key] = document.querySelector(`[data-theme-hex="${key}"]`)?.value || '';
+        }
+        return colors;
+    }
+
+    function updateThemeEditorActions(validation = validateThemeCustomization(themeEditorValues())) {
+        const saveButton = document.getElementById('saveThemeCustomizationBtn');
+        themeEditorDirty = Boolean(
+            validation.colors && !colorsMatch(validation.colors, themeEditorCommitted),
+        );
+        saveButton.disabled = !themeEditorDirty || !validation.valid;
+        return validation;
+    }
+
+    function setThemeEditorValues(colors, { preview = false } = {}) {
+        if (!colors) return;
+        for (const { key } of CUSTOM_THEME_FIELDS) {
+            const color = document.querySelector(`[data-theme-color="${key}"]`);
+            const hex = document.querySelector(`[data-theme-hex="${key}"]`);
+            if (color) color.value = colors[key];
+            if (hex) {
+                hex.value = colors[key];
+                hex.setAttribute('aria-invalid', 'false');
+            }
+        }
+        const validation = updateThemeEditorActions(validateThemeCustomization(colors));
+        if (preview && validation.colors) previewThemeEditor(validation.colors);
+    }
+
+    function previewThemeEditor(colors) {
+        if (!themeEditorThemeId || !currentAppearance) return;
+        applyThemeCustomization(document.documentElement, themeEditorThemeId, colors);
+        window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, {
+            detail: { ...currentAppearance, preview: true },
+        }));
+    }
+
+    function renderThemeEditorLabels() {
+        document.querySelectorAll('[data-theme-field-label]').forEach((label) => {
+            label.textContent = t(`preferences.themeEditor.${label.dataset.themeFieldLabel}`);
+        });
+        if (!currentAppearance || !themeEditorThemeId) return;
+        const paletteLabel = t(`preferences.palette.${currentAppearance.palette}`);
+        const modeLabel = t(`preferences.themeMode.${currentAppearance.scheme}`);
+        const customized = Boolean(themeCustomizationFor(
+            themeEditorThemeId,
+            readThemeCustomizations(),
+        ));
+        document.getElementById('themeCustomizationBase').textContent = t(
+            customized
+                ? 'preferences.themeEditor.baseCustomized'
+                : 'preferences.themeEditor.base',
+            { mode: modeLabel, palette: paletteLabel },
+        );
+    }
+
+    function syncThemeEditor(appearance = currentAppearance) {
+        if (!appearance) return;
+        const base = snapshotPresetTheme(appearance.theme);
+        if (!base) {
+            setThemeEditorStatus('preferences.themeEditor.readFailed', 'error');
+            return;
+        }
+        themeEditorThemeId = appearance.theme;
+        themeEditorBase = cloneThemeColors(base);
+        themeEditorCommitted = cloneThemeColors(
+            themeCustomizationFor(appearance.theme, readThemeCustomizations()) || base,
+        );
+        themeEditorDirty = false;
+        setThemeEditorValues(themeEditorCommitted);
+        setThemeEditorStatus();
+        renderThemeEditorLabels();
+    }
+
+    function buildThemeEditor() {
+        const fields = document.getElementById('themeCustomizationFields');
+        fields.replaceChildren(...CUSTOM_THEME_FIELDS.map(({ key }) => {
+            const row = document.createElement('div');
+            row.className = 'theme-color-row';
+
+            const label = document.createElement('label');
+            label.htmlFor = `themeColor-${key}`;
+            label.dataset.themeFieldLabel = key;
+
+            const color = document.createElement('input');
+            color.id = `themeColor-${key}`;
+            color.type = 'color';
+            color.dataset.themeColor = key;
+
+            const hex = document.createElement('input');
+            hex.type = 'text';
+            hex.maxLength = 7;
+            hex.spellcheck = false;
+            hex.autocomplete = 'off';
+            hex.dataset.themeHex = key;
+            hex.setAttribute('aria-label', t('preferences.themeEditor.hex', {
+                color: t(`preferences.themeEditor.${key}`),
+            }));
+
+            row.append(label, color, hex);
+            return row;
+        }));
+        renderThemeEditorLabels();
+    }
+
+    function handleThemeEditorInput(event) {
+        const colorInput = event.target.closest('[data-theme-color]');
+        const hexInput = event.target.closest('[data-theme-hex]');
+        if (!colorInput && !hexInput) return;
+
+        const key = (colorInput || hexInput).dataset.themeColor
+            || (colorInput || hexInput).dataset.themeHex;
+        if (colorInput) {
+            const pairedHex = document.querySelector(`[data-theme-hex="${key}"]`);
+            pairedHex.value = colorInput.value;
+            pairedHex.setAttribute('aria-invalid', 'false');
+        } else {
+            const normalized = normalizeHexColor(hexInput.value);
+            hexInput.setAttribute('aria-invalid', normalized ? 'false' : 'true');
+            if (normalized) {
+                hexInput.value = normalized;
+                document.querySelector(`[data-theme-color="${key}"]`).value = normalized;
+            }
+        }
+
+        const validation = updateThemeEditorActions();
+        if (!validation.colors) {
+            setThemeEditorStatus('preferences.themeEditor.invalidHex', 'error');
+            return;
+        }
+        previewThemeEditor(validation.colors);
+        if (!validation.valid) {
+            setThemeEditorStatus('preferences.themeEditor.lowContrast', 'error');
+        } else if (themeEditorDirty) {
+            setThemeEditorStatus('preferences.themeEditor.previewing');
+        } else {
+            setThemeEditorStatus();
+        }
+    }
+
+    function cancelThemeEditor() {
+        applyStoredAppearance();
+        syncThemeEditor(currentAppearance);
+    }
+
+    function restoreThemeEditorPreset() {
+        setThemeEditorValues(themeEditorBase, { preview: true });
+        setThemeEditorStatus('preferences.themeEditor.presetPreview');
+    }
+
+    function saveThemeEditor() {
+        const validation = validateThemeCustomization(themeEditorValues());
+        if (!validation.valid) {
+            setThemeEditorStatus(
+                validation.colors
+                    ? 'preferences.themeEditor.lowContrast'
+                    : 'preferences.themeEditor.invalidHex',
+                'error',
+            );
+            return;
+        }
+        const saved = colorsMatch(validation.colors, themeEditorBase)
+            ? removeThemeCustomization(themeEditorThemeId)
+            : saveThemeCustomization(themeEditorThemeId, validation.colors);
+        if (!saved) {
+            setThemeEditorStatus('preferences.themeEditor.saveFailed', 'error');
+            return;
+        }
+        applyStoredAppearance();
+        syncThemePickers(currentAppearance);
+        syncThemeEditor(currentAppearance);
+        setThemeEditorStatus(
+            colorsMatch(validation.colors, themeEditorBase)
+                ? 'preferences.themeEditor.restored'
+                : 'preferences.themeEditor.saved',
+            'success',
+        );
     }
 
     function applyLocalPreferences() {
@@ -355,6 +593,9 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         document.documentElement.dataset.motion = motion;
         document.getElementById('motionToggle').setAttribute('aria-checked', motion === 'reduced' ? 'true' : 'false');
         syncThemePickers(appearance);
+        if (document.getElementById('themeCustomizationFields')?.childElementCount) {
+            syncThemeEditor(appearance);
+        }
         listboxes.get('languageSelect')?.setValue(i18n.getLocale());
         listboxes.get('settingsTimezoneSelect')?.setValue(readPreference(preferenceKeys.timezone, 'browser'));
         return appearance;
@@ -521,6 +762,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         i18n.translate();
         listboxes.forEach((controller) => controller.refreshLabels());
         syncThemePickers(currentAppearance);
+        renderThemeEditorLabels();
         renderPolicySummary();
         renderSourceReadiness();
         renderSourceFormState();
@@ -897,6 +1139,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
 
     function bindPreferenceControls() {
         buildThemePickers();
+        buildThemeEditor();
         createListbox('languageSelect', {
             value: i18n.getLocale(),
             options: SUPPORTED_LOCALES.map((locale) => ({
@@ -917,6 +1160,22 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
             if (!event.target.matches('input[name="theme-palette"]')) return;
             saveAppearance(currentAppearance?.mode || 'system', event.target.value);
         });
+        document.getElementById('themeCustomizationFields').addEventListener(
+            'input',
+            handleThemeEditorInput,
+        );
+        document.getElementById('restoreThemePresetBtn').addEventListener(
+            'click',
+            restoreThemeEditorPreset,
+        );
+        document.getElementById('cancelThemePreviewBtn').addEventListener(
+            'click',
+            cancelThemeEditor,
+        );
+        document.getElementById('saveThemeCustomizationBtn').addEventListener(
+            'click',
+            saveThemeEditor,
+        );
         createListbox('settingsTimezoneSelect', {
             value: readPreference(preferenceKeys.timezone, 'browser'),
             options: [
@@ -1317,6 +1576,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
 
     window.addEventListener(THEME_CHANGE_EVENT, (event) => {
         syncThemePickers(event.detail);
+        if (!event.detail.preview) syncThemeEditor(event.detail);
     });
 
     initialize();

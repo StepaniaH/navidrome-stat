@@ -13,7 +13,6 @@ import {
     isKnownPalette,
     isKnownTheme,
     normalizeMode,
-    paletteSupportsScheme,
     paletteTheme,
     resolveAppearance,
     resolveScheme,
@@ -60,7 +59,7 @@ test('theme registry has unique ids and valid palette variants', () => {
     assert.equal(new Set(THEME_MODES).size, THEME_MODES.length);
     assert.equal(new Set(themeIds).size, themeIds.length);
     assert.equal(new Set(paletteIds).size, paletteIds.length);
-    assert.equal(new Set(Object.values(APPEARANCE_PREFERENCE_KEYS)).size, 3);
+    assert.equal(new Set(Object.values(APPEARANCE_PREFERENCE_KEYS)).size, 4);
     assert.ok(THEME_MODES.includes(DEFAULT_MODE));
     assert.ok(isKnownPalette(DEFAULT_PALETTE));
     assert.ok(isKnownTheme(DEFAULT_THEME));
@@ -88,16 +87,12 @@ test('theme registry has unique ids and valid palette variants', () => {
 
 test('system and builtin are the defaults and follow the system scheme', () => {
     assert.deepEqual(resolveAppearance({}, false), {
-        appliedPalette: 'builtin',
-        compatible: true,
         mode: 'system',
         palette: 'builtin',
         scheme: 'dark',
         theme: 'builtin-dark',
     });
     assert.deepEqual(resolveAppearance({}, true), {
-        appliedPalette: 'builtin',
-        compatible: true,
         mode: 'system',
         palette: 'builtin',
         scheme: 'light',
@@ -122,8 +117,6 @@ test('legacy theme values keep their exact concrete appearance', () => {
     for (const [legacyTheme, scheme, palette] of legacyCases) {
         const appearance = resolveAppearance({ legacyTheme }, scheme !== 'light');
         assert.deepEqual(appearance, {
-            appliedPalette: palette,
-            compatible: true,
             mode: scheme,
             palette,
             scheme,
@@ -136,8 +129,6 @@ test('modern mode and palette preferences take precedence over legacy values', (
     assert.deepEqual(
         resolveAppearance({ mode: 'dark', palette: 'solarized', legacyTheme: 'latte' }, true),
         {
-            appliedPalette: 'solarized',
-            compatible: true,
             mode: 'dark',
             palette: 'solarized',
             scheme: 'dark',
@@ -151,15 +142,17 @@ test('modern mode and palette preferences take precedence over legacy values', (
     assert.equal(resolveAppearance({ palette: 'solarized' }, true).theme, 'solarized-light');
 });
 
-test('an incompatible dark-only palette stays selected while builtin is applied', () => {
+test('every palette resolves to a concrete light and dark variant', () => {
     assert.deepEqual(resolveAppearance({ mode: 'light', palette: 'nord' }), {
-        appliedPalette: 'builtin',
-        compatible: false,
         mode: 'light',
         palette: 'nord',
         scheme: 'light',
-        theme: 'builtin-light',
+        theme: 'nord-light',
     });
+    for (const { id, variants } of PALETTES) {
+        assert.ok(variants.dark, `${id} lacks a dark variant`);
+        assert.ok(variants.light, `${id} lacks a light variant`);
+    }
 });
 
 test('invalid values fall back through the public helpers', () => {
@@ -172,16 +165,12 @@ test('invalid values fall back through the public helpers', () => {
     assert.equal(resolveTheme('unknown', 'latte'), 'latte');
     assert.equal(themeScheme('unknown'), 'dark');
     assert.equal(themePalette('unknown'), DEFAULT_PALETTE);
-    assert.equal(paletteSupportsScheme('nord', 'dark'), true);
-    assert.equal(paletteSupportsScheme('nord', 'light'), false);
-    assert.equal(paletteTheme('nord', 'light'), null);
+    assert.equal(paletteTheme('nord', 'light'), 'nord-light');
     assert.deepEqual(resolveAppearance({
         mode: 'unknown',
         palette: 'unknown',
         legacyTheme: 'unknown',
     }, true), {
-        appliedPalette: 'builtin',
-        compatible: true,
         mode: 'system',
         palette: 'builtin',
         scheme: 'light',
@@ -240,12 +229,17 @@ test('theme bootstrap reads, applies, and announces the resolved appearance', as
     try {
         const prefsUrl = new URL('../../src/static/js/prefs.js', import.meta.url).href;
         const themesUrl = new URL('../../src/static/js/themes.js', import.meta.url).href;
+        const customizationUrl = new URL(
+            '../../src/static/js/theme-customization.js',
+            import.meta.url,
+        ).href;
         const bootstrapSource = readFileSync(
             new URL('../../src/static/theme-bootstrap.js', import.meta.url),
             'utf8',
         )
             .replace("'./js/prefs.js'", `'${prefsUrl}'`)
-            .replace("'./js/themes.js'", `'${themesUrl}'`);
+            .replace("'./js/themes.js'", `'${themesUrl}'`)
+            .replace("'./js/theme-customization.js'", `'${customizationUrl}'`);
         const bootstrap = await import(`data:text/javascript,${encodeURIComponent(bootstrapSource)}`);
         assert.equal(bootstrap.THEME_CHANGE_EVENT, 'navidrome:themechange');
         assert.equal(typeof bootstrap.readStoredAppearance, 'function');
@@ -264,9 +258,7 @@ test('theme bootstrap reads, applies, and announces the resolved appearance', as
         stored.set(APPEARANCE_PREFERENCE_KEYS.palette, 'nord');
         const appearance = bootstrap.applyStoredAppearance();
         assert.equal(appearance.palette, 'nord');
-        assert.equal(appearance.appliedPalette, 'builtin');
-        assert.equal(appearance.compatible, false);
-        assert.equal(root.dataset.theme, 'builtin-light');
+        assert.equal(root.dataset.theme, 'nord-light');
         assert.equal(root.dataset.palette, 'nord');
         assert.equal(dispatched.length, 1);
         assert.equal(dispatched[0].type, bootstrap.THEME_CHANGE_EVENT);

@@ -3,6 +3,7 @@ import {
     APPEARANCE_PREFERENCE_KEYS,
     resolveAppearance,
 } from './js/themes.js';
+import { applyStoredThemeCustomization } from './js/theme-customization.js';
 
 export const THEME_CHANGE_EVENT = 'navidrome:themechange';
 
@@ -29,7 +30,8 @@ export function readStoredAppearance() {
 export function applyStoredAppearance({ notify = true } = {}) {
     const appearance = readStoredAppearance();
     const root = document.documentElement;
-    const changed = root.dataset.theme !== appearance.theme
+    const previousCustomization = root.dataset.themeCustomization || '';
+    const appearanceChanged = root.dataset.theme !== appearance.theme
         || root.dataset.scheme !== appearance.scheme
         || root.dataset.themeMode !== appearance.mode
         || root.dataset.palette !== appearance.palette;
@@ -41,6 +43,10 @@ export function applyStoredAppearance({ notify = true } = {}) {
     root.dataset.motion = readPreference('navidrome-motion', 'system') === 'reduced'
         ? 'reduced'
         : 'system';
+    applyStoredThemeCustomization(root, appearance.theme);
+
+    const changed = appearanceChanged
+        || previousCustomization !== (root.dataset.themeCustomization || '');
 
     if (notify && changed) {
         window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: appearance }));

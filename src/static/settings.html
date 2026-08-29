@@ -443,6 +443,20 @@
             box-shadow: inset 0 0 0 1px var(--accent);
         }
 
+        .theme-swatch.is-customized::after {
+            position: absolute;
+            z-index: 2;
+            top: 5px;
+            right: 5px;
+            width: 7px;
+            height: 7px;
+            border: 2px solid var(--surface-raised);
+            border-radius: 999px;
+            background: var(--accent);
+            content: "";
+            pointer-events: none;
+        }
+
         .theme-swatch:focus-within {
             outline: none;
             box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
@@ -498,29 +512,147 @@
             white-space: nowrap;
         }
 
-        .theme-swatch.is-unavailable {
-            opacity: 0.38;
-            cursor: not-allowed;
-        }
-
-        .theme-swatch.is-unavailable:hover {
-            border-color: var(--border);
-            background: var(--surface-raised);
-        }
-
-        .theme-swatch.is-unavailable .theme-swatch-preview {
-            background: color-mix(in srgb, var(--text) 28%, var(--surface));
-        }
-
-        .theme-swatch.is-unavailable .theme-swatch-preview i {
-            background: color-mix(in srgb, var(--surface) 82%, var(--text));
-        }
-
         .theme-save-state {
             min-height: 18px;
             margin: 0;
             color: var(--text-dim);
             font-size: 12px;
+        }
+
+        .theme-customization {
+            margin-top: 14px;
+            border: 1px solid var(--border-soft);
+            border-radius: 11px;
+            background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
+        }
+
+        .theme-customization > summary {
+            display: flex;
+            min-height: 48px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 11px 13px;
+            color: var(--text);
+            cursor: pointer;
+            list-style: none;
+        }
+
+        .theme-customization > summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .theme-customization > summary::after {
+            width: 8px;
+            height: 8px;
+            flex: 0 0 auto;
+            border-right: 1.5px solid currentColor;
+            border-bottom: 1.5px solid currentColor;
+            content: "";
+            transform: rotate(45deg) translateY(-2px);
+            transition: transform 140ms ease;
+        }
+
+        .theme-customization[open] > summary::after {
+            transform: rotate(225deg) translate(-2px, -2px);
+        }
+
+        .theme-customization-summary strong,
+        .theme-customization-summary span {
+            display: block;
+        }
+
+        .theme-customization-summary strong {
+            font-size: 13px;
+            font-weight: 650;
+        }
+
+        .theme-customization-summary span {
+            margin-top: 2px;
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .theme-customization-body {
+            padding: 4px 13px 14px;
+            border-top: 1px solid var(--border-soft);
+        }
+
+        .theme-customization-base {
+            margin: 11px 0 8px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .theme-color-fields {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 14px;
+        }
+
+        .theme-color-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 42px minmax(92px, 112px);
+            gap: 8px;
+            align-items: center;
+            min-width: 0;
+        }
+
+        .theme-color-row label {
+            overflow: hidden;
+            color: var(--text-muted);
+            font-size: 12px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .theme-color-row input[type="color"] {
+            width: 42px;
+            height: 34px;
+            padding: 2px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--field-bg);
+            cursor: pointer;
+        }
+
+        .theme-color-row input[type="text"] {
+            width: 100%;
+            height: 34px;
+            min-width: 0;
+            padding: 0 9px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--field-bg);
+            color: var(--text);
+            font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        .theme-color-row input[aria-invalid="true"] {
+            border-color: var(--danger);
+        }
+
+        .theme-customization-status {
+            min-height: 18px;
+            margin: 10px 0 0;
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .theme-customization-status[data-kind="error"] {
+            color: var(--danger);
+        }
+
+        .theme-customization-status[data-kind="success"] {
+            color: var(--success);
+        }
+
+        .theme-customization-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 9px;
         }
 
         .settings-select {
@@ -1367,6 +1499,18 @@
                 margin-top: 11px;
             }
 
+            .theme-color-fields {
+                grid-template-columns: 1fr;
+            }
+
+            .theme-color-row {
+                grid-template-columns: minmax(0, 1fr) 44px minmax(104px, 122px);
+            }
+
+            .theme-customization-actions > button {
+                flex: 1 1 120px;
+            }
+
             .switch {
                 width: 43px !important;
             }
@@ -1756,6 +1900,24 @@
                                         <div id="themePalettePicker" class="theme-palette-grid" role="radiogroup" aria-labelledby="themePaletteHeading"></div>
                                         <p class="theme-save-state" data-i18n="preferences.themeSavedLocal">Saved in this browser</p>
                                     </section>
+                                    <details id="themeCustomization" class="theme-customization">
+                                        <summary>
+                                            <span class="theme-customization-summary">
+                                                <strong data-i18n="preferences.themeEditor.heading">Advanced theme</strong>
+                                                <span data-i18n="preferences.themeEditor.help">Fine-tune the selected preset in this browser.</span>
+                                            </span>
+                                        </summary>
+                                        <div class="theme-customization-body">
+                                            <p id="themeCustomizationBase" class="theme-customization-base"></p>
+                                            <div id="themeCustomizationFields" class="theme-color-fields"></div>
+                                            <p id="themeCustomizationStatus" class="theme-customization-status" role="status" aria-live="polite"></p>
+                                            <div class="theme-customization-actions">
+                                                <button id="restoreThemePresetBtn" class="text-button" type="button" data-i18n="preferences.themeEditor.restore">Restore preset colors</button>
+                                                <button id="cancelThemePreviewBtn" class="secondary-button" type="button" data-i18n="common.cancel">Cancel</button>
+                                                <button id="saveThemeCustomizationBtn" class="primary-button" type="button" data-i18n="preferences.themeEditor.save">Save customization</button>
+                                            </div>
+                                        </div>
+                                    </details>
                                 </div>
                             </div>
                             <div class="setting-row">

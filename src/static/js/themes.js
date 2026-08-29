@@ -18,10 +18,15 @@ export const THEMES = Object.freeze([
     { id: 'solarized-dark', scheme: 'dark', palette: 'solarized' },
     { id: 'solarized-light', scheme: 'light', palette: 'solarized' },
     { id: 'nord', scheme: 'dark', palette: 'nord' },
+    { id: 'nord-light', scheme: 'light', palette: 'nord' },
     { id: 'dracula', scheme: 'dark', palette: 'dracula' },
+    { id: 'dracula-light', scheme: 'light', palette: 'dracula' },
     { id: 'tokyo-night', scheme: 'dark', palette: 'tokyo-night' },
+    { id: 'tokyo-night-light', scheme: 'light', palette: 'tokyo-night' },
     { id: 'macchiato', scheme: 'dark', palette: 'macchiato' },
+    { id: 'macchiato-light', scheme: 'light', palette: 'macchiato' },
     { id: 'mocha', scheme: 'dark', palette: 'mocha' },
+    { id: 'mocha-light', scheme: 'light', palette: 'mocha' },
 ]);
 
 export const PALETTES = Object.freeze([
@@ -29,14 +34,15 @@ export const PALETTES = Object.freeze([
     { id: 'gruvbox', variants: Object.freeze({ dark: 'gruvbox-dark', light: 'gruvbox-light' }) },
     { id: 'catppuccin', variants: Object.freeze({ dark: 'frappe', light: 'latte' }) },
     { id: 'solarized', variants: Object.freeze({ dark: 'solarized-dark', light: 'solarized-light' }) },
-    { id: 'nord', variants: Object.freeze({ dark: 'nord' }) },
-    { id: 'dracula', variants: Object.freeze({ dark: 'dracula' }) },
-    { id: 'tokyo-night', variants: Object.freeze({ dark: 'tokyo-night' }) },
-    { id: 'macchiato', variants: Object.freeze({ dark: 'macchiato' }) },
-    { id: 'mocha', variants: Object.freeze({ dark: 'mocha' }) },
+    { id: 'nord', variants: Object.freeze({ dark: 'nord', light: 'nord-light' }) },
+    { id: 'dracula', variants: Object.freeze({ dark: 'dracula', light: 'dracula-light' }) },
+    { id: 'tokyo-night', variants: Object.freeze({ dark: 'tokyo-night', light: 'tokyo-night-light' }) },
+    { id: 'macchiato', variants: Object.freeze({ dark: 'macchiato', light: 'macchiato-light' }) },
+    { id: 'mocha', variants: Object.freeze({ dark: 'mocha', light: 'mocha-light' }) },
 ]);
 
 export const APPEARANCE_PREFERENCE_KEYS = Object.freeze({
+    customization: 'navidrome-theme-customizations',
     legacyTheme: 'navidrome-theme',
     mode: 'navidrome-theme-mode',
     palette: 'navidrome-theme-palette',
@@ -70,10 +76,6 @@ export function themePalette(id) {
     return THEMES_BY_ID.get(id)?.palette || DEFAULT_PALETTE;
 }
 
-export function paletteSupportsScheme(paletteId, scheme) {
-    return Boolean(PALETTES_BY_ID.get(paletteId)?.variants?.[scheme]);
-}
-
 export function paletteTheme(paletteId, scheme) {
     return PALETTES_BY_ID.get(paletteId)?.variants?.[scheme] || null;
 }
@@ -93,9 +95,8 @@ export function resolveTheme(id, fallback = DEFAULT_THEME) {
  * Resolve stored values into the concrete theme consumed by every page.
  *
  * An existing single-value preference is preserved until the user saves the
- * new controls. A palette without a variant for the active scheme remains the
- * selected palette, while the rendered theme temporarily falls back to the
- * built-in palette for that scheme.
+ * new controls. The final built-in lookup keeps the resolver usable if the
+ * registry is incomplete.
  */
 export function resolveAppearance({
     mode = null,
@@ -111,15 +112,11 @@ export function resolveAppearance({
         ? palette
         : (!hasModernPreference && legacy ? legacy.palette : DEFAULT_PALETTE);
     const scheme = resolveScheme(resolvedMode, prefersLight);
-    const compatible = paletteSupportsScheme(selectedPalette, scheme);
-    const appliedPalette = compatible ? selectedPalette : DEFAULT_PALETTE;
-    const theme = paletteTheme(appliedPalette, scheme)
+    const theme = paletteTheme(selectedPalette, scheme)
         || paletteTheme(DEFAULT_PALETTE, scheme)
         || DEFAULT_THEME;
 
     return Object.freeze({
-        appliedPalette,
-        compatible,
         mode: resolvedMode,
         palette: selectedPalette,
         scheme,

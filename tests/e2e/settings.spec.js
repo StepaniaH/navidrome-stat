@@ -124,7 +124,7 @@ test("custom listboxes support keyboard selection and preferences persist", asyn
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
 
-test("system mode follows the OS and keeps an unavailable palette selected", async ({
+test("system mode follows the OS and resolves every palette in both schemes", async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: "dark" });
@@ -167,11 +167,16 @@ test("system mode follows the OS and keeps an unavailable palette selected", asy
   await expect(darkMode).toBeChecked();
   await systemMode.check();
   await page.emulateMedia({ colorScheme: "light" });
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "builtin-light");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "nord-light");
   await expect(page.locator("html")).toHaveAttribute("data-palette", "nord");
   await expect(nord).toBeChecked();
-  await expect(nord).toBeDisabled();
-  await expect(nord.locator("..")).toHaveClass(/is-unavailable/);
+  await expect(nord).toBeEnabled();
+  await expect(nordPreview).toHaveAttribute("data-theme", "nord-light");
+  expect(
+    await nordPreview.evaluate((element) =>
+      getComputedStyle(element).getPropertyValue("--page-bg").trim(),
+    ),
+  ).toBe("#e9edf2");
   await expect(gruvboxPreview).toHaveAttribute("data-theme", "gruvbox-light");
   expect(
     await gruvboxPreview.evaluate((element) =>
@@ -182,6 +187,56 @@ test("system mode follows the OS and keeps an unavailable palette selected", asy
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "nord");
   await expect(nord).toBeEnabled();
+});
+
+test("advanced theme editor previews, validates, persists, and restores preset colors", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/settings#preferences");
+
+  await page.locator('#themeModePicker input[value="light"]').check();
+  await page.locator('#themePalettePicker input[value="nord"]').check();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "nord-light");
+  await page.locator("#themeCustomization > summary").click();
+
+  const background = page.locator('[data-theme-hex="background"]');
+  const accent = page.locator('[data-theme-hex="accent"]');
+  const text = page.locator('[data-theme-hex="text"]');
+  const save = page.locator("#saveThemeCustomizationBtn");
+  await expect(background).toHaveValue("#e9edf2");
+  await expect(accent).toHaveValue("#326783");
+  await expect(save).toBeDisabled();
+
+  await text.fill("#ffffff");
+  await expect(save).toBeDisabled();
+  await expect(page.locator("#themeCustomizationStatus")).toContainText(
+    "Increase the contrast",
+  );
+
+  await text.fill("#2e3440");
+  await accent.fill("#275f7d");
+  await expect(save).toBeEnabled();
+  await expect(page.locator("html")).toHaveCSS("--accent", "#275f7d");
+  await save.click();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-theme-customization",
+    /nord-light:/,
+  );
+  await expect(page.locator('#themePalettePicker input[value="nord"]').locator("..")).toHaveClass(
+    /is-customized/,
+  );
+
+  await page.reload();
+  await expect(page.locator("html")).toHaveCSS("--accent", "#275f7d");
+  await page.locator("#themeCustomization > summary").click();
+  await expect(accent).toHaveValue("#275f7d");
+
+  await page.locator("#restoreThemePresetBtn").click();
+  await expect(accent).toHaveValue("#326783");
+  await page.locator("#saveThemeCustomizationBtn").click();
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme-customization", /.+/);
+  await expect(page.locator("html")).toHaveCSS("--accent", "#326783");
 });
 
 test("privacy load failure resolves to an explicit retry state", async ({
@@ -244,6 +299,22 @@ test("mobile settings keep all four sections inside the viewport", async ({
   );
   expect(paletteBounds.left).toBeGreaterThanOrEqual(0);
   expect(paletteBounds.right).toBeLessThanOrEqual(paletteBounds.viewport);
+
+  await page.locator("#themeCustomization > summary").click();
+  const editorBounds = await page.locator("#themeCustomization").evaluate(
+    (editor) => {
+      const bounds = editor.getBoundingClientRect();
+      return {
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        left: Math.round(bounds.left),
+        right: Math.round(bounds.right),
+        viewport: document.documentElement.clientWidth,
+      };
+    },
+  );
+  expect(editorBounds.overflow).toBeLessThanOrEqual(0);
+  expect(editorBounds.left).toBeGreaterThanOrEqual(0);
+  expect(editorBounds.right).toBeLessThanOrEqual(editorBounds.viewport);
 
   await page.locator("#settingsTimezoneSelectButton").click();
   const menuBounds = await page.locator("#settingsTimezoneSelectMenu").evaluate(

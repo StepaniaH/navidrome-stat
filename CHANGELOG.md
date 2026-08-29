@@ -4,6 +4,12 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-08-29
+
+### Added
+
+- Every palette family now has matching light and dark variants. Advanced theme settings support browser-local overrides for six core colors per concrete preset, with preview, cancel, preset restoration, and 4.5:1 contrast validation.
+
 ### Fixed
 
 - Pie-chart seams now blend with the active surface, while chart tooltips use theme-aware soft borders and ambient shadows instead of ECharts' fixed black shadow.
@@ -192,7 +198,8 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.5...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.6...HEAD
+[0.8.6]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.2...v0.8.3

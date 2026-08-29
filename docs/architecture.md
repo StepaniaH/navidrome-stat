@@ -68,6 +68,7 @@ The dashboard, settings, and API reference pages are plain ES modules served und
 | `js/auth.js` | Login dialog controller: overlay visibility, `inert` background, focus trap |
 | `themes.css` | Shared semantic theme tokens for the dashboard, year-in-review, settings, and API reference |
 | `js/themes.js` | Theme mode/palette registry, legacy preference compatibility, and pure appearance resolution |
+| `js/theme-customization.js` | Validated browser-local preset overrides, contrast checks, and root custom-property application |
 | `theme-bootstrap.js` | Browser-local theme runtime, system color-scheme listener, root attributes, and cross-tab synchronization |
 | `js/prefs.js` | Safe `localStorage` access for browser-local display preferences |
 | `js/i18n/` | Locale registry: one module per language under `js/i18n/locales/`, pages derive catalogs via `pageMessages(...)`; tests guard key parity |
@@ -77,9 +78,9 @@ The dashboard, settings, and API reference pages are plain ES modules served und
 | `js/app-info.js` | Application metadata from `/api/about`; fills `[data-app-version]` elements |
 | `js/charts.js` | ECharts theme tokens; charts re-color when the theme preference changes |
 
-Appearance has two independent preferences. The mode is `system`, `dark`, or `light`; system mode resolves the browser's read-only `prefers-color-scheme` media query. The palette is one of Built-in, Gruvbox, Catppuccin, Solarized, Nord, Dracula, Tokyo Night, Macchiato, or Mocha. Built-in, Gruvbox, Catppuccin, and Solarized provide both schemes, while the other families are dark-only. The resolver maps this pair to one of 13 concrete theme IDs and falls back to the matching Built-in variant when a selected palette has no variant for the resolved scheme, without discarding the palette selection.
+Appearance has two independent preferences. The mode is `system`, `dark`, or `light`; system mode resolves the browser's read-only `prefers-color-scheme` media query. The palette is one of Built-in, Gruvbox, Catppuccin, Solarized, Nord, Dracula, Tokyo Night, Macchiato, or Mocha. Every family provides a concrete light and dark variant, so the resolver always maps the pair directly to one of 18 theme IDs.
 
-Every themed page loads `themes.css` and consumes the same resolved contract: `data-theme` names the concrete variant and `data-scheme` is `dark` or `light`. `theme-bootstrap.js` also exposes the selected mode and palette on the root element, updates system mode when the media query changes, and emits one theme-change event for chart redraws. Existing `navidrome-theme` values remain readable as a compatibility input; new mode and palette choices stay in `localStorage` and are never sent to the server.
+Every themed page loads `themes.css` and consumes the same resolved contract: `data-theme` names the concrete variant and `data-scheme` is `dark` or `light`. `theme-bootstrap.js` also exposes the selected mode and palette on the root element, applies validated custom overrides before emitting the theme-change event used for chart redraws, and updates system mode when the media query changes. Existing `navidrome-theme` values remain readable as a compatibility input. Mode, palette, and versioned per-theme color overrides stay in `localStorage` and are never sent to the server. The advanced editor changes six core semantic colors; invalid values and critical text/accent combinations below 4.5:1 contrast cannot be saved.
 
 Pure frontend logic is covered by Node unit tests (`npm run test:unit`); page behavior is covered by Playwright end-to-end tests.
 

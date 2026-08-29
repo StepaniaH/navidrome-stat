@@ -32,7 +32,7 @@ Theme copy describes two separate choices:
 
 - `preferences.themeMode` and `preferences.themeMode.system|dark|light` label how brightness is resolved.
 - `preferences.palette` and `preferences.palette.<family>` label color families. The current family keys are `builtin`, `gruvbox`, `catppuccin`, `solarized`, `nord`, `dracula`, `tokyo-night`, `macchiato`, and `mocha`.
-- `preferences.paletteUnavailable` explains that a family has no variant for the selected mode; `preferences.themeSavedLocal` states that the choice is browser-local.
+- `preferences.themeSavedLocal` states that the choice is browser-local.
 
 Palette labels do not append “dark” or “light”; the mode control already carries that meaning. Concrete variant IDs such as `builtin-light`, `gruvbox-dark`, `frappe`, or `latte` belong to the resolver and do not need catalog entries. When adding a mode or palette family, add the same keys to every locale in the same change and keep product names consistently capitalized.
 
