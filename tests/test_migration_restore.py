@@ -19,7 +19,7 @@ from src.database import (
 from src.privacy_ops import export_user_data, import_user_data
 from tests.migration_fixtures import build_legacy_db
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 12
 
 
 @pytest.mark.parametrize("from_version", [0, 2, 4])
@@ -39,12 +39,22 @@ async def _assert_legacy_upgrade(db_path: str, from_version: int):
     source_ids = conn.execute(
         "SELECT DISTINCT COALESCE(source_id, 'x'), COALESCE(source_name, 'y') FROM play_history"
     ).fetchall()
+    record_ids = conn.execute("SELECT record_id FROM play_history").fetchall()
     meta = dict(conn.execute("SELECT key, value FROM schema_meta").fetchall())
     conn.close()
 
     assert rows == [("2024-03-24T01:00:00+00:00", "legacy_user", "Artist A", 45)]
     # Provenance columns and their legacy backfill exist on every start point.
-    assert {"source", "source_id", "source_name", "session_id", "artist_id"} <= columns
+    assert {
+        "source",
+        "source_id",
+        "source_name",
+        "session_id",
+        "artist_id",
+        "album_id",
+        "record_id",
+    } <= columns
+    assert len(record_ids[0][0]) == 32
     assert source_ids == [("legacy", "Legacy environment source")]
     if from_version < 2:
         # Only upgrades from pre-v2 databases backfill the retention key;

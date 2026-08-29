@@ -585,18 +585,80 @@ async def get_top_albums(
     username: str | None = None,
 ):
     """Return albums ranked by plays or listen time for the selected window."""
-    return await _get_top_entity(
-        entity_column="album",
-        limit=limit,
-        days=days,
-        timezone_name=timezone_name,
-        metric=metric,
-        db_path=db_path,
-        source_id=source_id,
-        start_date=start_date,
-        end_date=end_date,
-        username=username,
-    )
+    if metric not in ("plays", "listen_time"):
+        raise ValueError(f"unknown ranking metric: {metric!r}")
+
+    value_column = "play_count" if metric == "plays" else "total_listen_sec"
+    path = _path(db_path)
+    pred, params = _window_predicate(days, timezone_name, start_date, end_date)
+    pred, params = _source_predicate(pred, params, source_id)
+    pred, params = _username_predicate(pred, params, username)
+    async with connect_db(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"""
+            WITH album_rows AS (
+                SELECT
+                    id,
+                    played_at,
+                    album,
+                    artist,
+                    NULLIF(album_id, '') AS album_id,
+                    COALESCE(source_id, ?) AS normalized_source_id,
+                    CASE
+                        WHEN NULLIF(album_id, '') IS NOT NULL
+                            THEN 'id:' || album_id
+                        ELSE 'legacy:' || album || char(31) || COALESCE(artist, '')
+                    END AS album_key,
+                    COALESCE(listen_duration_sec, 0) AS listen_duration_sec
+                FROM play_history
+                WHERE album IS NOT NULL AND album != '' AND ({pred})
+            ), aggregated AS (
+                SELECT
+                    normalized_source_id,
+                    album_key,
+                    COUNT(*) AS play_count,
+                    SUM(listen_duration_sec) AS total_listen_sec,
+                    MAX(played_at) AS latest_played_at
+                FROM album_rows
+                GROUP BY normalized_source_id, album_key
+            ), latest AS (
+                SELECT aggregated.*, MAX(album_rows.id) AS latest_id
+                FROM aggregated
+                JOIN album_rows
+                  ON album_rows.normalized_source_id = aggregated.normalized_source_id
+                 AND album_rows.album_key = aggregated.album_key
+                 AND album_rows.played_at IS aggregated.latest_played_at
+                GROUP BY aggregated.normalized_source_id, aggregated.album_key
+            )
+            SELECT
+                album_rows.album,
+                album_rows.artist,
+                album_rows.album_id,
+                latest.normalized_source_id AS source_id,
+                latest.play_count AS count,
+                latest.total_listen_sec,
+                latest.{value_column} AS value
+            FROM latest
+            JOIN album_rows ON album_rows.id = latest.latest_id
+            ORDER BY value DESC, album ASC, artist ASC, source_id ASC
+            LIMIT ?
+            """,
+            [LEGACY_SOURCE_ID, *params, limit],
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [
+        {
+            "album": row["album"],
+            "artist": row["artist"],
+            "album_id": row["album_id"],
+            "source_id": row["source_id"],
+            "count": int(row["count"] or 0),
+            "total_listen_sec": int(row["total_listen_sec"] or 0),
+            "value": int(row["value"] or 0),
+        }
+        for row in rows
+    ]
 
 
 async def _get_top_entity(
@@ -687,6 +749,27 @@ async def get_playback_history(
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
+            WITH aggregated AS (
+                SELECT
+                    username,
+                    track_id,
+                    COALESCE(source_id, ?) AS source_id,
+                    COUNT(*) AS play_count,
+                    SUM(COALESCE(listen_duration_sec, 0)) AS total_listen_sec,
+                    MAX(played_at) AS latest_played_at
+                FROM play_history
+                WHERE {pred}
+                GROUP BY COALESCE(source_id, ?), username, track_id
+            ), latest AS (
+                SELECT aggregated.*, MAX(ph.id) AS latest_id
+                FROM aggregated
+                JOIN play_history ph
+                  ON COALESCE(ph.source_id, ?) = aggregated.source_id
+                 AND ph.username IS aggregated.username
+                 AND ph.track_id IS aggregated.track_id
+                 AND ph.played_at IS aggregated.latest_played_at
+                GROUP BY aggregated.source_id, aggregated.username, aggregated.track_id
+            )
             SELECT
                 ph.username,
                 ph.title,
@@ -695,30 +778,20 @@ async def get_playback_history(
                 ph.played_at AS last_played_at,
                 COALESCE(ph.source_id, ?) AS source_id,
                 COALESCE(ph.source_name, ?) AS source_name,
-                agg.play_count,
-                agg.total_listen_sec
-            FROM (
-                SELECT
-                    username,
-                    track_id,
-                    COALESCE(source_id, ?) AS source_id,
-                    COUNT(*) AS play_count,
-                    SUM(listen_duration_sec) AS total_listen_sec,
-                    MAX(id) AS latest_id
-                FROM play_history
-                WHERE {pred}
-                GROUP BY COALESCE(source_id, ?), username, track_id
-            ) agg
-            JOIN play_history ph ON ph.id = agg.latest_id
-            ORDER BY ph.played_at DESC, agg.play_count DESC
+                latest.play_count,
+                latest.total_listen_sec
+            FROM latest
+            JOIN play_history ph ON ph.id = latest.latest_id
+            ORDER BY ph.played_at DESC, latest.play_count DESC
             LIMIT ?
             """,
             [
                 LEGACY_SOURCE_ID,
-                LEGACY_SOURCE_NAME,
-                LEGACY_SOURCE_ID,
                 *params,
                 LEGACY_SOURCE_ID,
+                LEGACY_SOURCE_ID,
+                LEGACY_SOURCE_ID,
+                LEGACY_SOURCE_NAME,
                 limit,
             ],
         ) as cursor:

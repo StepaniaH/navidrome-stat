@@ -778,6 +778,8 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
                 showBanner('success', t('privacy.importSuccess', {
                     records: localizedCount(data.imported),
                     attempts: localizedCount(data.attempts_imported),
+                    skipped: localizedCount(data.skipped),
+                    conflicts: localizedCount(data.conflicts),
                 }));
                 await Promise.all([loadUsers(), refreshRetentionPreview()]);
             } catch (error) {

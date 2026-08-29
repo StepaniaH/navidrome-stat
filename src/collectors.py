@@ -24,6 +24,10 @@ from src.database import (
     ping_db,
 )
 from src.importers.backfill_service import BackfillRunner, watch_forever
+from src.importers.cursor_store import (
+    load_song_history_cursor,
+    save_song_history_cursor,
+)
 from src.importers.song_history import run_song_history
 from src.runtime_state import runtime_state
 from src.sessions import PlaybackPersistenceError, PlaybackSessionTracker
@@ -63,9 +67,9 @@ session_tracker = PlaybackSessionTracker(
     save_attempt=stats_service.record_attempt,
 )
 
-# getSongHistory seam: per-process guard so the initial import runs once
-# per source even when the polling loop restarts (config changes).
-_song_history_imports_done: set[str] = set()
+# Completed imports are cached in-process; durable cursor state remains the
+# source of truth across restarts and for partial runs.
+_song_history_imports_done: set[tuple[str, str]] = set()
 
 
 def _reset_song_history_import_guard() -> None:
@@ -74,11 +78,36 @@ def _reset_song_history_import_guard() -> None:
 
 
 async def _run_initial_song_history(source_id: str, source_name: str, client) -> None:
-    if source_id in _song_history_imports_done:
-        return
-    _song_history_imports_done.add(source_id)
     username = getattr(client, "user", "") or ""
+    guard_key = (source_id, username)
+    if guard_key in _song_history_imports_done:
+        return
+    cursor = {
+        "next_offset": 0,
+        "complete": False,
+        "failure_count": 0,
+        "retry_at": None,
+    }
     try:
+        cursor = await load_song_history_cursor(source_id, username)
+        if cursor["complete"]:
+            _song_history_imports_done.add(guard_key)
+            return
+        retry_at = cursor.get("retry_at")
+        if retry_at:
+            retry_moment = datetime.fromisoformat(retry_at)
+            if retry_moment > datetime.now(timezone.utc):
+                return
+
+        async def checkpoint(next_offset: int, complete: bool) -> None:
+            cursor.update(
+                next_offset=next_offset,
+                complete=complete,
+                failure_count=0,
+                retry_at=None,
+            )
+            await save_song_history_cursor(source_id, username, cursor)
+
         earliest = await get_earliest_poller_played_at(source_id, username)
         result = await run_song_history(
             client,
@@ -87,10 +116,42 @@ async def _run_initial_song_history(source_id: str, source_name: str, client) ->
             source_name=source_name,
             username=username,
             earliest_poller_played_at=earliest,
+            start_offset=cursor["next_offset"],
+            checkpoint=checkpoint,
         )
+        cursor.update(
+            next_offset=int(result.get("next_offset", cursor["next_offset"])),
+            complete=bool(result.get("complete", True)),
+            failure_count=0,
+            retry_at=None,
+        )
+        await save_song_history_cursor(source_id, username, cursor)
+        if cursor["complete"]:
+            _song_history_imports_done.add(guard_key)
         runtime_state.record_backfill_result(source_id, result.get("imported", 0))
-        logger.info("getSongHistory initial import completed")
+        logger.info(
+            "getSongHistory import page run completed (complete=%s)",
+            cursor["complete"],
+        )
     except Exception as exc:
+        failure_count = min(int(cursor.get("failure_count", 0)) + 1, 30)
+        retry_delay = min(
+            POLL_INTERVAL * (2 ** (failure_count - 1)),
+            MAX_POLL_BACKOFF_SEC,
+        )
+        failed_cursor = dict(cursor)
+        failed_cursor.update(
+            next_offset=int(failed_cursor.get("next_offset", 0)),
+            complete=False,
+            failure_count=failure_count,
+            retry_at=(
+                datetime.now(timezone.utc) + timedelta(seconds=retry_delay)
+            ).isoformat(),
+        )
+        try:
+            await save_song_history_cursor(source_id, username, failed_cursor)
+        except Exception:
+            logger.error("getSongHistory cursor persistence failed")
         runtime_state.record_backfill_error(source_id)
         logger.error(
             "getSongHistory initial import failed (type=%s)",
@@ -114,6 +175,18 @@ def active_now_playing() -> list[dict]:
     ]
 
 
+def discard_user_sessions(username: str) -> set[str]:
+    """Drop active sessions at the privacy-deletion boundary."""
+    discarded: set[str] = set()
+    trackers = (session_tracker, *_runtime_trackers)
+    for tracker in dict.fromkeys(trackers):
+        discarded.update(tracker.discard_user(username))
+    return discarded
+
+
+stats_service.set_session_discarder(discard_user_sessions)
+
+
 async def polling_loop(client: NavidromeClient):
     await polling_loop_for_tracker(client, session_tracker)
 
@@ -132,14 +205,12 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
     )
     try:
         song_history = await client.supports_song_history()
+        song_history = song_history is True
     except Exception:
         song_history = False
     runtime_state.set_song_history(tracker.source_id, song_history)
     if song_history:
         logger.info("OpenSubsonic getSongHistory endpoint: available")
-        await _run_initial_song_history(
-            tracker.source_id, tracker.source_name, client
-        )
 
     while True:
         current_time = datetime.now(timezone.utc)
@@ -170,11 +241,16 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
                 try:
                     await tracker.process_poll(entries, current_time)
                 except PlaybackPersistenceError as exc:
+                    runtime_state.mark_save_failure(tracker.source_id)
                     logger.error(
                         "Play persistence failed after successful poll (type=%s)",
                         exception_kind(exc),
                     )
                 runtime_state.record_poll_success(current_time, tracker.source_id)
+                if song_history:
+                    await _run_initial_song_history(
+                        tracker.source_id, tracker.source_name, client
+                    )
                 consecutive_failures = 0
 
         except Exception as exc:
@@ -347,7 +423,14 @@ async def build_readiness_report() -> dict:
     else:
         upstream_status = "unknown"
 
-    if not db_ok:
+    if runtime_state.last_save_ok is True:
+        persistence_status = "ok"
+    elif runtime_state.last_save_ok is False:
+        persistence_status = "error"
+    else:
+        persistence_status = "unknown"
+
+    if not db_ok or persistence_status == "error":
         overall = "not_ready"
     elif runtime_state.client_initialized and not polling_running:
         overall = "not_ready"
@@ -383,6 +466,7 @@ async def build_readiness_report() -> dict:
             "database": "ok" if db_ok else "error",
             "polling_task": polling_status,
             "upstream": upstream_status,
+            "persistence": persistence_status,
         },
         "metrics": {
             "poll_success_total": runtime_state.poll_success_count,

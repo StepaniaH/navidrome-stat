@@ -145,6 +145,12 @@ async def api_import_user(username: str, body: UserImportRequest):
     return UserImportResponse(
         imported=result["imported"],
         attempts_imported=result.get("attempts_imported", 0),
+        inserted=result.get(
+            "inserted",
+            result["imported"] + result.get("attempts_imported", 0),
+        ),
+        skipped=result.get("skipped", 0),
+        conflicts=result.get("conflicts", 0),
         merge=body.merge,
     )
 

@@ -19,6 +19,7 @@ def _entry(
     username="user_a",
     title="Song 1",
     artist_id=None,
+    album_id=None,
 ):
     entry = {
         "playerId": player_id,
@@ -33,6 +34,8 @@ def _entry(
         entry["isPlaying"] = is_playing
     if artist_id is not None:
         entry["artistId"] = artist_id
+    if album_id is not None:
+        entry["albumId"] = album_id
     return entry
 
 
@@ -69,6 +72,30 @@ async def test_session_captures_artist_id(tracker, save_mock):
 
     saved = save_mock.await_args.args[0]
     assert saved["artist_id"] == "ar-9"
+
+
+@pytest.mark.asyncio
+async def test_session_captures_album_id(tracker, save_mock):
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    t1 = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)
+
+    await tracker.process_poll([_entry(album_id="al-9")], t0)
+    await tracker.process_poll([_entry(album_id="al-9")], t1)
+
+    assert save_mock.await_args.args[0]["album_id"] == "al-9"
+
+
+@pytest.mark.asyncio
+async def test_discard_user_prevents_active_session_from_being_written(tracker, save_mock):
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    await tracker.process_poll([_entry(username="delete-me")], t0)
+
+    discarded = tracker.discard_user("delete-me")
+    await tracker.process_poll([], t0 + timedelta(seconds=PAUSE_GRACE_SEC + 1))
+
+    assert len(discarded) == 1
+    assert tracker.active_count() == 0
+    save_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio

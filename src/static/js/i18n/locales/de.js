@@ -333,7 +333,7 @@ export default {
         ['privacy.exportSuccess', 'Daten von „{username}“ exportiert.'],
         ['privacy.exportFailed', 'Export fehlgeschlagen.'],
         ['privacy.importConfirm', '{records} Wiedergaben und {attempts} Kurzwiedergaben für „{username}“ importieren?'],
-        ['privacy.importSuccess', '{records} Wiedergaben und {attempts} Kurzwiedergaben importiert.'],
+        ['privacy.importSuccess', '{records} Wiedergaben und {attempts} Kurzwiedergaben importiert; {skipped} Duplikate übersprungen; {conflicts} Konflikte gefunden.'],
         ['privacy.importTooLarge', 'Importdateien dürfen 5 MiB nicht überschreiten.'],
         ['privacy.importFailed', 'Import fehlgeschlagen. JSON-Format und Benutzernamen prüfen.'],
         ['privacy.deleteConfirm', 'Diese Aktion kann nicht rückgängig gemacht werden.\\n\\n{preview}\\n\\nAlle Wiedergabedaten von „{username}“ löschen?'],

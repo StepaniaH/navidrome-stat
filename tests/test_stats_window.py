@@ -437,6 +437,26 @@ def test_get_playback_history_respects_window(db_path):
     assert seven[0]["title"] == "Song r1"
 
 
+def test_playback_history_uses_played_at_instead_of_import_order(db_path):
+    asyncio.run(init_db(db_path))
+    asyncio.run(
+        save_play_session(
+            _session("2026-01-02T12:00:00Z", track_id="same-track"),
+            db_path=db_path,
+        )
+    )
+    imported_old = _session("2025-01-02T12:00:00Z", track_id="same-track")
+    imported_old["title"] = "Older imported title"
+    asyncio.run(save_play_session(imported_old, db_path=db_path))
+
+    rows = asyncio.run(get_playback_history(limit=10, days=0, db_path=db_path))
+
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Song same-track"
+    assert rows[0]["last_played_at"] == "2026-01-02T12:00:00Z"
+    assert rows[0]["play_count"] == 2
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "endpoint,target,mock_path,kwargs",

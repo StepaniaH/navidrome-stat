@@ -38,6 +38,8 @@ class RuntimeState:
     last_upstream_error_code: Optional[int] = None
     save_success_count: int = 0
     save_failure_count: int = 0
+    last_save_at: Optional[datetime] = None
+    last_save_ok: Optional[bool] = None
     collectors: dict[str, CollectorRuntimeState] = field(default_factory=dict)
 
     def reset(self) -> None:
@@ -51,6 +53,8 @@ class RuntimeState:
         self.last_upstream_error_code = None
         self.save_success_count = 0
         self.save_failure_count = 0
+        self.last_save_at = None
+        self.last_save_ok = None
         self.collectors.clear()
 
     def _collector(self, source_id: str) -> CollectorRuntimeState:
@@ -137,11 +141,19 @@ class RuntimeState:
     def record_backfill_error(self, source_id: str) -> None:
         self._collector(source_id).backfill_error_count += 1
 
-    def record_save_success(self) -> None:
+    def record_save_success(self, _source_id: str = "legacy") -> None:
         self.save_success_count += 1
+        self.last_save_at = datetime.now(timezone.utc)
+        self.last_save_ok = True
 
-    def record_save_failure(self) -> None:
+    def record_save_failure(self, source_id: str = "legacy") -> None:
         self.save_failure_count += 1
+        self.mark_save_failure(source_id)
+
+    def mark_save_failure(self, _source_id: str = "legacy") -> None:
+        """Mark durable writes unhealthy without incrementing a known failure twice."""
+        self.last_save_at = datetime.now(timezone.utc)
+        self.last_save_ok = False
 
     def polling_task_alive(self) -> bool:
         if self.collectors:

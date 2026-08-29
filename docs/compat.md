@@ -7,12 +7,12 @@ Removals and breaking changes are announced in the [changelog](../CHANGELOG.md) 
 ## Stable today
 
 - **SQLite schema migrations** only move forward, run automatically at startup, and never rewrite or drop existing listening data. Downgrades across schema versions are not supported; back up the database before updating a pinned version.
-- **Privacy export format** `format_version: 2` stays readable by later releases; importers continue to accept every format listed in `SUPPORTED_IMPORT_FORMAT_VERSIONS`.
+- **Privacy export formats** `format_version: 1` and `2` stay readable. New exports use format v3 with stable record IDs and fingerprints; importers continue to accept every format listed in `SUPPORTED_IMPORT_FORMAT_VERSIONS`.
 - **Environment variables** documented in the README keep their names, defaults, and clamping bounds.
 - **The `NAVIDROME_URL` / `NAVIDROME_USER` / `NAVIDROME_PASS` fallback connection** keeps its semantics: request overrides take precedence over environment variables, which take precedence over saved values, and the fallback is only collected while no saved server entry exists (a warning is logged once per process when environment variables are shadowed by saved servers). The three variables together will not be split into partial merges or removed without a deprecation notice.
 - **Saved Navidrome credentials** (server entries and the saved fallback password) are stored encrypted with AES-256-GCM using a per-installation key file named `secret.key` next to the database. Losing or deleting that key leaves listening data intact but makes saved passwords unrecoverable; re-enter them instead of expecting a recovery path.
 - **Dashboard and settings data APIs** (`/api/stats/*`, `/api/privacy/*`, `/api/servers/*`, `/api/source/*`) add fields only in additive ways: new response fields are optional or nullable, and no field is removed or repurposed without a changelog entry.
-- **Health endpoints** (`/health`, `/health/ready`) keep their top-level `status` values (`ok`, `degraded`, `not_ready`) and check names.
+- **Health endpoints** (`/health`, `/health/ready`) keep their top-level `status` values (`ok`, `degraded`, `not_ready`) and existing check names; additive checks may appear as new failure boundaries are reported.
 - **Prometheus metrics** on `/metrics` keep existing metric names and types; new series may appear.
 
 ## Not yet stable

@@ -4,6 +4,18 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Added
+
+- Privacy export format v3 adds stable record IDs and fingerprints. Merge imports now report inserted, skipped, and conflicting rows; formats v1 and v2 remain importable and gain deterministic repeat-import deduplication.
+- Readiness reports durable playback-write health separately from upstream polling health.
+
+### Fixed
+
+- Recent playback metadata is selected by playback time rather than insertion order, so importing older history cannot replace the latest title or timestamp.
+- Album rankings persist upstream album IDs and keep same-named albums separate by source and artist; multi-server cover art uses each ranking row's source.
+- Native `getSongHistory` imports commit and checkpoint each page, resume after bounded runs or restarts, and retry failures with persisted exponential backoff.
+- Deleting a user's data discards active in-memory sessions and suppresses their already queued writes while allowing future plays to start fresh sessions.
+
 ## [0.8.7] - 2026-08-29
 
 ### Added

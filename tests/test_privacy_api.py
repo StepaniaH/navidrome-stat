@@ -208,6 +208,72 @@ async def test_privacy_user_export_import_delete(isolated_db):
             json={"payload": payload, "merge": True},
         )
         assert imported.json()["imported"] == 1
+        repeated = await ac.post(
+            "/api/privacy/users/export_user/import",
+            json={"payload": payload, "merge": True},
+        )
+        assert repeated.json()["inserted"] == 0
+        assert repeated.json()["skipped"] == 1
+        assert repeated.json()["conflicts"] == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_user_discards_active_session_and_future_poll_starts_fresh(
+    isolated_db,
+    monkeypatch,
+):
+    import src.collectors as collectors
+    from src.stats_service import stats_service
+
+    await init_db(isolated_db)
+    await save_play_session(
+        {
+            "last_seen_at": "2025-03-01T10:00:00+00:00",
+            "username": "active-user",
+            "client_name": "App",
+            "track_id": "stored-track",
+            "title": "Stored",
+            "artist": "Artist",
+            "album": "Album",
+            "is_transcoding": 0,
+            "duration_sec": 60,
+        },
+        db_path=isolated_db,
+    )
+    monkeypatch.setattr(collectors, "_runtime_trackers", [])
+    tracker = collectors.session_tracker
+    tracker._sessions.clear()
+    entry = {
+        "playerId": "active-player",
+        "id": "active-track",
+        "username": "active-user",
+        "playerName": "App",
+        "title": "Active",
+        "artist": "Artist",
+        "album": "Album",
+        "isPlaying": True,
+    }
+    started_at = datetime.now(timezone.utc)
+    await tracker.process_poll([entry], started_at)
+    old_session_id = tracker._sessions["active-player"]["session_id"]
+
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            deleted = await ac.post(
+                "/api/privacy/users/active-user/delete",
+                json={"confirm": True},
+            )
+        assert deleted.status_code == 200
+        assert tracker.active_count() == 0
+
+        await tracker.process_poll([entry], started_at + timedelta(seconds=1))
+        assert tracker.active_count() == 1
+        assert tracker._sessions["active-player"]["session_id"] != old_session_id
+    finally:
+        tracker._sessions.clear()
+        stats_service._suppressed_session_ids.pop(old_session_id, None)
 
 
 @pytest.mark.asyncio

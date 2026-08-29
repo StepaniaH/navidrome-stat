@@ -338,7 +338,7 @@ export default {
         ['privacy.exportSuccess', '已匯出使用者「{username}」的資料。'],
         ['privacy.exportFailed', '匯出失敗。'],
         ['privacy.importConfirm', '要為「{username}」匯入 {records} 筆播放記錄與 {attempts} 筆短播放記錄嗎？'],
-        ['privacy.importSuccess', '已匯入 {records} 筆播放記錄與 {attempts} 筆短播放記錄。'],
+        ['privacy.importSuccess', '已匯入 {records} 筆播放記錄與 {attempts} 筆短播放記錄；略過 {skipped} 筆重複記錄；發現 {conflicts} 筆衝突。'],
         ['privacy.importTooLarge', '匯入檔案不能超過 5 MiB。'],
         ['privacy.importFailed', '匯入失敗，請檢查 JSON 格式與使用者名稱。'],
         ['privacy.deleteConfirm', '此操作無法復原。\\n\\n{preview}\\n\\n確定刪除使用者「{username}」的全部播放資料嗎？'],

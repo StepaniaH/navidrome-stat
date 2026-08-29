@@ -8,6 +8,8 @@ callers use ``dashboard()`` and keep their cache keys opaque.
 import asyncio
 import logging
 import threading
+from collections import OrderedDict
+from collections.abc import Callable
 from datetime import date
 from weakref import WeakKeyDictionary
 
@@ -15,6 +17,7 @@ from src.config import env_int
 from src.coverart import cover_art_service
 from src.dashboard_cache import DashboardSnapshotCache, dashboard_snapshot_cache
 from src.database import (
+    LEGACY_SOURCE_ID,
     delete_server,
     get_playback_history,
     get_player_stats,
@@ -95,6 +98,7 @@ class LoopLocalLock:
 
 retention_policy_lock = LoopLocalLock()
 server_mutation_lock = LoopLocalLock()
+playback_mutation_lock = LoopLocalLock()
 
 
 class StatsService:
@@ -107,31 +111,65 @@ class StatsService:
     ):
         self._cache = cache or dashboard_snapshot_cache
         self._retry_attempts = retry_attempts or SAVE_RETRY_ATTEMPTS
+        self._discard_user_sessions: Callable[[str], set[str]] = lambda _username: set()
+        self._suppressed_session_ids: OrderedDict[str, None] = OrderedDict()
+
+    def set_session_discarder(
+        self,
+        discard_user_sessions: Callable[[str], set[str]],
+    ) -> None:
+        self._discard_user_sessions = discard_user_sessions
+
+    def _suppress_sessions(self, session_ids: set[str]) -> None:
+        for session_id in session_ids:
+            self._suppressed_session_ids[session_id] = None
+            self._suppressed_session_ids.move_to_end(session_id)
+        while len(self._suppressed_session_ids) > 10_000:
+            self._suppressed_session_ids.popitem(last=False)
+
+    def _session_is_suppressed(self, payload: dict) -> bool:
+        session_id = payload.get("session_id")
+        return bool(session_id and str(session_id) in self._suppressed_session_ids)
 
     async def invalidate(self) -> None:
         await self._cache.invalidate()
 
     async def record_session(self, session: dict) -> None:
-        try:
-            await retry_save(
-                lambda: save_play_session(session),
-                kind="play_session",
-                attempts=self._retry_attempts,
-            )
-            runtime_state.record_save_success()
-            await self._cache.invalidate()
-            logger.debug("Recorded play session (duration=%ss)", session["duration_sec"])
-        except Exception:
-            runtime_state.record_save_failure()
-            raise
+        source_id = str(session.get("source_id") or "legacy")
+        async with playback_mutation_lock():
+            if self._session_is_suppressed(session):
+                return
+            try:
+                await retry_save(
+                    lambda: save_play_session(session),
+                    kind="play_session",
+                    attempts=self._retry_attempts,
+                )
+                runtime_state.record_save_success(source_id)
+                await self._cache.invalidate()
+                logger.debug(
+                    "Recorded play session (duration=%ss)", session["duration_sec"]
+                )
+            except Exception:
+                runtime_state.record_save_failure(source_id)
+                raise
 
     async def record_attempt(self, attempt: dict) -> None:
-        await retry_save(
-            lambda: save_play_attempt(attempt),
-            kind="play_attempt",
-            attempts=self._retry_attempts,
-        )
-        await self._cache.invalidate()
+        source_id = str(attempt.get("source_id") or "legacy")
+        async with playback_mutation_lock():
+            if self._session_is_suppressed(attempt):
+                return
+            try:
+                await retry_save(
+                    lambda: save_play_attempt(attempt),
+                    kind="play_attempt",
+                    attempts=self._retry_attempts,
+                )
+                runtime_state.record_save_success(source_id)
+                await self._cache.invalidate()
+            except Exception:
+                runtime_state.record_save_failure(source_id)
+                raise
 
     async def record_imported_events(self, events: list[dict]) -> int:
         """Write importer events through the idempotent dedup path."""
@@ -159,7 +197,10 @@ class StatsService:
         return result
 
     async def delete_user(self, username: str) -> dict:
-        result = await delete_user_data(username)
+        async with playback_mutation_lock():
+            discarded = self._discard_user_sessions(username)
+            self._suppress_sessions(discarded)
+            result = await delete_user_data(username)
         if result["deleted"]:
             await self._cache.invalidate()
         return result
@@ -218,7 +259,8 @@ class StatsService:
             )
             effective_source = self._resolve_effective_source(source_id, servers)
             for entry in summary["top_albums"]:
-                entry["source_id"] = effective_source
+                if entry.get("source_id") in (None, LEGACY_SOURCE_ID):
+                    entry["source_id"] = effective_source
             return summary
 
         return await self._cache.get_or_create(key, build)
@@ -240,24 +282,26 @@ class StatsService:
         if not albums:
             return albums
         effective_source = self._resolve_effective_source(source_id, available_servers)
-        if effective_source is None:
-            return [{**entry, "album_id": None} for entry in albums]
         attached = []
-        for index, entry in enumerate(albums):
+        for entry in albums:
+            if entry.get("album_id"):
+                attached.append(entry)
+                continue
+            entry_source = entry.get("source_id") or effective_source
+            if entry_source is None:
+                attached.append({**entry, "album_id": None})
+                continue
             try:
                 album_id = await cover_art_service.resolve_album_id(
-                    effective_source, entry.get("album"), None
+                    entry_source, entry.get("album"), entry.get("artist")
                 )
             except Exception as exc:
                 logger.warning(
                     "Album cover enrichment skipped (type=%s)",
                     exception_kind(exc),
                 )
-                attached.extend(
-                    {**remaining, "album_id": None}
-                    for remaining in albums[index:]
-                )
-                break
+                attached.append({**entry, "album_id": None})
+                continue
             attached.append({**entry, "album_id": album_id})
         return attached
 

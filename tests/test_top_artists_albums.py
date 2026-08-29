@@ -62,8 +62,26 @@ def test_get_top_albums_groups_and_orders(db_path):
     rows = asyncio.run(get_top_albums(db_path=db_path))
 
     assert rows == [
-        _row("album", "Record A", 2, 70, 2),
-        _row("album", "Record B", 1, 10, 1),
+        _row(
+            "album",
+            "Record A",
+            2,
+            70,
+            2,
+            artist="Artist",
+            album_id=None,
+            source_id="legacy",
+        ),
+        _row(
+            "album",
+            "Record B",
+            1,
+            10,
+            1,
+            artist="Artist",
+            album_id=None,
+            source_id="legacy",
+        ),
     ]
 
 
@@ -71,7 +89,12 @@ def test_get_top_albums_groups_and_orders(db_path):
     ("name_key", "default_name", "get_entity", "expected_extra"),
     [
         ("artist", "Alpha", get_top_artists, {"artist_id": None}),
-        ("album", "Record A", get_top_albums, {}),
+        (
+            "album",
+            "Record A",
+            get_top_albums,
+            {"artist": "Artist", "album_id": None, "source_id": "legacy"},
+        ),
     ],
 )
 def test_get_top_entity_skips_empty_name(db_path, name_key, default_name, get_entity, expected_extra):
@@ -120,7 +143,15 @@ async def test_api_top_albums(mock_get):
         response = await ac.get("/api/stats/top-albums")
     assert response.status_code == 200
     assert response.json() == [
-        {"album": "Record A", "count": 3, "total_listen_sec": 90, "value": 3, "album_id": None}
+        {
+            "album": "Record A",
+            "artist": None,
+            "count": 3,
+            "total_listen_sec": 90,
+            "value": 3,
+            "album_id": None,
+            "source_id": None,
+        }
     ]
     mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="plays")
 

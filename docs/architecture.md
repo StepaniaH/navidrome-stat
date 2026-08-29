@@ -47,17 +47,23 @@ Active sessions exist only in application memory; they are exposed to routes thr
 Two optional importers fill the gap before live polling started. Both emit the same normalized listen event (provenance columns, unknown duration left NULL, `duration_confidence` set to `estimated`) and write through a single idempotent path: `StatsService.record_imported_events` inserts with an `external_event_key`, whose partial unique index makes re-runs no-ops. Import rows use `source = 'backfill'` or `'song_history'`, and add plays without inflating listening minutes.
 
 - **Backfill bridge**: each enabled server may point at a Navidrome smart playlist (`.nsp`). A watch task reads it through public `getPlaylist` on `BACKFILL_INTERVAL_SEC` and converts one estimated event per track from its last-played timestamp; only the newest play per track is exact, so older plays under `playCount` are never invented. A manual **sync** endpoint runs once immediately.
-- **`getSongHistory` seam**: the adapter paginates the proposed OpenSubsonic endpoint (upstream Navidrome PR #5650, not merged). The polling loop already probes for it; when a server ever advertises it, a one-shot initial import runs automatically.
+- **`getSongHistory` seam**: the adapter paginates the proposed OpenSubsonic endpoint (upstream Navidrome PR #5650, not merged). The polling loop already probes for it; when a server advertises it, the initial import commits one page at a time, persists its per-source/user offset in SQLite, resumes bounded runs after restarts, and backs off after failures.
 
 To avoid double counting, imports never land on or after live-poller coverage: events must predate the oldest `source = 'poller'` row of that source and username, minus a small safety margin (`BACKFILL_CUTOFF_MARGIN_SEC`).
 
 ## Storage
 
-SQLite stores listening records, source information, retention settings, and any Navidrome credentials saved through the server list or compatible fallback API. Saved credentials are encrypted at rest with AES-256-GCM using a per-installation key file (`secret.key`, mode 0600) next to the database; startup migrations re-wrap legacy plaintext values once. Schema migrations run during startup; schema v11 adds the importer dedup key and the per-server backfill playlist reference. Connections use write-ahead logging, foreign-key checks, and a bounded busy timeout.
+SQLite stores listening records, source information, retention settings, and any Navidrome credentials saved through the server list or compatible fallback API. Saved credentials are encrypted at rest with AES-256-GCM using a per-installation key file (`secret.key`, mode 0600) next to the database; startup migrations re-wrap legacy plaintext values once. Schema migrations run during startup; schema v12 adds durable privacy-export record IDs and upstream album IDs. Connections use write-ahead logging, foreign-key checks, and a bounded busy timeout.
+
+Privacy exports use format v3. Every history row and short-play attempt carries a stable record ID plus a canonical SHA-256 fingerprint, so repeated merge imports report inserted, skipped, and conflicting records instead of duplicating them. Import formats v1 and v2 remain readable and derive deterministic identities during import.
+
+Album rankings use `(source, album_id)` when the upstream ID is present. Older rows fall back to `(source, album, artist)`, preventing common names such as “Live” or “Greatest Hits” from merging across artists or servers.
 
 Dashboard history is read through aggregate queries. A short-lived in-process cache reduces repeated work for identical dashboard filters. The cache lives behind the stats service: every playback write, retention purge, user import or deletion, and server mutation invalidates it inside the service, so callers cannot forget.
 
 Finite retention policies run during startup and in a periodic background task. Policy updates, background cleanup, and manual **Apply now** requests are serialized on the application's event loop; manual cleanup also verifies that the saved policy still matches the previewed policy.
+
+User deletion shares a mutation lock with live playback writes. It discards that user's in-memory sessions and suppresses already queued commits from those session IDs; a later playback observation creates a fresh session and is collected normally.
 
 ## Frontend
 
@@ -97,7 +103,7 @@ Pure frontend logic is covered by Node unit tests (`npm run test:unit`); page be
 - Multiple processes or replicas collecting the same sources are not supported and can double-count plays.
 - The SQLite file must be on storage suitable for a single-host database; shared network filesystems are not supported.
 - Authentication is optional. `STATS_API_TOKEN` protects dashboard data and application APIs when configured, but the application does not terminate TLS.
-- Health endpoints report process, database, collector, and upstream state. They are not a replacement for deployment-level monitoring or backups.
+- Health endpoints report process, database, collector, upstream, and durable-write state. A successful upstream poll cannot mask a failed playback write. These endpoints are not a replacement for deployment-level monitoring or backups.
 
 FastAPI exposes the current HTTP schema at `/openapi.json` and a same-origin searchable reference at `/docs` (also served at `/redoc`) unless OpenAPI routes are disabled with `OPENAPI_ENABLED=false`.
 

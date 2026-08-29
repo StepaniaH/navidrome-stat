@@ -338,7 +338,7 @@ export default {
         ['privacy.exportSuccess', 'Données de « {username} » exportées.'],
         ['privacy.exportFailed', 'Échec de l’export.'],
         ['privacy.importConfirm', 'Importer {records} lectures et {attempts} écoutes brèves pour « {username} » ?'],
-        ['privacy.importSuccess', '{records} lectures et {attempts} écoutes brèves importées.'],
+        ['privacy.importSuccess', '{records} lectures et {attempts} écoutes brèves importées ; {skipped} doublons ignorés ; {conflicts} conflits détectés.'],
         ['privacy.importTooLarge', 'Les fichiers d’import ne peuvent pas dépasser 5 Mio.'],
         ['privacy.importFailed', 'Échec de l’import. Vérifiez le format JSON et le nom d’utilisateur.'],
         ['privacy.deleteConfirm', 'Cette action est irréversible.\\n\\n{preview}\\n\\nSupprimer toutes les données de lecture de « {username} » ?'],

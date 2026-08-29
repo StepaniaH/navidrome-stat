@@ -5,7 +5,7 @@ import aiosqlite
 from src import config
 from src.sqlite import connect_db
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 LEGACY_SOURCE_ID = "legacy"
 LEGACY_SOURCE_NAME = "Legacy environment source"
 
@@ -20,6 +20,7 @@ TEXT_COLUMNS = (
     "artist",
     "album",
     "artist_id",
+    "album_id",
 )
 PAYLOAD_BYTES_SQL = " + ".join(
     f"COALESCE(LENGTH({column}), 0)" for column in TEXT_COLUMNS
@@ -251,6 +252,30 @@ async def _apply_migrations(db: aiosqlite.Connection, db_path: str) -> None:
             WHERE external_event_key IS NOT NULL
         """)
         await _set_schema_version(db, 11)
+
+    if version < 12:
+        for table in ("play_history", "play_attempts"):
+            async with db.execute(f"PRAGMA table_info({table})") as cursor:
+                columns = {row[1] for row in await cursor.fetchall()}
+            if "album_id" not in columns:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN album_id TEXT")
+            if "record_id" not in columns:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN record_id TEXT")
+            await db.execute(
+                f"UPDATE {table} SET record_id = lower(hex(randomblob(16))) "
+                "WHERE record_id IS NULL OR record_id = ''"
+            )
+        await db.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_play_history_record_id
+            ON play_history(record_id)
+            WHERE record_id IS NOT NULL
+        """)
+        await db.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_play_attempts_record_id
+            ON play_attempts(record_id)
+            WHERE record_id IS NOT NULL
+        """)
+        await _set_schema_version(db, 12)
 
 
 async def _encrypt_saved_credentials(db: aiosqlite.Connection, db_path: str) -> None:

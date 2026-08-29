@@ -120,6 +120,56 @@ def test_top_albums_listen_time_tie_break_by_name_asc(db_path):
     assert [r["album"] for r in rows] == ["Alpha", "Zeta"]
 
 
+def test_top_albums_keep_same_named_albums_separate_by_source_artist_and_id(db_path):
+    asyncio.run(init_db(db_path))
+    played_at = _iso(_now())
+    first = _session(
+        played_at,
+        track_id="first",
+        artist="Artist A",
+        album="Greatest Hits",
+    )
+    first.update({"source_id": "source-a", "album_id": "album-a"})
+    second = _session(
+        played_at,
+        track_id="second",
+        artist="Artist B",
+        album="Greatest Hits",
+    )
+    second.update({"source_id": "source-b", "album_id": "album-b"})
+    asyncio.run(save_play_session(first, db_path=db_path))
+    asyncio.run(save_play_session(second, db_path=db_path))
+
+    rows = asyncio.run(get_top_albums(limit=10, days=0, db_path=db_path))
+
+    assert len(rows) == 2
+    assert {(row["source_id"], row["artist"], row["album_id"]) for row in rows} == {
+        ("source-a", "Artist A", "album-a"),
+        ("source-b", "Artist B", "album-b"),
+    }
+
+
+def test_top_albums_legacy_identity_includes_artist_within_source(db_path):
+    asyncio.run(init_db(db_path))
+    played_at = _iso(_now())
+    for track_id, artist in (("first", "Artist A"), ("second", "Artist B")):
+        row = _session(
+            played_at,
+            track_id=track_id,
+            artist=artist,
+            album="Live",
+        )
+        row["source_id"] = "same-source"
+        asyncio.run(save_play_session(row, db_path=db_path))
+
+    rows = asyncio.run(get_top_albums(limit=10, days=0, db_path=db_path))
+
+    assert [(row["album"], row["artist"], row["count"]) for row in rows] == [
+        ("Live", "Artist A", 1),
+        ("Live", "Artist B", 1),
+    ]
+
+
 def test_invalid_metric_raises_value_error_db_layer(db_path):
     asyncio.run(init_db(db_path))
     with pytest.raises(ValueError):

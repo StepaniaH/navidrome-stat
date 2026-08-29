@@ -141,7 +141,7 @@ docker compose ps
 
 打开 `http://localhost:39421`。配置 `STATS_API_TOKEN` 后，在登录界面输入该 token；浏览器保存的是 HttpOnly 会话 Cookie，而不是 token 本身。
 
-`/health` 用于检查进程是否存活。`/health/ready` 还会检查数据库与采集器，因此上游短暂故障可能使就绪状态降级，但进程仍保持健康。
+`/health` 用于检查进程是否存活。`/health/ready` 还会检查数据库、采集器、上游轮询与播放记录持久化。上游或数据库故障可能使就绪状态降级或未就绪，但进程仍保持存活。
 
 ## 配置
 
@@ -193,7 +193,7 @@ docker compose logs -f --tail=100 navidrome-stat
 
 | 现象 | 检查项 |
 | --- | --- |
-| `/health` 正常，但 `/health/ready` 显示降级或未就绪 | 确认至少有一个配置完整且已启用的连接，查看 `/health/ready` 中的检查结果与采集器数量，并检查容器到 Navidrome 的网络连接。 |
+| `/health` 正常，但 `/health/ready` 显示降级或未就绪 | 查看 `/health/ready` 中的数据库、采集器、上游与持久化检查；确认至少有一个配置完整且已启用的连接、数据目录可写，并检查容器到 Navidrome 的网络连接。 |
 | 已保存的连接没有采集播放活动 | 打开“设置 > 连接”，按诊断结果排查认证、TLS、超时、网络或采集器问题。确认连接已启用；如问题仍存在，再检查 `docker compose logs`。 |
 | 反复出现登录页或 API 返回 `401` | 输入当前的 `STATS_API_TOKEN`。通过 HTTPS 访问时设置 `SESSION_COOKIE_SECURE=true`；使用普通 HTTP 时保持为 `false`。 |
 | SQLite 无法打开或写入 | 确认 `DATABASE_URL` 指向已挂载的数据卷，并确认 UID 和 GID `1000:1000` 对目录和数据库文件具有写权限。 |

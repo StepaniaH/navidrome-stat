@@ -444,6 +444,10 @@ def test_ranking_fetch_propagates_metric_and_uses_selected_value(source):
     assert "renderTopAlbumsChart(snapshot.top_albums, lastRankingMetric)" in source
 
 
+def test_ranking_covers_prefer_the_row_source(source):
+    assert "sourceId: item.source_id || sourceId" in source
+
+
 def test_ranking_metric_switch_fetches_only_rankings(source):
     block = _function_block(source, "fetchRankings")
     assert "await fetchStats()" in block

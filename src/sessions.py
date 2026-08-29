@@ -84,6 +84,23 @@ class PlaybackSessionTracker:
             1 for session in self._sessions.values() if not session.get("paused")
         )
 
+    def discard_user(self, username: str) -> set[str]:
+        """Forget one user's active sessions without persisting them.
+
+        Returned session IDs let the write boundary suppress commits that were
+        already queued before a privacy deletion acquired its mutation lock.
+        """
+        discarded: set[str] = set()
+        for player_id, session in list(self._sessions.items()):
+            if session.get("username") != username:
+                continue
+            session["discarded"] = True
+            session_id = session.get("session_id")
+            if session_id:
+                discarded.add(str(session_id))
+            self._sessions.pop(player_id, None)
+        return discarded
+
     async def finalize_session(self, player_id: str) -> None:
         if player_id not in self._sessions:
             return
@@ -194,6 +211,7 @@ class PlaybackSessionTracker:
             "artist": entry.get("artist"),
             "artist_id": entry.get("artistId"),
             "album": entry.get("album"),
+            "album_id": entry.get("albumId"),
             "is_transcoding": 1 if entry.get("transcodedContentType") else 0,
             "paused": False,
             "source_id": self.source_id,

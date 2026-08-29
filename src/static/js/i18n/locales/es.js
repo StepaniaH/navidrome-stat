@@ -338,7 +338,7 @@ export default {
         ['privacy.exportSuccess', 'Datos exportados de «{username}».'],
         ['privacy.exportFailed', 'Error de exportación.'],
         ['privacy.importConfirm', '¿Importar {records} reproducciones y {attempts} escuchas breves de «{username}»?'],
-        ['privacy.importSuccess', 'Importadas {records} reproducciones y {attempts} escuchas breves.'],
+        ['privacy.importSuccess', 'Importadas {records} reproducciones y {attempts} escuchas breves; {skipped} duplicados omitidos; {conflicts} conflictos detectados.'],
         ['privacy.importTooLarge', 'Los archivos de importación no pueden superar 5 MiB.'],
         ['privacy.importFailed', 'Error de importación. Comprueba el formato JSON y el nombre de usuario.'],
         ['privacy.deleteConfirm', 'Esta acción no se puede deshacer.\\n\\n{preview}\\n\\n¿Eliminar todos los datos de reproducción de «{username}»?'],

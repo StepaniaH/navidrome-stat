@@ -5,6 +5,8 @@ pagination, normalization, cutoff suppression, and idempotent writes are all
 in place so a native-history import lands the day the endpoint merges.
 """
 
+from collections.abc import Awaitable, Callable
+
 from src.config import env_int
 from src.importers.events import apply_cutoff, normalize_song_history_entries
 from src.importers.playlist_backfill import (
@@ -45,13 +47,21 @@ async def run_song_history(
     source_name: str,
     username: str,
     earliest_poller_played_at: str | None = None,
-) -> dict[str, int]:
-    """Fetch every available history page once and write through ``record``."""
-    all_events: list[dict] = []
+    start_offset: int = 0,
+    checkpoint: Callable[[int, bool], Awaitable[None]] | None = None,
+) -> dict[str, int | bool]:
+    """Import bounded pages, durably checkpointing after each committed page."""
+    imported = 0
     skipped = 0
-    offset = 0
-    while offset <= MAX_EVENTS_PER_RUN:
-        envelope = await client.get_song_history(size=PAGE_SIZE, offset=offset)
+    processed = 0
+    offset = max(int(start_offset), 0)
+    next_offset = offset
+    complete = False
+    cutoff = compute_cutoff(earliest_poller_played_at)
+
+    while processed < MAX_EVENTS_PER_RUN:
+        request_size = min(PAGE_SIZE, MAX_EVENTS_PER_RUN - processed)
+        envelope = await client.get_song_history(size=request_size, offset=offset)
         entries = _page_entries(envelope)
         events, page_skipped = normalize_song_history_entries(
             entries,
@@ -60,14 +70,23 @@ async def run_song_history(
             username=username,
         )
         skipped += page_skipped
-        all_events.extend(events)
-        if len(entries) < PAGE_SIZE or len(all_events) >= MAX_EVENTS_PER_RUN:
+        events, suppressed = apply_cutoff(events, cutoff)
+        skipped += suppressed
+        if events:
+            imported += await record(events)
+
+        processed += len(entries)
+        next_offset = offset + len(entries)
+        complete = len(entries) < request_size
+        if checkpoint is not None:
+            await checkpoint(next_offset, complete)
+        if complete or processed >= MAX_EVENTS_PER_RUN:
             break
-        offset += PAGE_SIZE
+        offset = next_offset
 
-    cutoff = compute_cutoff(earliest_poller_played_at)
-    all_events, suppressed = apply_cutoff(all_events, cutoff)
-    skipped += suppressed
-
-    imported = await record(all_events) if all_events else 0
-    return {"imported": imported, "skipped": skipped}
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "next_offset": next_offset,
+        "complete": complete,
+    }

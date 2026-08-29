@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -88,6 +89,9 @@ async def test_export_import_roundtrip(db_path):
     await save_play_session(_session("carol", "2025-06-01T12:00:00+00:00"), db_path=db_path)
 
     payload = await export_user_data("carol", db_path=db_path)
+    assert payload["format_version"] == 3
+    assert payload["records"][0]["record_id"]
+    assert payload["records"][0]["fingerprint"]
     await delete_user_data("carol", db_path=db_path)
     assert (await preview_delete_user("carol", db_path))["records_to_delete"] == 0
 
@@ -95,6 +99,22 @@ async def test_export_import_roundtrip(db_path):
     assert imported["imported"] == 1
     restored = await export_user_data("carol", db_path=db_path)
     assert restored["record_count"] == 1
+
+    repeated = await import_user_data("carol", payload, merge=True, db_path=db_path)
+    assert repeated["inserted"] == 0
+    assert repeated["skipped"] == 1
+    assert repeated["conflicts"] == 0
+    assert (await export_user_data("carol", db_path=db_path))["record_count"] == 1
+
+    conflicting = json.loads(json.dumps(payload))
+    conflicting["records"][0]["title"] = "Conflicting title"
+    conflicting["records"][0]["fingerprint"] = "0" * 64
+    conflict_result = await import_user_data(
+        "carol", conflicting, merge=True, db_path=db_path
+    )
+    assert conflict_result["inserted"] == 0
+    assert conflict_result["skipped"] == 0
+    assert conflict_result["conflicts"] == 1
 
 
 @pytest.mark.asyncio
@@ -112,6 +132,53 @@ async def test_import_rejects_username_mismatch(db_path):
     }
     with pytest.raises(ValueError, match="username"):
         await import_user_data("carol", payload, db_path=db_path)
+
+
+@pytest.mark.asyncio
+async def test_legacy_v2_merge_is_idempotent(db_path):
+    await init_db(db_path)
+    payload = {
+        "format_version": 2,
+        "username": "legacy-user",
+        "records": [
+            {
+                "played_at": "2025-01-01T00:00:00+00:00",
+                "track_id": "legacy-track",
+                "listen_duration_sec": 30,
+            }
+        ],
+    }
+
+    first = await import_user_data("legacy-user", payload, merge=True, db_path=db_path)
+    second = await import_user_data("legacy-user", payload, merge=True, db_path=db_path)
+
+    assert first["inserted"] == 1
+    assert second["inserted"] == 0
+    assert second["skipped"] == 1
+    assert (await export_user_data("legacy-user", db_path=db_path))["record_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_replace_import_conflict_does_not_delete_existing_rows(db_path):
+    await init_db(db_path)
+    await save_play_session(
+        _session("protected-user", "2025-01-01T00:00:00+00:00"),
+        db_path=db_path,
+    )
+    payload = await export_user_data("protected-user", db_path=db_path)
+    payload["records"][0]["title"] = "Corrupted"
+
+    result = await import_user_data(
+        "protected-user",
+        payload,
+        merge=False,
+        db_path=db_path,
+    )
+
+    assert result["conflicts"] == 1
+    restored = await export_user_data("protected-user", db_path=db_path)
+    assert restored["record_count"] == 1
+    assert restored["records"][0]["title"] == "Song"
 
 
 @pytest.mark.asyncio
@@ -197,7 +264,7 @@ async def test_retention_compares_offset_timestamps_by_instant(db_path, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_export_v2_roundtrips_short_attempts(db_path):
+async def test_export_v3_roundtrips_short_attempts(db_path):
     await init_db(db_path)
     played_at = "2025-01-01T00:00:00+00:00"
     await save_play_attempt(
@@ -211,8 +278,10 @@ async def test_export_v2_roundtrips_short_attempts(db_path):
         db_path=db_path,
     )
     payload = await export_user_data("synthetic-user", db_path=db_path)
-    assert payload["format_version"] == 2
+    assert payload["format_version"] == 3
     assert payload["attempt_count"] == 1
+    assert payload["attempts"][0]["record_id"]
+    assert payload["attempts"][0]["fingerprint"]
 
     await delete_user_data("synthetic-user", db_path=db_path)
     imported = await import_user_data(
@@ -221,6 +290,13 @@ async def test_export_v2_roundtrips_short_attempts(db_path):
         db_path=db_path,
     )
     assert imported["attempts_imported"] == 1
+    repeated = await import_user_data(
+        "synthetic-user",
+        payload,
+        db_path=db_path,
+    )
+    assert repeated["attempts_imported"] == 0
+    assert repeated["skipped"] == 1
     restored = await export_user_data("synthetic-user", db_path=db_path)
     assert restored["attempts"][0]["duration_sec"] == 7
 

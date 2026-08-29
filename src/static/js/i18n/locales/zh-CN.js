@@ -338,7 +338,7 @@ export default {
         ['privacy.exportSuccess', '已导出用户“{username}”的数据。'],
         ['privacy.exportFailed', '导出失败。'],
         ['privacy.importConfirm', '为“{username}”导入 {records} 条播放记录与 {attempts} 条短播放记录？'],
-        ['privacy.importSuccess', '已导入 {records} 条播放记录与 {attempts} 条短播放记录。'],
+        ['privacy.importSuccess', '已导入 {records} 条播放记录与 {attempts} 条短播放记录；跳过 {skipped} 条重复记录；发现 {conflicts} 条冲突。'],
         ['privacy.importTooLarge', '导入文件不能超过 5 MiB。'],
         ['privacy.importFailed', '导入失败，请检查 JSON 格式与用户名。'],
         ['privacy.deleteConfirm', '此操作不可撤销。\\n\\n{preview}\\n\\n确定删除用户“{username}”的全部播放数据吗？'],

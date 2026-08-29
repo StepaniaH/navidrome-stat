@@ -338,7 +338,7 @@ export default {
         ['privacy.exportSuccess', '「{username}」のデータをエクスポートしました。'],
         ['privacy.exportFailed', 'エクスポートに失敗しました。'],
         ['privacy.importConfirm', '「{username}」の {records} 件の再生記録と {attempts} 件の短い再生記録をインポートしますか？'],
-        ['privacy.importSuccess', '{records} 件の再生記録と {attempts} 件の短い再生記録をインポートしました。'],
+        ['privacy.importSuccess', '{records} 件の再生記録と {attempts} 件の短い再生記録をインポートし、{skipped} 件の重複をスキップしました。競合は {conflicts} 件です。'],
         ['privacy.importTooLarge', 'インポートファイルは 5 MiB 以下にしてください。'],
         ['privacy.importFailed', 'インポートに失敗しました。JSON 形式とユーザー名を確認してください。'],
         ['privacy.deleteConfirm', 'この操作は取り消せません。\\n\\n{preview}\\n\\n「{username}」のすべての再生データを削除しますか？'],

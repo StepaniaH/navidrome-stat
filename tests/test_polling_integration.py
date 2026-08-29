@@ -140,8 +140,23 @@ async def test_ok_poll_records_success_when_persistence_fails(monkeypatch):
 
     assert state.poll_success_count == 1
     assert state.poll_failure_count == 0
+    assert state.last_save_ok is False
     assert slept == [main.POLL_INTERVAL]
     tracker.process_poll.assert_awaited_once()
+
+    alive = asyncio.create_task(asyncio.Event().wait())
+    state.client_initialized = True
+    state.set_collector_task(tracker.source_id, alive)
+    monkeypatch.setattr(main, "ping_db", AsyncMock(return_value=True))
+    try:
+        report = await main.build_readiness_report()
+    finally:
+        alive.cancel()
+        await asyncio.gather(alive, return_exceptions=True)
+
+    assert report["checks"]["upstream"] == "ok"
+    assert report["checks"]["persistence"] == "error"
+    assert report["status"] == "not_ready"
 
 
 @pytest.mark.asyncio

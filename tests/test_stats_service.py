@@ -1,5 +1,6 @@
 """StatsService owns every playback write path and the snapshot cache."""
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -59,15 +60,19 @@ def restore_module_symbols():
         setattr(stats_module, name, value)
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def restore_runtime_counters():
     saved = (
         stats_module.runtime_state.save_success_count,
         stats_module.runtime_state.save_failure_count,
+        stats_module.runtime_state.last_save_at,
+        stats_module.runtime_state.last_save_ok,
     )
     yield
     stats_module.runtime_state.save_success_count = saved[0]
     stats_module.runtime_state.save_failure_count = saved[1]
+    stats_module.runtime_state.last_save_at = saved[2]
+    stats_module.runtime_state.last_save_ok = saved[3]
 
 
 @pytest.mark.asyncio
@@ -143,6 +148,41 @@ async def test_delete_user_invalidates_only_when_rows_deleted(cache, service):
     stats_module.delete_user_data = AsyncMock(return_value={"deleted": 4})
     await service.delete_user("u")
     assert cache.invalidations == 1
+
+
+@pytest.mark.asyncio
+async def test_delete_user_suppresses_already_queued_session_write(cache, service):
+    delete_started = asyncio.Event()
+    release_delete = asyncio.Event()
+
+    async def blocked_delete(_username):
+        delete_started.set()
+        await release_delete.wait()
+        return {"deleted": 1}
+
+    stats_module.delete_user_data = AsyncMock(side_effect=blocked_delete)
+    stats_module.save_play_session = AsyncMock()
+    service.set_session_discarder(lambda _username: {"deleted-session"})
+
+    delete_task = asyncio.create_task(service.delete_user("alice"))
+    await delete_started.wait()
+    write_task = asyncio.create_task(
+        service.record_session(
+            {
+                "session_id": "deleted-session",
+                "source_id": "source-a",
+                "duration_sec": 30,
+            }
+        )
+    )
+    await asyncio.sleep(0)
+    assert not write_task.done()
+
+    release_delete.set()
+    await delete_task
+    await write_task
+
+    stats_module.save_play_session.assert_not_awaited()
 
 
 @pytest.mark.asyncio

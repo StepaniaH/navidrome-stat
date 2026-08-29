@@ -2,8 +2,8 @@
 
 Binary cover art is fetched from the owning Navidrome server once, stored
 under a content-addressed cache directory, and served from disk afterwards.
-Album entries in statistics only carry names, so ``resolve_album_id`` maps
-an album name to a Navidrome album ID via ``search3`` and remembers both
+Legacy album entries in statistics may only carry names, so ``resolve_album_id``
+maps an album name to a Navidrome album ID via ``search3`` and remembers both
 hits and (time-boxed) misses in the ``album_art_map`` table.
 """
 

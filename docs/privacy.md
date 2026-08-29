@@ -7,12 +7,12 @@ Navidrome Statistic stores listening activity so it can build a shared dashboard
 The SQLite database can contain:
 
 - Navidrome usernames;
-- track IDs, titles, artists, and albums;
+- track, artist, and album IDs, together with titles, artist names, and album names;
 - client names and transcoding status;
 - playback timestamps and observed listening duration;
 - Navidrome server identifiers and display names;
 - counted plays and below-threshold playback attempts;
-- retention settings and internal session checkpoints.
+- retention settings, internal session checkpoints, and stable record identifiers used to make imports idempotent.
 
 Cover art requested through the application is cached on disk inside the container or host volume, in a size-capped directory. The cache holds only artwork fetched for the dashboard and can be cleared by removing that directory; it is not part of the SQLite database or its backups.
 
@@ -30,7 +30,9 @@ Subsonic authentication uses token and salt query parameters. The application av
 
 Listening records are retained permanently by default. Saving a finite retention policy of 1–360 days authorizes the service to delete older records during startup and periodic background maintenance. The settings page previews the affected records and asks for confirmation before saving a finite policy. Its separate **Apply now** action has its own preview and confirmation before running the purge immediately. That action is bound to the policy used for its preview; if another session changes the saved policy, no records are deleted until the preview is refreshed.
 
-Per-user controls support JSON export, import, and deletion. Exports contain listening activity and should be handled as sensitive files. Deleting data from the application database does not remove copies already present in backups or external storage.
+Per-user controls support JSON export, import, and deletion. Format v3 exports include each row's stable record ID and a SHA-256 fingerprint of its normalized contents. These values let repeated imports distinguish duplicates from conflicting rows; they are not credentials, but they remain part of the sensitive listening-history export and can link copies of the same exported record. Formats v1 and v2 remain importable and receive deterministic identities during import.
+
+Deleting a user discards that user's active in-memory sessions and suppresses writes already queued for those sessions. Playback observed after deletion starts a new session and is collected normally. Deletion from the application database does not remove exports or copies already present in backups or external storage.
 
 SQLite uses write-ahead logging. The database file, `-wal` and `-shm` files, volume snapshots, and backups can all contain the same sensitive data. Stop the application before taking a simple file-level backup, as shown in the README.
 

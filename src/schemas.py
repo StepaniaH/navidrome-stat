@@ -131,10 +131,12 @@ class TopArtistItem(BaseModel):
 
 class TopAlbumItem(BaseModel):
     album: str
+    artist: Optional[str] = None
     count: int
     total_listen_sec: Optional[int] = None
     value: Optional[int] = None
     album_id: Optional[str] = None
+    source_id: Optional[str] = None
 
 
 class HistoryItem(BaseModel):
@@ -157,6 +159,7 @@ class ReadinessChecks(BaseModel):
     database: str
     polling_task: str
     upstream: str
+    persistence: str
 
 
 class ReadinessMetrics(BaseModel):
@@ -251,6 +254,9 @@ class UserImportRequest(BaseModel):
 class UserImportResponse(BaseModel):
     imported: int
     attempts_imported: int = 0
+    inserted: int = 0
+    skipped: int = 0
+    conflicts: int = 0
     merge: bool
 
 

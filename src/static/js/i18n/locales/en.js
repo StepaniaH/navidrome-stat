@@ -338,7 +338,7 @@ export default {
         ['privacy.exportSuccess', 'Exported data for “{username}”.'],
         ['privacy.exportFailed', 'Export failed.'],
         ['privacy.importConfirm', 'Import {records} plays and {attempts} short-play records for “{username}”?'],
-        ['privacy.importSuccess', 'Imported {records} plays and {attempts} short-play records.'],
+        ['privacy.importSuccess', 'Imported {records} plays and {attempts} short-play records; skipped {skipped} duplicates; found {conflicts} conflicts.'],
         ['privacy.importTooLarge', 'Import files cannot exceed 5 MiB.'],
         ['privacy.importFailed', 'Import failed. Check the JSON format and username.'],
         ['privacy.deleteConfirm', 'This action cannot be undone.\\n\\n{preview}\\n\\nDelete all playback data for “{username}”?'],

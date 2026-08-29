@@ -141,7 +141,7 @@ docker compose ps
 
 Open `http://localhost:39421`. When `STATS_API_TOKEN` is configured, enter it in the login screen; the browser stores an HttpOnly session cookie rather than the token itself.
 
-`/health` reports process liveness. `/health/ready` also checks the database and collectors, so a temporary upstream failure can make readiness degraded while the process remains healthy.
+`/health` reports process liveness. `/health/ready` also checks the database, collectors, upstream polling, and durable playback writes. An upstream or database failure can therefore make readiness degraded or not ready while the process remains healthy.
 
 ## Configuration
 
@@ -193,7 +193,7 @@ The published container disables request access logs so dashboard filters, usern
 
 | Symptom | What to check |
 | --- | --- |
-| `/health` is healthy but `/health/ready` is degraded or not ready | Confirm that at least one complete connection is enabled, inspect the checks and collector counts in `/health/ready`, and check container-to-Navidrome network access. |
+| `/health` is healthy but `/health/ready` is degraded or not ready | Inspect the database, collector, upstream, and persistence checks in `/health/ready`. Confirm that at least one complete connection is enabled, the data directory is writable, and the container can reach Navidrome. |
 | A saved connection does not collect playback | Open **Settings > Connections** and follow the diagnosis for authentication, TLS, timeout, network, or collector failures. Confirm the connection is enabled, then inspect `docker compose logs` if the issue remains. |
 | Login repeats or API requests return `401` | Enter the current `STATS_API_TOKEN`. Behind HTTPS, set `SESSION_COOKIE_SECURE=true`; leave it `false` when accessing the service over plain HTTP. |
 | SQLite cannot be opened or written | Confirm that `DATABASE_URL` points inside the mounted data volume and that UID and GID `1000:1000` can write the directory and database files. |

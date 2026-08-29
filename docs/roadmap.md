@@ -12,12 +12,12 @@ This roadmap describes project direction, not release commitments. Shipped chang
 ## Medium term
 
 - Improve large-history query, cache, and retention performance within the existing single-host SQLite architecture, using the multi-scale synthetic baseline and query-plan checks to evaluate changes.
-- Watch upstream for a public Navidrome listening-history read API (the `getSongHistory` proposal) so a native import can land once one exists.
+- Watch upstream for a public Navidrome listening-history read API (the `getSongHistory` proposal) so the existing guarded importer can be enabled against a released endpoint.
 - Offer opt-in ListenBrainz-format scrobble forwarding with per-server deduplication.
 
 ## Long term
 
-- Per-user dashboard views with optional read-only sharing links.
+- Optional read-only sharing links for filtered dashboard views.
 - Library-quality panels (format, bitrate, and decade distribution) from `search3` metadata.
 - Pluggable enrichment adapters (cover art today; artist images and similar-track hints when upstream agents are configured).
 

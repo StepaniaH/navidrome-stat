@@ -1172,7 +1172,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
             labelCell.title = labelValue;
 
             const cover = createCoverImage({
-                sourceId,
+                sourceId: item.source_id || sourceId,
                 id: panel === 'albums' ? item.album_id : item.artist_id,
                 className: 'ranking-cover',
                 onError: (image) => image.replaceWith(createRankingFallback(labelValue)),

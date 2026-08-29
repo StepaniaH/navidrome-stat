@@ -74,6 +74,7 @@ def _base_event(
         "artist": None,
         "artist_id": None,
         "album": None,
+        "album_id": None,
         "is_transcoding": 0,
         "listen_duration_sec": None,
         "duration_confidence": "estimated",
@@ -139,6 +140,7 @@ def _normalize_entries(
         event["artist"] = entry.get("artist")
         event["artist_id"] = entry.get("artistId")
         event["album"] = entry.get("album")
+        event["album_id"] = entry.get("albumId")
         events.append(event)
     return events, skipped
 
