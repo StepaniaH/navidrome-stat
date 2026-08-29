@@ -75,12 +75,12 @@ export function readThemeCustomizations(raw = readPreference(APPEARANCE_PREFEREN
     return parseThemeCustomizations(raw);
 }
 
-export function themeCustomizationFor(themeId, document = readThemeCustomizations()) {
-    return document.overrides[themeId] || null;
+export function themeCustomizationFor(themeId, customizations = readThemeCustomizations()) {
+    return customizations.overrides[themeId] || null;
 }
 
-function withThemeCustomization(themeId, colors, document = readThemeCustomizations()) {
-    const overrides = { ...document.overrides };
+function withThemeCustomization(themeId, colors, customizations = readThemeCustomizations()) {
+    const overrides = { ...customizations.overrides };
     const normalized = normalizeColors(colors);
     if (normalized) overrides[themeId] = normalized;
     else delete overrides[themeId];
@@ -181,7 +181,7 @@ export function applyThemeCustomization(root, themeId, input) {
 export function applyStoredThemeCustomization(
     root,
     themeId,
-    document = readThemeCustomizations(),
+    customizations = readThemeCustomizations(),
 ) {
-    return applyThemeCustomization(root, themeId, themeCustomizationFor(themeId, document));
+    return applyThemeCustomization(root, themeId, themeCustomizationFor(themeId, customizations));
 }

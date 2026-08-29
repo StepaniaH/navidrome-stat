@@ -45,7 +45,7 @@ function createRoot() {
 }
 
 test('custom theme documents keep only complete known-theme color sets', () => {
-    const document = parseThemeCustomizations(JSON.stringify({
+    const customizations = parseThemeCustomizations(JSON.stringify({
         schemaVersion: 1,
         overrides: {
             'nord-light': ACCESSIBLE_COLORS,
@@ -55,9 +55,9 @@ test('custom theme documents keep only complete known-theme color sets', () => {
         },
     }));
 
-    assert.deepEqual(Object.keys(document.overrides), ['nord-light']);
-    assert.deepEqual(themeCustomizationFor('nord-light', document), ACCESSIBLE_COLORS);
-    assert.equal(themeCustomizationFor('mocha', document), null);
+    assert.deepEqual(Object.keys(customizations.overrides), ['nord-light']);
+    assert.deepEqual(themeCustomizationFor('nord-light', customizations), ACCESSIBLE_COLORS);
+    assert.equal(themeCustomizationFor('mocha', customizations), null);
     assert.deepEqual(parseThemeCustomizations('{broken'), { schemaVersion: 1, overrides: {} });
     assert.deepEqual(parseThemeCustomizations({ schemaVersion: 99, overrides: {} }), {
         schemaVersion: 1,
@@ -128,12 +128,12 @@ test('applying a customization owns only its declared semantic properties', () =
 });
 
 test('stored customization applies only to the requested concrete theme', () => {
-    const document = parseThemeCustomizations({
+    const customizations = parseThemeCustomizations({
         schemaVersion: 1,
         overrides: { 'nord-light': ACCESSIBLE_COLORS },
     });
     const root = createRoot();
 
-    assert.equal(applyStoredThemeCustomization(root, 'nord', document).applied, false);
-    assert.equal(applyStoredThemeCustomization(root, 'nord-light', document).applied, true);
+    assert.equal(applyStoredThemeCustomization(root, 'nord', customizations).applied, false);
+    assert.equal(applyStoredThemeCustomization(root, 'nord-light', customizations).applied, true);
 });
