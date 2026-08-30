@@ -6,6 +6,9 @@ import pytest
 
 INDEX_HTML = Path(__file__).resolve().parent.parent / "src" / "static" / "index.html"
 DASHBOARD_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.js"
+HISTORICAL_DASHBOARD_JS = (
+    DASHBOARD_JS.parent / "js" / "dashboard" / "historical-dashboard.js"
+)
 DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
 
 
@@ -13,7 +16,7 @@ DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "das
 def source() -> str:
     return "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (INDEX_HTML, DASHBOARD_JS, DASHBOARD_CSS)
+        for path in (INDEX_HTML, DASHBOARD_JS, HISTORICAL_DASHBOARD_JS, DASHBOARD_CSS)
     )
 
 
@@ -60,7 +63,7 @@ def test_render_ranking_list_helper_exists(source):
     block = _function_block(source, "renderRankingList")
     assert "container.replaceChildren()" in block
     assert "Math.max(0, Math.min(100" in block
-    assert "style.width = `${pct}%`" in block
+    assert "style.width = `${percentage}%`" in block
 
 
 def test_render_ranking_list_uses_create_element_only(source):
@@ -99,7 +102,7 @@ def test_ranking_table_is_not_locked_to_chart_height(source):
 def test_ranking_rows_always_reserve_a_cover_slot(source):
     block = _function_block(source, "renderRankingList")
     assert "createRankingFallback(" in block
-    assert "else row.appendChild(createRankingFallback(labelValue))" in block
+    assert "cover || createRankingFallback(labelValue)" in block
     fallback = _function_block(source, "createRankingFallback")
     assert "ranking-cover-fallback" in fallback
     assert "onError: (image) => image.replaceWith(createRankingFallback(labelValue))" in block

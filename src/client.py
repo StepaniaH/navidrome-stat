@@ -6,6 +6,13 @@ import string
 import httpx
 from dotenv import load_dotenv
 
+DEFAULT_COVER_ART_MAX_BYTES = 10 * 1024 * 1024
+
+
+class CoverArtTooLargeError(ValueError):
+    """The upstream cover exceeded the bounded proxy response size."""
+
+
 # Support local .env configuration.
 load_dotenv()
 
@@ -51,16 +58,39 @@ class NavidromeClient:
         """Return one getSongHistory page (endpoint proposed upstream, PR #5650)."""
         return await self._get_json("getSongHistory", size=str(size), offset=str(offset))
 
-    async def get_cover_art(self, item_id: str, size: int):
+    async def get_cover_art(
+        self,
+        item_id: str,
+        size: int,
+        *,
+        max_bytes: int = DEFAULT_COVER_ART_MAX_BYTES,
+    ):
         """Return raw cover art bytes and their content type."""
         params = self.get_auth_params()
         params.pop("f", None)
         params["id"] = item_id
         params["size"] = str(size)
-        response = await self._http_client.get(f"{self.url}/rest/getCoverArt", params=params)
-        response.raise_for_status()
-        content_type = response.headers.get("content-type", "image/jpeg").split(";")[0].strip()
-        return response.content, content_type
+        async with self._http_client.stream(
+            "GET",
+            f"{self.url}/rest/getCoverArt",
+            params=params,
+        ) as response:
+            response.raise_for_status()
+            content_length = response.headers.get("content-length")
+            if content_length is not None:
+                try:
+                    declared_bytes = int(content_length)
+                except ValueError:
+                    declared_bytes = None
+                if declared_bytes is not None and declared_bytes > max_bytes:
+                    raise CoverArtTooLargeError("cover art response is too large")
+            data = bytearray()
+            async for chunk in response.aiter_bytes():
+                if len(data) + len(chunk) > max_bytes:
+                    raise CoverArtTooLargeError("cover art response is too large")
+                data.extend(chunk)
+            content_type = response.headers.get("content-type", "").split(";", 1)[0].strip()
+            return bytes(data), content_type
 
     async def search3(self, query: str, *, album_count: int = 5):
         """Return album hits for a free-text search."""

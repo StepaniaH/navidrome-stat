@@ -1,8 +1,10 @@
 """Consistent dashboard reads over one SQLite snapshot."""
 
-from datetime import date
+import time
 
 from src import config
+from src.config import env_int
+from src.runtime_state import runtime_state
 from src.schemas import HISTORY_LIMIT_DEFAULT, TOP_LIMIT_DEFAULT
 from src.server_registry import list_server_options
 from src.sqlite import read_snapshot
@@ -16,6 +18,14 @@ from src.stats_queries import (
     get_top_artists,
     get_transcoding_stats,
 )
+from src.stats_scope import StatsScope
+
+QUERY_BUDGET_SECONDS = env_int(
+    "STATS_QUERY_BUDGET_MS",
+    default=250,
+    min_value=10,
+    max_value=60_000,
+) / 1000
 
 
 class StatsReadRepository:
@@ -27,51 +37,67 @@ class StatsReadRepository:
     def _path(self) -> str:
         return config.DATABASE_PATH if self._db_path is None else self._db_path
 
-    async def dashboard(
-        self,
-        *,
-        days: int,
-        timezone_name: str,
-        metric: str,
-        source_id: str | None,
-        start_date: date | None,
-        end_date: date | None,
-        username: str | None = None,
-    ) -> dict:
+    @staticmethod
+    async def _timed(query: str, operation):
+        started = time.perf_counter()
+        try:
+            return await operation
+        finally:
+            runtime_state.record_stats_query(
+                query,
+                time.perf_counter() - started,
+                budget_seconds=QUERY_BUDGET_SECONDS,
+            )
+
+    async def dashboard(self, scope: StatsScope) -> dict:
         """Return every local dashboard section from one SQLite read snapshot."""
 
-        scope = {
-            "days": days,
-            "timezone_name": timezone_name,
-            "source_id": source_id,
-            "username": username,
-            "start_date": start_date,
-            "end_date": end_date,
-        }
+        query_scope = scope.query_kwargs()
         path = self._path()
         async with read_snapshot(path):
-            summary = await get_summary(db_path=path, **scope)
-            players = await get_player_stats(db_path=path, **scope)
-            transcoding = await get_transcoding_stats(db_path=path, **scope)
-            time_buckets = await get_time_bucket_stats(db_path=path, **scope)
-            history = await get_playback_history(
-                limit=HISTORY_LIMIT_DEFAULT,
-                db_path=path,
-                **scope,
+            summary = await self._timed(
+                "summary", get_summary(db_path=path, **query_scope)
             )
-            servers = await get_server_stats(db_path=path, **scope)
-            available_servers = await list_server_options(db_path=path)
-            top_artists = await get_top_artists(
-                limit=TOP_LIMIT_DEFAULT,
-                metric=metric,
-                db_path=path,
-                **scope,
+            players = await self._timed(
+                "players", get_player_stats(db_path=path, **query_scope)
             )
-            top_albums = await get_top_albums(
-                limit=TOP_LIMIT_DEFAULT,
-                metric=metric,
-                db_path=path,
-                **scope,
+            transcoding = await self._timed(
+                "transcoding", get_transcoding_stats(db_path=path, **query_scope)
+            )
+            time_buckets = await self._timed(
+                "time_buckets", get_time_bucket_stats(db_path=path, **query_scope)
+            )
+            history = await self._timed(
+                "history",
+                get_playback_history(
+                    limit=HISTORY_LIMIT_DEFAULT,
+                    db_path=path,
+                    **query_scope,
+                ),
+            )
+            servers = await self._timed(
+                "servers", get_server_stats(db_path=path, **query_scope)
+            )
+            available_servers = await self._timed(
+                "available_servers", list_server_options(db_path=path)
+            )
+            top_artists = await self._timed(
+                "top_artists",
+                get_top_artists(
+                    limit=TOP_LIMIT_DEFAULT,
+                    metric=scope.metric,
+                    db_path=path,
+                    **query_scope,
+                ),
+            )
+            top_albums = await self._timed(
+                "top_albums",
+                get_top_albums(
+                    limit=TOP_LIMIT_DEFAULT,
+                    metric=scope.metric,
+                    db_path=path,
+                    **query_scope,
+                ),
             )
 
         return {

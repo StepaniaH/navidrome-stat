@@ -1,15 +1,35 @@
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
-from src.client import NavidromeClient, generate_auth
+from src.client import CoverArtTooLargeError, NavidromeClient, generate_auth
 
 
 def test_generate_auth():
     token, salt = generate_auth("password")
     assert len(token) == 32
     assert len(salt) == 6
+
+
+@pytest.mark.asyncio
+async def test_cover_art_stream_stops_at_response_limit():
+    client = NavidromeClient(
+        url="http://navidrome.example.invalid",
+        user="synthetic-user",
+        password="synthetic-password",
+    )
+    await client._http_client.aclose()
+    client._http_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, content=b"\xff\xd8\xff" + b"x" * 20)
+        )
+    )
+
+    with pytest.raises(CoverArtTooLargeError):
+        await client.get_cover_art("cover-1", 300, max_bytes=8)
+    await client.close()
 
 @pytest.mark.asyncio
 @patch.dict(os.environ, {

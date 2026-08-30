@@ -11,6 +11,10 @@ SCHEMA_VERSION = 13
 LEGACY_SOURCE_ID = "legacy"
 LEGACY_SOURCE_NAME = "Legacy environment source"
 
+
+class UnsupportedSchemaVersionError(RuntimeError):
+    """Raised when this application is older than the database schema."""
+
 # Text columns shared by play_history and play_attempts; storage-size estimates
 # sum these lengths plus a fixed 16-byte per-row overhead.
 TEXT_COLUMNS = (
@@ -67,12 +71,36 @@ async def _get_schema_version(db: aiosqlite.Connection) -> int:
     return int(value) if value is not None else 0
 
 
+async def _peek_schema_version(db: aiosqlite.Connection) -> int:
+    """Read an existing version without creating or altering schema objects."""
+    async with db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_meta'"
+    ) as cursor:
+        if await cursor.fetchone() is None:
+            return 0
+    async with db.execute(
+        "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+    ) as cursor:
+        row = await cursor.fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def _ensure_supported_schema_version(version: int) -> None:
+    if version > SCHEMA_VERSION:
+        raise UnsupportedSchemaVersionError(
+            f"Database schema version {version} is newer than this application supports "
+            f"({SCHEMA_VERSION}). Start a compatible newer Navidrome Stat version or restore "
+            "a backup created before the downgrade."
+        )
+
+
 async def _set_schema_version(db: aiosqlite.Connection, version: int) -> None:
     await set_meta_value(db, "schema_version", str(version))
 
 
 async def _apply_migrations(db: aiosqlite.Connection, db_path: str) -> None:
     version = await _get_schema_version(db)
+    _ensure_supported_schema_version(version)
 
     if version < 1:
         await db.execute("""
@@ -372,7 +400,11 @@ async def init_db(db_path: str | None = None):
     """Initialize the schema and recover durable playback checkpoints."""
     path = _path(db_path)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
+    if Path(path).exists():
+        async with connect_db(path) as existing_db:
+            _ensure_supported_schema_version(await _peek_schema_version(existing_db))
     async with connect_db(path, initialize=True) as db:
+        _ensure_supported_schema_version(await _peek_schema_version(db))
         await db.execute("""
             CREATE TABLE IF NOT EXISTS play_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

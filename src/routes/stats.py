@@ -59,6 +59,7 @@ from src.schemas import (
     UsersResponse,
     WeekdayHourStat,
 )
+from src.stats_scope import StatsScope
 from src.stats_service import stats_service
 
 logger = logging.getLogger(__name__)
@@ -180,21 +181,19 @@ async def api_dashboard_snapshot(
     username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return one cached historical payload; now-playing remains real-time."""
-    window = _validate_stats_days(days)
-    tz = _validate_stats_timezone(timezone)
-    ranking = _validate_ranking_metric(metric)
-    start_date, end_date = _validate_custom_date_range(start_date, end_date)
-    return await _query_stats(
-        lambda: stats_service.dashboard(
-            days=window,
-            timezone_name=tz,
-            metric=ranking,
+    try:
+        scope = StatsScope.create(
+            days=days,
+            timezone_name=timezone,
+            metric=metric,
             source_id=source_id,
             start_date=start_date,
             end_date=end_date,
             username=username,
         )
-    )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await _query_stats(lambda: stats_service.dashboard(scope))
 
 
 @router.get("/api/stats/summary", response_model=SummaryStat)
@@ -497,6 +496,7 @@ async def api_review(
     year: int = Query(default=0, ge=0, le=9999),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return the year-in-review aggregation for one local calendar year."""
     from datetime import datetime
@@ -507,5 +507,10 @@ async def api_review(
     if not 1970 <= year <= 2075:
         raise HTTPException(status_code=422, detail="year must be between 1970 and 2075")
     return await _query_stats(
-        lambda: stats_service.review(year=year, timezone_name=tz, source_id=source_id)
+        lambda: stats_service.review(
+            year=year,
+            timezone_name=tz,
+            source_id=source_id,
+            username=username,
+        )
     )

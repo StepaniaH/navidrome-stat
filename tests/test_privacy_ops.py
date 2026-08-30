@@ -65,7 +65,8 @@ async def test_retention_preview_includes_size_estimates(db_path):
     preview = await preview_retention_purge(db_path=db_path)
     assert preview["records_to_delete"] == 1
     assert preview["bytes_to_delete"] > 0
-    assert preview["estimated_database_bytes_after"] <= preview["database_bytes"]
+    # DELETE makes pages reusable inside SQLite but does not shrink the file.
+    assert preview["estimated_database_bytes_after"] == preview["database_bytes"]
 
     result = await apply_retention_purge(db_path=db_path)
     assert result["deleted"] == 1
@@ -306,7 +307,7 @@ async def test_retention_compares_offset_timestamps_by_instant(db_path, monkeypa
                 return frozen.replace(tzinfo=None)
             return frozen.astimezone(tz)
 
-    monkeypatch.setattr("src.privacy_ops.datetime", FrozenDateTime)
+    monkeypatch.setattr("src.privacy_retention.datetime", FrozenDateTime)
 
     # 2026-07-22 09:00 UTC, encoded as +14:00 so a string compare against a
     # space-separated UTC cutoff would keep the row.

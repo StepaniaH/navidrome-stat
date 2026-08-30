@@ -17,6 +17,7 @@ from src.schema import (  # noqa: F401
     PAYLOAD_BYTES_SQL,
     SCHEMA_VERSION,
     TEXT_COLUMNS,
+    UnsupportedSchemaVersionError,
     get_meta_value,
     init_db,
     ping_db,

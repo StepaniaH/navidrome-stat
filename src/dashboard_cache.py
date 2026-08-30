@@ -8,6 +8,8 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from src.runtime_state import runtime_state
+
 
 class DashboardSnapshotCache:
     def __init__(self, ttl_sec: int = 60, max_entries: int = 64):
@@ -31,14 +33,17 @@ class DashboardSnapshotCache:
             now = time.monotonic()
             if cached is not None and cached[0] > now:
                 self._entries.move_to_end(key)
+                runtime_state.record_dashboard_cache_hit()
                 return cached[1]
             self._entries.pop(key, None)
             inflight = self._inflight.get(key)
             if inflight is None:
+                runtime_state.record_dashboard_cache_miss()
                 generation = self._generation
                 task = asyncio.create_task(factory())
                 self._inflight[key] = (task, generation)
             else:
+                runtime_state.record_dashboard_cache_shared()
                 task, generation = inflight
 
         try:

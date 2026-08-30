@@ -9,6 +9,7 @@ SETTINGS_JS = ROOT / "src" / "static" / "settings.js"
 LISTBOX_JS = ROOT / "src" / "static" / "js" / "listbox.js"
 APPEARANCE_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "appearance-settings.js"
 CONNECTION_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "connection-settings.js"
+PRIVACY_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "privacy-settings.js"
 LOCALIZATION_JS = ROOT / "src" / "static" / "localization.js"
 THEMES_JS = ROOT / "src" / "static" / "js" / "themes.js"
 
@@ -63,13 +64,12 @@ def test_all_settings_selectors_use_the_shared_custom_listbox():
     script = _read(SETTINGS_JS)
     listbox = _read(LISTBOX_JS)
     assert "<select" not in html
-    for control_id in (
-        "languageSelect",
-        "settingsTimezoneSelect",
-        "userSelect",
-    ):
+    for control_id in ("languageSelect", "settingsTimezoneSelect"):
         assert f'id="{control_id}"' in html
         assert f"registerSettingsListbox('{control_id}'" in script
+    privacy_script = _read(PRIVACY_SETTINGS_JS)
+    assert 'id="userSelect"' in html
+    assert "registerListbox('userSelect'" in privacy_script
     assert html.count('aria-haspopup="listbox"') == 3
     assert html.count('role="listbox"') == 3
     assert 'id="themeSelect"' not in html
@@ -124,7 +124,7 @@ def test_theme_catalogs_do_not_keep_obsolete_concrete_variant_labels():
 
 def test_dynamic_privacy_policy_is_not_a_static_translation_target():
     html = _read(SETTINGS_HTML)
-    script = _read(SETTINGS_JS)
+    script = _read(PRIVACY_SETTINGS_JS)
     policy_markup = html[
         html.index('id="policySummary"') - 80 : html.index('id="policySummary"') + 220
     ]
@@ -135,7 +135,8 @@ def test_dynamic_privacy_policy_is_not_a_static_translation_target():
     assert "state.privacyStatus = 'error'" in script
     assert "privacy.policyLoadError" in script
     assert "summary.closest('.status-line').dataset.state" in script
-    assert "renderLocalizedState()" in script
+    assert "function localize()" in script
+    assert "renderPolicySummary();" in script
 
 
 def test_shared_localization_runtime_has_fallback_interpolation_and_dom_translation():
@@ -192,7 +193,7 @@ def test_local_preferences_include_motion_and_reset_without_server_writes():
     assert "document.documentElement.dataset.motion = motion" in script
     preferences_block = script[
         script.index("function bindPreferenceControls()") : script.index(
-            "function bindPrivacyControls()"
+            "function bindAuthentication()"
         )
     ]
     assert "apiFetch(" not in preferences_block
@@ -215,7 +216,7 @@ def test_settings_loads_shared_theme_assets_and_registry():
 
 def test_sensitive_values_use_safe_dom_apis_and_password_is_never_rendered():
     html = _read(SETTINGS_HTML)
-    script = _read(SETTINGS_JS) + _read(CONNECTION_SETTINGS_JS)
+    script = _read(SETTINGS_JS) + _read(CONNECTION_SETTINGS_JS) + _read(PRIVACY_SETTINGS_JS)
     assert 'id="sourcePass"' in html
     assert 'type="password"' in html
     assert "innerHTML" not in script
@@ -242,7 +243,7 @@ def test_server_settings_apply_immediately_without_restart_copy():
 
 def test_retention_copy_matches_automatic_cleanup_and_apply_uses_saved_policy():
     html = _read(SETTINGS_HTML)
-    script = _read(SETTINGS_JS)
+    script = _read(PRIVACY_SETTINGS_JS)
     assert "deleted automatically at startup and during background maintenance" in html
     zh_catalog = _read(ROOT / "src" / "static" / "js" / "i18n" / "locales" / "zh-CN.js")
     assert "有限策略会在启动和后台维护时自动执行" in zh_catalog
@@ -273,7 +274,7 @@ def test_source_form_has_explicit_create_and_edit_modes():
 
 def test_destructive_previews_ignore_stale_responses_and_import_is_keyboard_reachable():
     html = _read(SETTINGS_HTML)
-    script = _read(SETTINGS_JS)
+    script = _read(PRIVACY_SETTINGS_JS)
     assert "new AbortController()" in script
     assert "retentionPreviewController !== controller" in script
     assert "userPreviewController !== controller" in script

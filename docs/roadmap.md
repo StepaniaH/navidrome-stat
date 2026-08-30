@@ -12,8 +12,8 @@ This roadmap describes project direction, not release commitments. Shipped chang
 
 ## Medium term
 
-- Add daily or hourly rollups only when the epoch-indexed, streamed raw-history queries exceed the multi-scale benchmark budget; keep raw SQLite history as the source of truth.
-- Separate viewer and administrator authorization, and apply user scope consistently to the year-in-review experience.
+- Add daily or hourly rollups only when fixed-section production query metrics and the multi-scale benchmark repeatedly exceed their budgets; keep raw SQLite history as the source of truth.
+- Separate viewer and administrator authorization while preserving the shipped dashboard and year-in-review user scope.
 - Watch upstream for a public Navidrome listening-history read API (the `getSongHistory` proposal) so the existing guarded importer can be enabled against a released endpoint.
 - Offer opt-in ListenBrainz-format scrobble forwarding with per-server deduplication.
 

@@ -7,10 +7,11 @@ callers use ``dashboard()`` and keep their cache keys opaque.
 
 import asyncio
 import logging
+import sqlite3
 import threading
+import time
 from collections import OrderedDict
 from collections.abc import Callable
-from datetime import date
 from weakref import WeakKeyDictionary
 
 from src.config import env_int
@@ -27,6 +28,7 @@ from src.runtime_state import runtime_state
 from src.schema import LEGACY_SOURCE_ID
 from src.server_registry import delete_server, list_server_options, save_server
 from src.stats_read_repository import StatsReadRepository, stats_read_repository
+from src.stats_scope import StatsScope
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +40,20 @@ def exception_kind(exc: Exception) -> str:
     return type(exc).__name__
 
 
+def _is_sqlite_busy(exc: Exception) -> bool:
+    return isinstance(exc, sqlite3.OperationalError) and any(
+        marker in str(exc).lower() for marker in ("locked", "busy")
+    )
+
+
 async def retry_save(operation, *, kind: str, attempts: int):
     """Run ``operation`` with backoff; returns its result on success."""
     for attempt in range(1, attempts + 1):
         try:
             return await operation()
         except Exception as exc:
+            if _is_sqlite_busy(exc):
+                runtime_state.record_sqlite_busy(retried=attempt < attempts)
             if attempt >= attempts:
                 logger.error(
                     "%s persistence failed (type=%s, attempts=%s)",
@@ -159,21 +169,25 @@ class StatsService:
         """Write importer events through the idempotent dedup path."""
         if not events:
             return 0
+        started = time.perf_counter()
         source_id = str(events[0].get("source_id") or "legacy")
-        async with playback_mutation_lock():
-            try:
-                imported = await retry_save(
-                    lambda: save_imported_events(events),
-                    kind="imported_events",
-                    attempts=self._retry_attempts,
-                )
-                runtime_state.record_save_success(source_id)
-            except Exception:
-                runtime_state.record_save_failure(source_id)
-                raise
-        if imported:
-            await self._cache.invalidate()
-        return imported
+        try:
+            async with playback_mutation_lock():
+                try:
+                    imported = await retry_save(
+                        lambda: save_imported_events(events),
+                        kind="imported_events",
+                        attempts=self._retry_attempts,
+                    )
+                    runtime_state.record_save_success(source_id)
+                except Exception:
+                    runtime_state.record_save_failure(source_id)
+                    raise
+            if imported:
+                await self._cache.invalidate()
+            return imported
+        finally:
+            runtime_state.record_import(time.perf_counter() - started)
 
     async def purge_retention(self) -> dict:
         result = await apply_retention_purge()
@@ -182,10 +196,14 @@ class StatsService:
         return result
 
     async def import_user(self, username: str, payload: dict, *, merge: bool) -> dict:
-        result = await import_user_data(username, payload, merge=merge)
-        if not merge or result["imported"] or result.get("attempts_imported", 0):
-            await self._cache.invalidate()
-        return result
+        started = time.perf_counter()
+        try:
+            result = await import_user_data(username, payload, merge=merge)
+            if not merge or result["imported"] or result.get("attempts_imported", 0):
+                await self._cache.invalidate()
+            return result
+        finally:
+            runtime_state.record_import(time.perf_counter() - started)
 
     async def delete_user(self, username: str) -> dict:
         async with playback_mutation_lock():
@@ -211,37 +229,33 @@ class StatsService:
         await self._cache.invalidate()
         return True
 
-    async def dashboard(
+    async def dashboard(self, scope: StatsScope) -> dict:
+        async def build() -> dict:
+            started = time.perf_counter()
+            try:
+                return await self._build_snapshot(scope)
+            finally:
+                runtime_state.record_dashboard_build(time.perf_counter() - started)
+
+        return await self._cache.get_or_create(("dashboard", scope), build)
+
+    async def review(
         self,
         *,
-        days: int,
+        year: int,
         timezone_name: str,
-        metric: str,
-        source_id: str | None,
-        start_date: date | None = None,
-        end_date: date | None = None,
+        source_id: str | None = None,
         username: str | None = None,
-    ) -> dict:
-        key = (days, timezone_name, metric, source_id, start_date, end_date, username)
+    ):
+        key = ("review", year, timezone_name, source_id, username)
 
         async def build() -> dict:
-            return await self._build_snapshot(
-                days=days,
-                timezone_name=timezone_name,
-                metric=metric,
+            summary = await get_review_summary(
+                year,
+                timezone_name,
                 source_id=source_id,
-                start_date=start_date,
-                end_date=end_date,
                 username=username,
             )
-
-        return await self._cache.get_or_create(key, build)
-
-    async def review(self, *, year: int, timezone_name: str, source_id: str | None = None):
-        key = ("review", year, timezone_name, source_id)
-
-        async def build() -> dict:
-            summary = await get_review_summary(year, timezone_name, source_id=source_id)
             servers = await list_server_options()
             summary["top_albums"] = await self._attach_album_ids(
                 source_id, summary["top_albums"], servers
@@ -294,31 +308,17 @@ class StatsService:
             attached.append({**entry, "album_id": album_id})
         return attached
 
-    async def _build_snapshot(
-        self,
-        *,
-        days: int,
-        timezone_name: str,
-        metric: str,
-        source_id: str | None,
-        start_date: date | None,
-        end_date: date | None,
-        username: str | None = None,
-    ) -> dict:
-        snapshot = await self._read_repository.dashboard(
-            days=days,
-            timezone_name=timezone_name,
-            metric=metric,
-            source_id=source_id,
-            username=username,
-            start_date=start_date,
-            end_date=end_date,
-        )
+    async def _build_snapshot(self, scope: StatsScope) -> dict:
+        snapshot = await self._read_repository.dashboard(scope)
         summary = snapshot["summary"]
         time_buckets = snapshot["time_buckets"]
         available_servers = snapshot["available_servers"]
         top_albums = snapshot["top_albums"]
-        top_albums = await self._attach_album_ids(source_id, top_albums, available_servers)
+        top_albums = await self._attach_album_ids(
+            scope.source_id,
+            top_albums,
+            available_servers,
+        )
         return {
             "summary": summary,
             "players": snapshot["players"],

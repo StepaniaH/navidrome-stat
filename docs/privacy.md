@@ -30,6 +30,8 @@ Subsonic authentication uses token and salt query parameters. The application av
 
 Listening records are retained permanently by default. Saving a finite retention policy of 1–360 days authorizes the service to delete older records during startup and periodic background maintenance. The settings page previews the affected records and asks for confirmation before saving a finite policy. Its separate **Apply now** action has its own preview and confirmation before running the purge immediately. That action is bound to the policy used for its preview; if another session changes the saved policy, no records are deleted until the preview is refreshed.
 
+Retention cleanup deletes rows but does not run SQLite `VACUUM`. Deleted pages remain inside the database file for SQLite to reuse, so the preview reports affected records and estimated deleted record payload without claiming that the file or operating-system disk usage will shrink.
+
 Per-user controls support JSON export, import, and deletion. Format v3 exports include each row's stable record ID and a SHA-256 fingerprint of its normalized contents. These values let repeated imports distinguish duplicates from conflicting rows; they are not credentials, but they remain part of the sensitive listening-history export and can link copies of the same exported record. Formats v1 and v2 remain importable and receive deterministic identities during import.
 
 Deleting a user discards that user's active in-memory sessions and suppresses writes already queued for those sessions. Playback observed after deletion starts a new session and is collected normally. Deletion from the application database does not remove exports or copies already present in backups or external storage.

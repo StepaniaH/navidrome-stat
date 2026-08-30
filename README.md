@@ -27,14 +27,14 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 
 - Aggregates current and historical playback across clients, devices, users, and Navidrome servers.
 - Shows listening time, play history, hourly and daily trends, a weekday × hour heatmap, client usage, transcoding, and artist, album, or track rankings.
-- A year-in-review page with totals, listening streaks, monthly and time-of-day charts, top lists, and URL-persisted year, server, and timezone scope.
+- A year-in-review page with totals, listening streaks, monthly and time-of-day charts, top lists, and URL-persisted year, server, user, and timezone scope.
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.
 - System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview, grouped contrast validation, HEX copy, unsaved-change protection, and strict per-preset JSON import or export. Appearance choices stay in the browser and apply across the dashboard, year-in-review, settings, and API reference; seven interface languages are available.
 - Dashboard filters and year-in-review scope persist in the URL, so views survive reloads and can be shared as links.
 - The recent-plays table has configurable column visibility on desktop and mobile, saved per browser.
 - Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
 - Supports per-server filtering, connection management with first-use guidance and redacted failure diagnosis, retention settings, and per-user JSON export, import, and deletion.
-- Filter the dashboard by user as well as server; the year-in-review charts switch between play counts and listening time.
+- Filter the dashboard and year-in-review by user as well as server; the review charts switch between play counts and listening time.
 - Offers optional token authentication for dashboard data and APIs.
 - Serves pinned frontend assets locally and runs as a non-root user in the published container.
 
@@ -153,6 +153,8 @@ Open `http://localhost:39421`. When `STATS_API_TOKEN` is configured, enter it in
 | `DATABASE_URL` | `.data/navidrome_stats.db` | SQLite file path for new local checkouts; an existing root-level `navidrome_stats.db` is still detected. Docker Compose sets `/data/navidrome_stats.db`. Despite the name, this is not a general database URL. |
 | `STATS_API_TOKEN` | Empty | Protects dashboard data, application APIs, and OpenAPI routes when set. |
 | `STATS_METRICS_AUTH` | `false` | Requires authentication for `/metrics` when both this option and `STATS_API_TOKEN` are set. |
+| `STATS_QUERY_BUDGET_MS` | `250` | Per-section Dashboard query budget used by `/metrics`, limited to 10–60000 ms. It observes regressions; it does not enable rollups. |
+| `COVER_ART_RESPONSE_MAX_BYTES` | `10485760` | Maximum upstream cover-art response accepted by the proxy, limited to 65536–67108864 bytes. |
 | `OPENAPI_ENABLED` | `true` | Set to `false` to remove `/docs`, `/redoc`, and `/openapi.json`. |
 | `POLL_INTERVAL` | `10` | Poll interval in seconds, limited to 5–300. |
 | `PLAY_THRESHOLD_SEC` | `30` | Active observed seconds required to count a play, limited to 1–3600. |
@@ -248,6 +250,7 @@ To restore production, stop the service, preserve the current volume, extract th
 
 - Without `STATS_API_TOKEN`, dashboard data and APIs are anonymous. Use this only on a trusted network.
 - `/health` and `/health/ready` remain public. `/metrics` is public by default unless `STATS_METRICS_AUTH=true` is used with a token.
+- `/metrics` includes polling and persistence health plus Dashboard build/cache, fixed-section query timing and budget violations, SQLite busy retry, import-duration, and cover-art cache metrics.
 - Static dashboard files remain loadable when authentication is enabled; their data requests require authorization.
 - The browser policy restricts scripts and styles to this service, blocks executable inline scripts, embedded objects, and cross-origin form targets, while permitting inline styles used by the bundled pages.
 - Listening records are kept indefinitely by default. Saving a finite 1–360 day policy authorizes automatic cleanup at startup and during background maintenance.

@@ -2,10 +2,12 @@
 
 import logging
 from datetime import datetime, timezone
+from typing import Any, Mapping
 
 import aiosqlite
 
 from src import config
+from src.core_types import ServerConfig
 from src.secretbox import decrypt, encrypt, is_encrypted, read_key_if_present
 from src.sqlite import connect_db
 
@@ -64,10 +66,14 @@ async def get_server(server_id: str, db_path: str | None = None):
     return next((row for row in rows if row["id"] == server_id), None)
 
 
-async def save_server(server: dict, db_path: str | None = None) -> None:
+async def save_server(
+    server: ServerConfig | Mapping[str, Any],
+    db_path: str | None = None,
+) -> None:
+    server = server if isinstance(server, ServerConfig) else ServerConfig.from_mapping(server)
     path = _path(db_path)
     now = datetime.now(timezone.utc).isoformat()
-    stored_password = encrypt(server["password"], db_path=path)
+    stored_password = encrypt(server.password, db_path=path)
     async with connect_db(path) as db:
         await db.execute(
             """
@@ -79,13 +85,13 @@ async def save_server(server: dict, db_path: str | None = None) -> None:
                 updated_at=excluded.updated_at
         """,
             (
-                server["id"],
-                server["display_name"],
-                server["url"],
-                server["username"],
+                server.id,
+                server.display_name,
+                server.url,
+                server.username,
                 stored_password,
-                int(server.get("enabled", True)),
-                server.get("backfill_playlist_id") or None,
+                int(server.enabled),
+                server.backfill_playlist_id,
                 now,
                 now,
             ),

@@ -22,6 +22,39 @@ from tests.migration_fixtures import build_legacy_db
 CURRENT_SCHEMA_VERSION = 13
 
 
+@pytest.mark.asyncio
+async def test_init_db_rejects_schema_from_newer_application(db_path):
+    future_version = CURRENT_SCHEMA_VERSION + 1
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        db.execute(
+            "INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)",
+            (str(future_version),),
+        )
+        db.execute("CREATE TABLE future_only (value TEXT)")
+
+    with sqlite3.connect(db_path) as db:
+        tables_before = {
+            row[0]
+            for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+
+    with pytest.raises(RuntimeError, match=f"schema version {future_version}.*supports"):
+        await init_db(db_path)
+
+    with sqlite3.connect(db_path) as db:
+        stored = db.execute(
+            "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+        ).fetchone()[0]
+        tables_after = {
+            row[0]
+            for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+    assert stored == str(future_version)
+    assert tables_after == tables_before
+    assert "play_history" not in tables_after
+
+
 @pytest.mark.parametrize("from_version", [0, 2, 4])
 def test_legacy_databases_upgrade_with_row_and_metadata_preserved(db_path, from_version):
     asyncio.run(_assert_legacy_upgrade(db_path, from_version))

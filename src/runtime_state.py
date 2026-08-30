@@ -30,6 +30,14 @@ class CollectorRuntimeState:
 
 
 @dataclass
+class QueryTiming:
+    count: int = 0
+    duration_seconds: float = 0.0
+    max_duration_seconds: float = 0.0
+    over_budget_count: int = 0
+
+
+@dataclass
 class RuntimeState:
     polling_task: Optional[asyncio.Task] = None
     client_initialized: bool = False
@@ -42,6 +50,20 @@ class RuntimeState:
     save_failure_count: int = 0
     last_save_at: Optional[datetime] = None
     last_save_ok: Optional[bool] = None
+    dashboard_cache_hit_count: int = 0
+    dashboard_cache_miss_count: int = 0
+    dashboard_cache_shared_count: int = 0
+    dashboard_build_count: int = 0
+    dashboard_build_duration_seconds: float = 0.0
+    sqlite_busy_count: int = 0
+    sqlite_retry_count: int = 0
+    import_count: int = 0
+    import_duration_seconds: float = 0.0
+    coverart_cache_hit_count: int = 0
+    coverart_cache_miss_count: int = 0
+    coverart_cache_bytes: int = 0
+    coverart_cache_limit_bytes: int = 0
+    stats_query_timings: dict[str, QueryTiming] = field(default_factory=dict)
     collectors: dict[str, CollectorRuntimeState] = field(default_factory=dict)
 
     def reset(self) -> None:
@@ -57,7 +79,75 @@ class RuntimeState:
         self.save_failure_count = 0
         self.last_save_at = None
         self.last_save_ok = None
+        self.dashboard_cache_hit_count = 0
+        self.dashboard_cache_miss_count = 0
+        self.dashboard_cache_shared_count = 0
+        self.dashboard_build_count = 0
+        self.dashboard_build_duration_seconds = 0.0
+        self.sqlite_busy_count = 0
+        self.sqlite_retry_count = 0
+        self.import_count = 0
+        self.import_duration_seconds = 0.0
+        self.coverart_cache_hit_count = 0
+        self.coverart_cache_miss_count = 0
+        self.coverart_cache_bytes = 0
+        self.coverart_cache_limit_bytes = 0
+        self.stats_query_timings.clear()
         self.collectors.clear()
+
+    def record_dashboard_cache_hit(self) -> None:
+        self.dashboard_cache_hit_count += 1
+
+    def record_dashboard_cache_miss(self) -> None:
+        self.dashboard_cache_miss_count += 1
+
+    def record_dashboard_cache_shared(self) -> None:
+        self.dashboard_cache_shared_count += 1
+
+    def record_dashboard_build(self, duration_seconds: float) -> None:
+        self.dashboard_build_count += 1
+        self.dashboard_build_duration_seconds += max(float(duration_seconds), 0.0)
+
+    def record_sqlite_busy(self, *, retried: bool) -> None:
+        self.sqlite_busy_count += 1
+        if retried:
+            self.sqlite_retry_count += 1
+
+    def record_import(self, duration_seconds: float) -> None:
+        self.import_count += 1
+        self.import_duration_seconds += max(float(duration_seconds), 0.0)
+
+    def record_stats_query(
+        self,
+        query: str,
+        duration_seconds: float,
+        *,
+        budget_seconds: float,
+    ) -> None:
+        duration = max(float(duration_seconds), 0.0)
+        timing = self.stats_query_timings.setdefault(query, QueryTiming())
+        timing.count += 1
+        timing.duration_seconds += duration
+        timing.max_duration_seconds = max(timing.max_duration_seconds, duration)
+        if duration > max(float(budget_seconds), 0.0):
+            timing.over_budget_count += 1
+
+    def set_coverart_cache_limit(self, limit_bytes: int) -> None:
+        self.coverart_cache_limit_bytes = max(int(limit_bytes), 0)
+
+    def record_coverart_cache_access(
+        self,
+        *,
+        hit: bool,
+        cache_bytes: int,
+        limit_bytes: int,
+    ) -> None:
+        if hit:
+            self.coverart_cache_hit_count += 1
+        else:
+            self.coverart_cache_miss_count += 1
+        self.coverart_cache_bytes = max(int(cache_bytes), 0)
+        self.set_coverart_cache_limit(limit_bytes)
 
     def _collector(self, source_id: str) -> CollectorRuntimeState:
         return self.collectors.setdefault(source_id, CollectorRuntimeState())

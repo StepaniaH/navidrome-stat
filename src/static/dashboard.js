@@ -3,19 +3,18 @@ import { createI18n } from './localization.js';
 import { applyAppVersion } from './js/app-info.js';
 import {
     buildStatsQuery,
-    buildStatsScopeQuery,
-    coverArtUrl,
-    escapeHtml,
-    formatChangeText,
     formatDuration,
     validateCustomRange,
 } from './js/format.js';
-import { createThemeTokens } from './js/charts.js';
-import { onPreferenceChange, readPreference, writePreference } from './js/prefs.js';
-import { attachPopover, createListbox } from './js/listbox.js';
+import { readPreference } from './js/prefs.js';
+import { createListbox } from './js/listbox.js';
 import { getFilters, setFilters } from './js/filters.js';
 import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
 import { createLoginController } from './js/auth.js';
+import { createNowPlaying } from './js/dashboard/now-playing.js';
+import { createHistory } from './js/dashboard/history.js';
+import { createPlayAccounting } from './js/dashboard/play-accounting.js';
+import { createHistoricalDashboard } from './js/dashboard/historical-dashboard.js';
 import {
     apiFetch,
     isAbortError,
@@ -27,133 +26,11 @@ import {
     const REFRESH_MS = 60000;
     const HIDDEN_REFRESH_MS = 300000;
     const NOW_PLAYING_REFRESH_MS = 10000;
-    let colorPalette = [];
-
-    const playerChart = echarts.init(document.getElementById('playerChart'), null, { renderer: 'canvas' });
-    const transcodingChart = echarts.init(document.getElementById('transcodingChart'), null, { renderer: 'canvas' });
-    const hourlyChart = echarts.init(document.getElementById('hourlyChart'), null, { renderer: 'canvas' });
-    const dailyChart = echarts.init(document.getElementById('dailyChart'), null, { renderer: 'canvas' });
-    const weekdayHourChart = echarts.init(document.getElementById('weekdayHourChart'), null, { renderer: 'canvas' });
-
-    function resizeDashboardCharts() {
-        // Resize only on a real size mismatch: resize() interrupts running
-        // update animations, so steady-state calls must be skipped.
-        [playerChart, transcodingChart, hourlyChart, dailyChart, weekdayHourChart].forEach((chart) => {
-            const dom = chart.getDom();
-            if (chart.getWidth() !== dom.clientWidth || chart.getHeight() !== dom.clientHeight) {
-                chart.resize();
-            }
-        });
-    }
-
-    // The backend uses Python's `date.weekday()` order: Monday=0 through Sunday=6.
-    const WEEKDAY_MESSAGE_KEYS = [
-        'weekday.mon', 'weekday.tue', 'weekday.wed', 'weekday.thu',
-        'weekday.fri', 'weekday.sat', 'weekday.sun',
-    ];
-    const HOUR_LABELS = Array.from({ length: 24 }, (_, h) => String(h));
-
-    const HISTORY_COLUMNS_KEY = 'navidrome-history-columns';
-    const HISTORY_COLUMNS = [
-        { id: 'user', label: 'history.user', cell: 'history-cell-user', col: 'history-col-user' },
-        { id: 'track', label: 'history.track', cell: 'history-cell-title', col: 'history-col-track' },
-        { id: 'artist', label: 'history.artist', cell: 'history-cell-artist', col: 'history-col-artist' },
-        { id: 'album', label: 'history.album', cell: 'history-cell-album', col: 'history-col-album' },
-        { id: 'played', label: 'history.lastPlayed', cell: 'history-cell-played', col: 'history-col-played' },
-        { id: 'count', label: 'history.plays', cell: 'history-cell-count', col: 'history-col-count' },
-    ];
-
-    function allHistoryColumns() {
-        return new Set(HISTORY_COLUMNS.map((column) => column.id));
-    }
-
-    function readHistoryColumns() {
-        const raw = readPreference(HISTORY_COLUMNS_KEY, '');
-        if (!raw) return allHistoryColumns();
-        const saved = new Set(raw.split(',')
-            .filter((id) => HISTORY_COLUMNS.some((column) => column.id === id)));
-        return saved.size ? saved : allHistoryColumns();
-    }
-
-    let historyColumns = readHistoryColumns();
-
-    function applyHistoryColumns(columns) {
-        for (const column of HISTORY_COLUMNS) {
-            const visible = columns.has(column.id);
-            document.querySelectorAll(`.history-table .${column.cell}, .history-table col.${column.col}`)
-                .forEach((element) => element.classList.toggle('column-hidden', !visible));
-        }
-    }
-
-    function setupHistoryColumns() {
-        const button = document.getElementById('historyColumnsButton');
-        const panel = document.getElementById('historyColumnsPanel');
-        attachPopover({ trigger: button, panel });
-
-        function updatePanel() {
-            panel.querySelectorAll('.column-option').forEach((option) => {
-                const column = HISTORY_COLUMNS.find(({ id }) => id === option.dataset.columnId);
-                if (!column) return;
-                const active = historyColumns.has(column.id);
-                option.querySelector('.column-option-label').textContent = dashboardMessage(column.label);
-                option.setAttribute('aria-pressed', active ? 'true' : 'false');
-                option.classList.toggle('column-option-off', !active);
-                option.disabled = active && historyColumns.size === 1;
-            });
-        }
-
-        function buildPanel() {
-            const list = document.createElement('div');
-            list.className = 'columns-menu';
-            for (const column of HISTORY_COLUMNS) {
-                const option = document.createElement('button');
-                option.type = 'button';
-                option.className = 'filter-option column-option';
-                option.dataset.columnId = column.id;
-                const text = document.createElement('span');
-                text.className = 'column-option-label';
-                const check = document.createElement('span');
-                check.className = 'option-check';
-                check.setAttribute('aria-hidden', 'true');
-                check.textContent = '✓';
-                option.append(text, check);
-                option.addEventListener('click', () => {
-                    if (historyColumns.has(column.id)) historyColumns.delete(column.id);
-                    else historyColumns.add(column.id);
-                    writePreference(HISTORY_COLUMNS_KEY, [...historyColumns].join(','));
-                    historyColumns = readHistoryColumns();
-                    updatePanel();
-                    applyHistoryColumns(historyColumns);
-                });
-                list.appendChild(option);
-            }
-            panel.replaceChildren(list);
-            updatePanel();
-        }
-
-        buildPanel();
-        applyHistoryColumns(historyColumns);
-        onPreferenceChange(HISTORY_COLUMNS_KEY, () => {
-            historyColumns = readHistoryColumns();
-            updatePanel();
-            applyHistoryColumns(historyColumns);
-        });
-    }
-
     let statsRequestController = null;
-    let nowPlayingRequestController = null;
-    let playAccountingRequestController = null;
     let statsRequestGeneration = 0;
-    let nowPlayingRequestGeneration = 0;
-    let playAccountingRequestGeneration = 0;
-    let playAccountingPopover = null;
-    let playAccountingLoadedQuery = null;
-    let playAccountingPendingQuery = null;
-    let lastPlayAccountingPayload = null;
     let refreshTimer = null;
     let nowPlayingRefreshTimer = null;
     let hasLoadedOnce = false;
-    let nowPlayingLoadedOnce = false;
     let authRequired = false;
     const initialFilters = getFilters();
     let statsDays = initialFilters.days;
@@ -202,6 +79,7 @@ import {
         if (!link) return;
         const params = new URLSearchParams({ timezone: resolveStatsTimezone() });
         if (selectedSourceId) params.set('source_id', selectedSourceId);
+        if (selectedUsername) params.set('username', selectedUsername);
         link.href = `/review?${params.toString()}`;
     }
     syncReviewLink();
@@ -215,20 +93,15 @@ import {
 
     function cancelDashboardRequests() {
         statsRequestGeneration += 1;
-        nowPlayingRequestGeneration += 1;
-        playAccountingRequestGeneration += 1;
         if (statsRequestController) statsRequestController.abort();
-        if (nowPlayingRequestController) nowPlayingRequestController.abort();
-        if (playAccountingRequestController) playAccountingRequestController.abort();
         statsRequestController = null;
-        nowPlayingRequestController = null;
-        playAccountingRequestController = null;
-        playAccountingPendingQuery = null;
+        nowPlaying.cancel();
+        playAccounting.cancel();
     }
 
     function stopDashboardActivity() {
         stopRefreshTimers();
-        stopNowPlayingTicker();
+        nowPlaying.stopTicker();
         cancelDashboardRequests();
         setLoading(false);
     }
@@ -245,20 +118,16 @@ import {
         });
     }
 
-    function captureNowPlayingRequestState() {
-        return Object.freeze({ sourceId: selectedSourceId, username: selectedUsername });
-    }
-
     async function refreshAfterLogin() {
         applyAppVersion();
         await Promise.all([
             Promise.allSettled([fetchUserOptions(), fetchDashboardDiagnostics()]),
             fetchStats(),
-            fetchNowPlaying(),
+            nowPlaying.refresh(),
         ]);
         if (lastStatsSnapshot) {
-            renderHistoryTable(lastStatsSnapshot.history, !selectedSourceId);
-            updateNewUserGuide(lastStatsSnapshot);
+            history.render(lastStatsSnapshot.history, { showSources: !selectedSourceId });
+            history.updateFirstUse(lastStatsSnapshot);
         }
         if (document.getElementById('loginOverlay').classList.contains('hidden')) {
             scheduleRefresh();
@@ -281,16 +150,8 @@ import {
         login.show(message);
     }
 
-    // Theme tokens stay mutable so a preference change can re-color charts live.
-    let chartTheme = createThemeTokens();
-    let chartBase = chartTheme.base;
-    colorPalette = [...chartTheme.palette];
-
     function applyChartTheme() {
-        chartTheme = createThemeTokens();
-        chartBase = chartTheme.base;
-        colorPalette = [...chartTheme.palette];
-        if (lastStatsSnapshot) renderStatPanels(lastStatsSnapshot);
+        historicalDashboard.updateTheme();
     }
 
     window.addEventListener(THEME_CHANGE_EVENT, applyChartTheme);
@@ -315,6 +176,13 @@ import {
     function dashboardDuration(seconds) {
         return formatDuration(seconds, dashboardMessage);
     }
+    const playAccounting = createPlayAccounting({
+        apiFetch,
+        isAbortError,
+        t: dashboardMessage,
+        formatNumber: dashboardNumber,
+        getScope: captureStatsRequestState,
+    });
     function refreshDashboardLanguage() {
         translateDashboard();
         setStatus('loading', dashboardMessage('status.syncing'));
@@ -322,108 +190,13 @@ import {
         setActiveRankingMetric(rankingMetric);
         renderSourceOptions();
         renderUserOptions();
-        if (lastPlayAccountingPayload) renderPlayAccounting(lastPlayAccountingPayload);
+        history.localize();
+        playAccounting.localize();
     }
     translateDashboard();
     window.addEventListener(UNAUTHORIZED_EVENT, () => {
         showLogin(hasLoadedOnce ? dashboardMessage('auth.expired') : undefined);
     });
-
-    function setPlayAccountingState(state) {
-        const status = document.getElementById('playAccountingStatus');
-        const states = {
-            loading: document.getElementById('playAccountingLoading'),
-            content: document.getElementById('playAccountingContent'),
-            empty: document.getElementById('playAccountingEmpty'),
-            error: document.getElementById('playAccountingError'),
-        };
-        Object.entries(states).forEach(([name, element]) => {
-            element.classList.toggle('hidden', name !== state);
-        });
-        status.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
-    }
-
-    function renderPlayAccounting(payload) {
-        lastPlayAccountingPayload = payload;
-        if (payload.attemptCount === 0) {
-            setPlayAccountingState('empty');
-            return;
-        }
-        document.getElementById('playAccountingValue').textContent = dashboardMessage(
-            'insight.shortPlaysValue',
-            {
-                short: dashboardNumber(payload.shortCount),
-                rate: dashboardNumber(Math.round(payload.rate * 10) / 10),
-            },
-        );
-        setPlayAccountingState('content');
-    }
-
-    async function fetchPlayAccounting({ force = false } = {}) {
-        const query = buildStatsScopeQuery(captureStatsRequestState());
-        if (!force && (query === playAccountingLoadedQuery || query === playAccountingPendingQuery)) {
-            return;
-        }
-
-        const generation = ++playAccountingRequestGeneration;
-        if (playAccountingRequestController) playAccountingRequestController.abort();
-        const controller = new AbortController();
-        playAccountingRequestController = controller;
-        playAccountingPendingQuery = query;
-        setPlayAccountingState('loading');
-
-        try {
-            const response = await apiFetch(`/api/stats/short-plays?${query}`, {
-                signal: controller.signal,
-            });
-            if (generation !== playAccountingRequestGeneration || controller.signal.aborted) return;
-            if (!response.ok) throw new Error('playback accounting request failed');
-            const payload = await response.json();
-            if (generation !== playAccountingRequestGeneration || controller.signal.aborted) return;
-
-            const shortCount = Number(payload.short_count);
-            const attemptCount = Number(payload.attempt_count);
-            const rate = Number(payload.short_play_rate_pct);
-            if (
-                !Number.isFinite(shortCount)
-                || !Number.isFinite(attemptCount)
-                || !Number.isFinite(rate)
-                || shortCount < 0
-                || attemptCount < shortCount
-                || rate < 0
-                || rate > 100
-            ) {
-                throw new Error('invalid playback accounting response');
-            }
-            playAccountingLoadedQuery = query;
-            renderPlayAccounting({ shortCount, attemptCount, rate });
-        } catch (error) {
-            if (isAbortError(error) || generation !== playAccountingRequestGeneration) return;
-            setPlayAccountingState('error');
-            console.error('Error fetching playback accounting:', error);
-        } finally {
-            if (generation === playAccountingRequestGeneration) {
-                playAccountingRequestController = null;
-                playAccountingPendingQuery = null;
-            }
-        }
-    }
-
-    function setupPlayAccounting() {
-        const trigger = document.getElementById('playAccountingButton');
-        const panel = document.getElementById('playAccountingPanel');
-        const popover = attachPopover({ trigger, panel });
-        trigger.addEventListener('click', () => {
-            if (popover.open) fetchPlayAccounting();
-        });
-        document.getElementById('playAccountingClose').addEventListener('click', () => {
-            popover.setOpen(false, { restoreFocus: true });
-        });
-        document.getElementById('playAccountingRetry').addEventListener('click', () => {
-            fetchPlayAccounting({ force: true });
-        });
-        return popover;
-    }
 
     function setStatus(state, text) {
         const dot = document.getElementById('statusDot');
@@ -621,774 +394,39 @@ import {
         }
     }
 
-    function formatListenDuration(totalSeconds) { return dashboardDuration(totalSeconds); }
-
-    function formatPlayedAt(isoString) {
-        if (!isoString) return '—';
-        const date = new Date(isoString);
-        if (Number.isNaN(date.getTime())) return '—';
-        return date.toLocaleString(dashboardI18n.getLocale(), {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-    }
-
-    function formatElapsed(seconds) {
-        const total = Math.max(0, Math.floor(Number(seconds) || 0));
-        const minutes = Math.floor(total / 60);
-        const secs = total % 60;
-        return `${minutes}:${String(secs).padStart(2, '0')}`;
-    }
-
-    // Advance elapsed time locally; each server refresh resets the authoritative baseline.
-    let nowPlayingTicker = null;
-    let nowPlayingRenderedAt = 0;
-    let nowPlayingEntries = [];
-
-    function stopNowPlayingTicker() {
-        if (nowPlayingTicker) {
-            clearInterval(nowPlayingTicker);
-            nowPlayingTicker = null;
-        }
-    }
-
-    function startNowPlayingTicker() {
-        stopNowPlayingTicker();
-        if (!nowPlayingEntries.length || document.hidden) return;
-        nowPlayingTicker = setInterval(() => {
-            const delta = Math.floor((Date.now() - nowPlayingRenderedAt) / 1000);
-            for (const entry of nowPlayingEntries) {
-                entry.span.textContent = formatElapsed(entry.baseline + delta);
-            }
-        }, 1000);
-    }
-
-    function createSourceBadge(item) {
-        const sourceName = item && (item.source_name || item.source_id);
-        if (!sourceName) return null;
-        const badge = document.createElement('span');
-        badge.className = 'source-badge';
-        badge.textContent = String(sourceName);
-        badge.title = dashboardMessage('label.source', { name: sourceName });
-        badge.setAttribute('aria-label', badge.title);
-        return badge;
-    }
-
-    function createSourceLabel(item) {
-        const sourceName = item && (item.source_name || item.source_id);
-        if (!sourceName) return null;
-        const label = document.createElement('span');
-        label.className = 'history-user-source';
-        label.textContent = String(sourceName);
-        label.title = dashboardMessage('label.source', { name: sourceName });
-        return label;
-    }
+    const nowPlaying = createNowPlaying({
+        apiFetch,
+        isAbortError,
+        t: dashboardMessage,
+        formatNumber: dashboardNumber,
+        getScope: () => ({ sourceId: selectedSourceId, username: selectedUsername }),
+        setPanelState,
+        setPanelSummary,
+    });
+    const history = createHistory({
+        t: dashboardMessage,
+        formatNumber: dashboardNumber,
+        getLocale: () => dashboardI18n.getLocale(),
+        isFiltered: currentEmptyStateIsFiltered,
+        beginArrayPanel,
+        setPanelSummary,
+    });
+    const historicalDashboard = createHistoricalDashboard({
+        t: dashboardMessage,
+        formatNumber: dashboardNumber,
+        formatDuration: dashboardDuration,
+        formatPlays: dashboardPlays,
+        beginArrayPanel,
+        setPanelState,
+        setPanelSummary,
+        renderSafely: renderPanelSafely,
+        getSourceId: () => selectedSourceId,
+        getFirstSourceId: firstKnownSourceId,
+    });
 
     function firstKnownSourceId() {
         for (const id of knownSources.keys()) return id;
         return '';
-    }
-
-    function createRankingFallback(text) {
-        const span = document.createElement('span');
-        span.className = 'ranking-cover ranking-cover-fallback';
-        span.setAttribute('aria-hidden', 'true');
-        span.textContent = String(text || '?').trim().charAt(0).toUpperCase() || '?';
-        return span;
-    }
-
-    function createCoverImage({ sourceId, id, className, onError }) {
-        if (!sourceId || !id) return null;
-        const img = document.createElement('img');
-        img.className = className;
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        img.alt = '';
-        img.src = coverArtUrl({ sourceId, id, size: 300 });
-        img.addEventListener('error', onError ? () => onError(img) : (() => img.remove()));
-        return img;
-    }
-
-    function renderNowPlaying(items, showSources = !selectedSourceId) {
-        const list = document.getElementById('nowPlayingList');
-        const countEl = document.getElementById('nowPlayingCount');
-        list.replaceChildren();
-        nowPlayingEntries = [];
-
-        if (!Array.isArray(items)) {
-            setPanelState('nowPlaying', 'error', dashboardMessage('error.nowPlaying'));
-            countEl.textContent = '';
-            stopNowPlayingTicker();
-            return;
-        }
-        if (items.length === 0) {
-            setPanelState('nowPlaying', 'empty', dashboardMessage('empty.nowPlaying'));
-            countEl.textContent = '';
-            stopNowPlayingTicker();
-            return;
-        }
-
-        setPanelState('nowPlaying', 'ready');
-        setPanelSummary('nowPlaying', dashboardMessage('aria.nowPlayingSummary', {
-            count: dashboardNumber(items.length),
-        }));
-        countEl.textContent = `· ${items.length}`;
-
-        items.forEach((item) => {
-            const li = document.createElement('li');
-            li.className = 'now-playing-item';
-
-            const cover = createCoverImage({
-                sourceId: item.source_id,
-                id: item.track_id,
-                className: 'now-playing-cover',
-            });
-            if (cover) {
-                li.appendChild(cover);
-            } else {
-                const icon = document.createElement('span');
-                icon.className = 'now-playing-icon';
-                icon.setAttribute('aria-hidden', 'true');
-                icon.textContent = '♪';
-                li.appendChild(icon);
-            }
-
-            const meta = document.createElement('div');
-            meta.className = 'now-playing-meta';
-
-            const titleRow = document.createElement('div');
-            titleRow.className = 'now-playing-title-row';
-            const title = document.createElement('span');
-            title.className = 'now-playing-title';
-            title.textContent = item.title || '-';
-            title.title = item.title || '';
-            const artist = document.createElement('span');
-            artist.className = 'now-playing-artist';
-            artist.textContent = item.artist ? `· ${item.artist}` : '';
-            artist.title = item.artist || '';
-            titleRow.appendChild(title);
-            titleRow.appendChild(artist);
-            meta.appendChild(titleRow);
-
-            const subRow = document.createElement('div');
-            subRow.className = 'now-playing-subrow';
-            const client = document.createElement('span');
-            client.className = 'now-playing-client';
-            const clientGlyph = document.createElement('span');
-            clientGlyph.className = 'now-playing-client-glyph';
-            clientGlyph.textContent = '▣';
-            clientGlyph.setAttribute('aria-hidden', 'true');
-            const clientLabel = document.createElement('span');
-            clientLabel.className = 'now-playing-client-label';
-            clientLabel.textContent = item.client_name || '-';
-            clientLabel.title = item.client_name || '';
-            client.appendChild(clientGlyph);
-            client.appendChild(clientLabel);
-            const sep = document.createElement('span');
-            sep.className = 'now-playing-separator';
-            sep.textContent = '·';
-            const user = document.createElement('span');
-            user.className = 'now-playing-user';
-            user.textContent = item.username || '-';
-            user.title = item.username || '';
-            subRow.appendChild(client);
-            subRow.appendChild(sep);
-            subRow.appendChild(user);
-            if (showSources) {
-                const sourceBadge = createSourceBadge(item);
-                if (sourceBadge) subRow.appendChild(sourceBadge);
-            }
-            meta.appendChild(subRow);
-
-            li.appendChild(meta);
-
-            const elapsed = document.createElement('span');
-            elapsed.className = 'now-playing-elapsed stat-value';
-            elapsed.textContent = formatElapsed(item.seconds_elapsed);
-            li.appendChild(elapsed);
-
-            list.appendChild(li);
-
-            const baseline = Math.max(0, Math.floor(Number(item.seconds_elapsed) || 0));
-            nowPlayingEntries.push({ span: elapsed, baseline });
-        });
-
-        nowPlayingRenderedAt = Date.now();
-        startNowPlayingTicker();
-    }
-
-    function updateSummary(summary, transcoding) {
-        if (!summary || typeof summary !== 'object') {
-            setPanelState('summary', 'error', dashboardMessage('error.section'));
-            return;
-        }
-        const transcodingRows = Array.isArray(transcoding) ? transcoding : [];
-        document.getElementById('statTotalPlays').textContent =
-            dashboardNumber(summary.total_plays);
-        document.getElementById('statListenTime').textContent =
-            formatListenDuration(summary.total_listen_sec);
-        document.getElementById('statUniqueTracks').textContent =
-            dashboardNumber(summary.unique_tracks);
-
-        const playsChangeEl = document.getElementById('statTotalPlaysChange');
-        const listenChangeEl = document.getElementById('statListenTimeChange');
-        const activeDaysEl = document.getElementById('statActiveDays');
-        playsChangeEl.textContent = formatChangeText(summary.plays_change_pct, { compareLabel: compareLabel() });
-        listenChangeEl.textContent = formatChangeText(summary.listen_change_pct, { compareLabel: compareLabel() });
-
-        const activeDays = Number(summary.active_days) || 0;
-        const avgPlays = summary.average_daily_plays;
-        const avgParts = [];
-        if (activeDays > 0) {
-            avgParts.push(dashboardMessage('summary.activeDays', { count: activeDays }));
-        }
-        if (typeof avgPlays === 'number' && Number.isFinite(avgPlays)) {
-            avgParts.push(dashboardMessage('summary.playsPerDay', {
-                count: avgPlays.toFixed(1),
-            }));
-        }
-        activeDaysEl.textContent = avgParts.join(' · ');
-
-        const direct = transcodingRows.find(t => !t.is_transcoding)?.count || 0;
-        const trans = transcodingRows.find(t => t.is_transcoding)?.count || 0;
-        const total = direct + trans;
-        const uniqueEl = document.getElementById('statUniqueTracks');
-        if (total > 0) {
-            const ratio = Math.round((trans / total) * 100);
-            uniqueEl.title = dashboardMessage('summary.uniqueDetails', {
-                days: activeDays,
-                ratio,
-                clients: summary.client_count ?? 0,
-            });
-        } else {
-            uniqueEl.title = activeDays > 0
-                ? dashboardMessage('summary.activeDays', { count: activeDays })
-                : '';
-        }
-        setPanelState('summary', 'ready');
-        setPanelSummary('summary', dashboardMessage('aria.summaryPlays', {
-            plays: dashboardNumber(summary.total_plays),
-            tracks: dashboardNumber(summary.unique_tracks),
-        }));
-    }
-
-    function compareLabel() {
-        return dashboardMessage('compare.previous');
-    }
-
-    function renderPlayerChart(data) {
-        const legend = document.getElementById('playerChartLegend');
-        legend.replaceChildren();
-        legend.classList.add('hidden');
-        const rows = beginArrayPanel(
-            'players',
-            data,
-            (items) => items.length > 0 && items.some(d => Number(d.count) > 0),
-            dashboardMessage('empty.clients'),
-        );
-        if (!rows) return;
-
-        const table = document.createElement('table');
-        table.className = 'player-legend-table';
-        const caption = document.createElement('caption');
-        caption.className = 'sr-only';
-        caption.textContent = dashboardMessage('client.detailTitle');
-        table.appendChild(caption);
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        [
-            dashboardMessage('client.name'),
-            dashboardMessage('client.plays'),
-            dashboardMessage('client.listeningTime'),
-            dashboardMessage('client.averagePlay'),
-            dashboardMessage('client.transcodingRate'),
-        ].forEach((label, index) => {
-            const th = document.createElement('th');
-            th.scope = 'col';
-            th.textContent = label;
-            if (index >= 3) th.classList.add('hide-mobile');
-            headerRow.appendChild(th);
-        });
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-        const tbody = document.createElement('tbody');
-        data.forEach((item, index) => {
-            const row = document.createElement('tr');
-            const name = document.createElement('td');
-            name.className = 'client-cell';
-            name.textContent = item.client_name || dashboardMessage('label.unknownClient');
-            name.title = item.client_name || dashboardMessage('label.unknownClient');
-            const count = document.createElement('td');
-            count.textContent = dashboardNumber(item.count);
-            const total = document.createElement('td');
-            total.textContent = formatListenDuration(item.total_listen_sec);
-            const average = document.createElement('td');
-            average.className = 'hide-mobile';
-            average.textContent = formatListenDuration(item.average_listen_sec);
-            const transcode = document.createElement('td');
-            transcode.className = 'hide-mobile';
-            const rate = Number(item.transcoding_rate_pct);
-            transcode.textContent = Number.isFinite(rate) ? `${rate.toFixed(1)}%` : '—';
-            [name, count, total, average, transcode].forEach(cell => {
-                row.appendChild(cell);
-            });
-            tbody.appendChild(row);
-        });
-        table.appendChild(tbody);
-        legend.appendChild(table);
-        legend.classList.remove('hidden');
-
-        playerChart.setOption({
-            ...chartBase,
-            animationDurationUpdate: 450,
-            animationEasingUpdate: 'cubicInOut',
-            animationTypeUpdate: 'transition',
-            color: colorPalette,
-            legend: { bottom: 0, textStyle: { color: chartTheme.axisText, fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
-            tooltip: {
-                ...chartBase.tooltip,
-                formatter: (params) => {
-                    const name = escapeHtml(params.name || '');
-                    return `${name}<br/>${dashboardMessage('label.play')} ${dashboardPlays(params.value)}`;
-                },
-            },
-            series: [{
-                name: dashboardMessage('dashboard.clients'),
-                type: 'pie',
-                radius: ['42%', '68%'],
-                center: ['50%', '45%'],
-                animationDurationUpdate: 650,
-                animationEasingUpdate: 'cubicInOut',
-                universalTransition: true,
-                itemStyle: { borderRadius: 6, borderColor: chartTheme.pieSeparator, borderWidth: 2 },
-                label: { color: chartTheme.axisText, fontSize: 11 },
-                data: data.map(item => ({
-                    name: item.client_name || dashboardMessage('label.unknownClient'),
-                    value: item.count,
-                })),
-            }],
-        });
-        setPanelSummary('players', dashboardMessage('aria.clientsSummary', {
-            count: dashboardNumber(rows.length),
-            top: rows[0].client_name || dashboardMessage('source.unknown'),
-            plays: dashboardNumber(rows[0].count),
-        }));
-    }
-
-    function renderTranscodingChart(data) {
-        const rows = beginArrayPanel(
-            'transcoding',
-            data,
-            (items) => items.length > 0 && items.some(d => Number(d.count) > 0),
-            dashboardMessage('empty.transcoding'),
-        );
-        if (!rows) return;
-
-        const transformed = rows.map(item => ({
-            name: item.is_transcoding
-                ? dashboardMessage('label.transcoded')
-                : dashboardMessage('label.directPlay'),
-            value: item.count,
-            playsPct: Number(item.plays_pct) || 0,
-            listenPct: Number(item.listen_sec_pct) || 0,
-            listenSec: Number(item.total_listen_sec) || 0,
-        }));
-
-        transcodingChart.setOption({
-            ...chartBase,
-            animationDurationUpdate: 450,
-            animationEasingUpdate: 'cubicInOut',
-            animationTypeUpdate: 'transition',
-            color: [colorPalette[2], colorPalette[5]],
-            legend: { bottom: 0, textStyle: { color: chartTheme.axisText, fontSize: 11 } },
-            tooltip: {
-                ...chartBase.tooltip,
-                formatter: (params) => {
-                    const item = params.data || {};
-                    return `${params.name}<br/>${dashboardMessage('label.play')} ${dashboardPlays(item.value)} (${item.playsPct ?? 0}%)<br/>${dashboardMessage('label.listening')} ${dashboardDuration(item.listenSec)} (${item.listenPct ?? 0}%)`;
-                },
-            },
-            series: [{
-                name: dashboardMessage('label.play'),
-                type: 'pie',
-                radius: '62%',
-                center: ['50%', '45%'],
-                animationDurationUpdate: 650,
-                animationEasingUpdate: 'cubicInOut',
-                universalTransition: true,
-                itemStyle: { borderRadius: 4, borderColor: chartTheme.pieSeparator, borderWidth: 2 },
-                label: { color: chartTheme.axisText, fontSize: 11 },
-                data: transformed,
-            }],
-        });
-        const directCount = rows.find(t => !t.is_transcoding)?.count || 0;
-        const transcodedCount = rows.find(t => t.is_transcoding)?.count || 0;
-        setPanelSummary('transcoding', dashboardMessage('aria.transcodingSummary', {
-            direct: dashboardNumber(directCount),
-            transcoded: dashboardNumber(transcodedCount),
-        }));
-    }
-
-    function renderHourlyChart(data) {
-        const rows = beginArrayPanel(
-            'hourly',
-            data,
-            (items) => items.length > 0 && items.some(d => Number(d.count) > 0),
-            dashboardMessage('empty.hourly'),
-        );
-        if (!rows) return;
-
-        const buckets = Array.from({ length: 24 }, (_, h) => {
-            const found = rows.find(d => Number(d.hour) === h);
-            return { hour: h, count: found ? Number(found.count) : 0 };
-        });
-
-        hourlyChart.setOption({
-            ...chartBase,
-            animationDurationUpdate: 450,
-            animationEasingUpdate: 'cubicInOut',
-            color: [colorPalette[0]],
-            grid: { left: 40, right: 16, top: 16, bottom: 32 },
-            tooltip: {
-                ...chartBase.tooltip,
-                trigger: 'axis',
-                axisPointer: { type: 'shadow' },
-                formatter: (params) => {
-                    const p = params[0];
-                    return `${p.axisValue} ${dashboardMessage('label.hour')}<br/>${dashboardMessage('label.play')} ${dashboardPlays(p.data)}`;
-                },
-            },
-            xAxis: {
-                type: 'category',
-                data: buckets.map(b => String(b.hour)),
-                axisLine: { lineStyle: { color: chartTheme.axisLine } },
-                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
-                axisTick: { show: false },
-            },
-            yAxis: {
-                type: 'value',
-                splitLine: { lineStyle: { color: chartTheme.gridLine } },
-                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
-            },
-            series: [{
-                name: dashboardMessage('metric.plays'),
-                type: 'bar',
-                data: buckets.map(b => b.count),
-                itemStyle: {
-                    borderRadius: [4, 4, 0, 0],
-                    color: {
-                        type: 'linear',
-                        x: 0, y: 0, x2: 0, y2: 1,
-                        colorStops: [
-                            { offset: 0, color: chartTheme.barGradient[0] },
-                            { offset: 1, color: chartTheme.barGradient[1] },
-                        ],
-                    },
-                },
-            }],
-        });
-        const peakHour = buckets.reduce((best, b) => b.count > best.count ? b : best, buckets[0]);
-        setPanelSummary('hourly', dashboardMessage('aria.hourlySummary', {
-            hour: dashboardNumber(peakHour.hour),
-            plays: dashboardNumber(peakHour.count),
-        }));
-    }
-
-    function renderDailyChart(data) {
-        const rows = beginArrayPanel(
-            'daily',
-            data,
-            (items) => items.length > 0 && items.some(d => Number(d.count) > 0),
-            dashboardMessage('empty.daily'),
-        );
-        if (!rows) return;
-
-        const sorted = [...rows].sort((a, b) => String(a.date).localeCompare(String(b.date)));
-        const dates = sorted.map(d => d.date);
-        const counts = sorted.map(d => Number(d.count));
-
-        dailyChart.setOption({
-            ...chartBase,
-            animationDurationUpdate: 450,
-            animationEasingUpdate: 'cubicInOut',
-            color: [colorPalette[2]],
-            grid: { left: 40, right: 16, top: 16, bottom: 32 },
-            tooltip: {
-                ...chartBase.tooltip,
-                trigger: 'axis',
-                formatter: (params) => {
-                    const p = params[0];
-                    return `${p.axisValue}<br/>${dashboardMessage('label.play')} ${dashboardPlays(p.data)}`;
-                },
-            },
-            xAxis: {
-                type: 'category',
-                boundaryGap: false,
-                data: dates,
-                axisLine: { lineStyle: { color: chartTheme.axisLine } },
-                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
-                axisTick: { show: false },
-            },
-            yAxis: {
-                type: 'value',
-                splitLine: { lineStyle: { color: chartTheme.gridLine } },
-                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
-            },
-            series: [{
-                name: dashboardMessage('metric.plays'),
-                type: 'line',
-                smooth: true,
-                symbol: 'circle',
-                symbolSize: 6,
-                data: counts,
-                lineStyle: { width: 2 },
-                areaStyle: {
-                    color: {
-                        type: 'linear',
-                        x: 0, y: 0, x2: 0, y2: 1,
-                        colorStops: [
-                            { offset: 0, color: chartTheme.areaGradient[0] },
-                            { offset: 1, color: chartTheme.areaGradient[1] },
-                        ],
-                    },
-                },
-            }],
-        });
-        const activeDays = sorted.filter(d => Number(d.count) > 0).length;
-        setPanelSummary('daily', dashboardMessage('aria.dailySummary', {
-            days: dashboardNumber(activeDays),
-            plays: dashboardNumber(Math.max(0, ...counts)),
-        }));
-    }
-
-    function heatmapRamp() {
-        return chartTheme.heatmap;
-    }
-
-    function renderWeekdayHourChart(data) {
-        const rows = beginArrayPanel(
-            'heatmap',
-            data,
-            (items) => items.some(d => Number(d.count) > 0),
-            dashboardMessage('empty.heatmap'),
-        );
-        if (!rows) return;
-
-        const points = rows.map(item => [
-            Number(item.hour),
-            Number(item.weekday),
-            Number(item.count) || 0,
-        ]);
-        const maxCount = Math.max(1, ...points.map(p => p[2]));
-        const weekdayLabels = WEEKDAY_MESSAGE_KEYS.map(key => dashboardMessage(key));
-
-        weekdayHourChart.setOption({
-            ...chartBase,
-            animationDurationUpdate: 450,
-            animationEasingUpdate: 'cubicInOut',
-            tooltip: {
-                ...chartBase.tooltip,
-                formatter: (params) => {
-                    const [h, w, c] = params.value;
-                    return `${weekdayLabels[w] || '?'} ${h} ${dashboardMessage('label.hour')}<br/>${dashboardMessage('label.play')} ${dashboardPlays(c)}`;
-                },
-            },
-            grid: { left: 48, right: 16, top: 16, bottom: 80 },
-            xAxis: {
-                type: 'category',
-                data: HOUR_LABELS,
-                splitArea: { show: false },
-                axisLine: { lineStyle: { color: chartTheme.axisLine } },
-                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
-                axisTick: { show: false },
-            },
-            yAxis: {
-                type: 'category',
-                data: weekdayLabels,
-                inverse: true,
-                splitArea: { show: false },
-                axisLine: { lineStyle: { color: chartTheme.axisLine } },
-                axisLabel: { color: chartTheme.axisText, fontSize: 11 },
-                axisTick: { show: false },
-            },
-            visualMap: {
-                min: 0,
-                max: maxCount,
-                calculable: true,
-                orient: 'horizontal',
-                left: 'center',
-                bottom: 0,
-                itemWidth: 12,
-                textStyle: { color: chartTheme.axisText, fontSize: 11 },
-                inRange: { color: heatmapRamp() },
-            },
-            series: [{
-                name: dashboardMessage('metric.plays'),
-                type: 'heatmap',
-                data: points,
-                label: { show: false },
-                itemStyle: { borderRadius: 3, borderWidth: 2, borderColor: 'transparent' },
-                emphasis: { itemStyle: { shadowBlur: 10, shadowColor: chartTheme.shadow } },
-            }],
-        });
-        const peak = rows.reduce((best, item) => (
-            Number(item.count) > Number(best.count) ? item : best
-        ), rows[0]);
-        setPanelSummary('heatmap', dashboardMessage('aria.heatmapSummary', {
-            weekday: weekdayLabels[Number(peak.weekday)] || String(peak.weekday),
-            hour: dashboardNumber(peak.hour),
-            plays: dashboardNumber(peak.count),
-        }));
-    }
-
-    function renderRankingList({ containerId, panel, data, labelKey, barClass, ariaLabel, metric, sourceId }) {
-        const container = document.getElementById(containerId);
-        container.replaceChildren();
-        container.setAttribute('role', 'list');
-        container.setAttribute('aria-label', ariaLabel);
-
-        // Check both ranking dimensions so sparse results still render.
-        const rows = beginArrayPanel(
-            panel,
-            data,
-            (items) => items.length > 0 && items.some(d => Number(d.value) > 0 || Number(d.count) > 0 || Number(d.total_listen_sec) > 0),
-            dashboardMessage(panel === 'artists' ? 'empty.artists' : 'empty.albums'),
-        );
-        if (!rows) return;
-
-        // The backend sorts by `value`, then name; the secondary cell shows the other metric.
-        const maxValue = Math.max(
-            1,
-            ...data.map(d => Number(d.value) || 0),
-        );
-
-        data.forEach((item, idx) => {
-            const value = Number(item.value) || 0;
-            const count = Number(item.count) || 0;
-            const totalListenSec = Number(item.total_listen_sec) || 0;
-            const pct = Math.max(0, Math.min(100, Math.round((value / maxValue) * 100)));
-            const labelValue = item[labelKey] != null ? String(item[labelKey]) : '';
-
-            const row = document.createElement('div');
-            row.className = 'ranking-row';
-            row.setAttribute('role', 'listitem');
-
-            const rankCell = document.createElement('div');
-            rankCell.className = 'ranking-rank stat-value';
-            rankCell.setAttribute('aria-hidden', 'true');
-            rankCell.textContent = String(idx + 1);
-
-            const labelCell = document.createElement('div');
-            labelCell.className = 'ranking-label';
-            labelCell.textContent = labelValue || '-';
-            labelCell.title = labelValue;
-
-            const cover = createCoverImage({
-                sourceId: item.source_id || sourceId,
-                id: panel === 'albums' ? item.album_id : item.artist_id,
-                className: 'ranking-cover',
-                onError: (image) => image.replaceWith(createRankingFallback(labelValue)),
-            });
-
-            const barCell = document.createElement('div');
-            barCell.className = 'ranking-bar-cell';
-            barCell.setAttribute('aria-hidden', 'true');
-            const ariaSummary = metric === 'listen_time'
-                ? `${dashboardMessage('label.listening')} ${dashboardDuration(value)} · ${dashboardPlays(count)}`
-                : `${dashboardMessage('label.play')} ${dashboardPlays(count)} · ${dashboardDuration(totalListenSec)}`;
-            const track = document.createElement('div');
-            track.className = 'ranking-track';
-            const bar = document.createElement('div');
-            bar.className = `ranking-bar ${barClass}`;
-            bar.style.width = `${pct}%`;
-            track.appendChild(bar);
-            barCell.appendChild(track);
-
-            const countCell = document.createElement('div');
-            countCell.className = 'ranking-count stat-value';
-            countCell.setAttribute('aria-label', `${labelValue || '-'} · ${ariaSummary}`);
-            const primary = document.createElement('div');
-            primary.className = 'ranking-count-primary';
-            primary.textContent = metric === 'listen_time' ? dashboardDuration(value) : dashboardPlays(count);
-            const secondary = document.createElement('div');
-            secondary.className = 'ranking-count-secondary';
-            secondary.textContent = metric === 'listen_time' ? dashboardPlays(count) : dashboardDuration(totalListenSec);
-            countCell.appendChild(primary);
-            countCell.appendChild(secondary);
-
-            row.appendChild(rankCell);
-            if (cover) row.appendChild(cover);
-            else row.appendChild(createRankingFallback(labelValue));
-            row.appendChild(labelCell);
-            row.appendChild(barCell);
-            row.appendChild(countCell);
-            container.appendChild(row);
-        });
-        setPanelSummary(panel, dashboardMessage('aria.rankingSummary', {
-            count: dashboardNumber(rows.length),
-            top: String(rows[0][labelKey] || ''),
-        }));
-    }
-
-    function renderTopArtistsChart(data, metric) {
-        const activeMetric = metric || rankingMetric;
-        renderRankingList({
-            containerId: 'topArtistsChart',
-            panel: 'artists',
-            data: data,
-            labelKey: 'artist',
-            barClass: 'ranking-bar-artists',
-            ariaLabel: dashboardMessage(activeMetric === 'listen_time' ? 'aria.artistsByTime' : 'aria.artistsByPlays'),
-            metric: activeMetric,
-            sourceId: selectedSourceId || firstKnownSourceId(),
-        });
-    }
-
-    function renderTopAlbumsChart(data, metric) {
-        const activeMetric = metric || rankingMetric;
-        renderRankingList({
-            containerId: 'topAlbumsChart',
-            panel: 'albums',
-            data: data,
-            labelKey: 'album',
-            barClass: 'ranking-bar-albums',
-            ariaLabel: dashboardMessage(activeMetric === 'listen_time' ? 'aria.albumsByTime' : 'aria.albumsByPlays'),
-            metric: activeMetric,
-            sourceId: selectedSourceId || firstKnownSourceId(),
-        });
-    }
-
-    function renderServerSourceBreakdown(data) {
-        const container = document.getElementById('serverSourceBreakdown');
-        container.replaceChildren();
-        const rows = beginArrayPanel(
-            'sources',
-            data,
-            (items) => items.length > 0,
-            dashboardMessage('source.empty'),
-        );
-        if (!rows) return;
-        rows.forEach((item) => {
-            const row = document.createElement('div');
-            row.className = 'source-breakdown-row';
-            const name = document.createElement('span');
-            name.className = 'source-breakdown-name';
-            name.textContent = item.source_name || item.source_id || dashboardMessage('source.unknown');
-            name.title = name.textContent;
-            const count = document.createElement('span');
-            count.className = 'source-breakdown-count stat-value';
-            count.textContent = dashboardPlays(item.count);
-            const duration = document.createElement('span');
-            duration.className = 'source-breakdown-duration stat-value';
-            duration.textContent = formatListenDuration(item.total_listen_sec);
-            row.append(name, count, duration);
-            container.appendChild(row);
-        });
-        setPanelSummary('sources', dashboardMessage('aria.sourcesSummary', {
-            count: dashboardNumber(rows.length),
-        }));
     }
 
     function renderSourceOptions() {
@@ -1498,138 +536,20 @@ import {
         return knownUsers.length > 0 || Boolean(selectedSourceId || selectedUsername);
     }
 
-    function renderHistoryTable(data, showSources = !selectedSourceId) {
-        const tbody = document.getElementById('historyTable');
-        tbody.replaceChildren();
-        const filteredEmpty = currentEmptyStateIsFiltered();
-        const empty = document.getElementById('historyEmpty');
-        const emptyLines = empty.querySelectorAll('p');
-        if (emptyLines[0]) {
-            emptyLines[0].textContent = dashboardMessage(
-                filteredEmpty ? 'history.filterEmpty' : 'history.empty',
-            );
-        }
-        if (emptyLines[1]) {
-            emptyLines[1].textContent = dashboardMessage(
-                filteredEmpty ? 'history.filterEmptyHint' : 'history.emptyHint',
-            );
-        }
-        const rows = beginArrayPanel(
-            'history',
-            data,
-            (items) => items.length > 0,
-            dashboardMessage(filteredEmpty ? 'history.filterEmpty' : 'history.empty'),
-        );
-        if (!rows) return;
-
-        rows.forEach((item) => {
-            const tr = document.createElement('tr');
-            tr.className = 'history-row';
-
-            const userTd = document.createElement('td');
-            userTd.className = 'history-cell history-cell-user';
-            const userSpan = document.createElement('span');
-            userSpan.className = 'history-user-wrap';
-            const avatar = document.createElement('span');
-            avatar.className = 'history-avatar';
-            avatar.textContent = String(item.username || '?').charAt(0).toUpperCase();
-            avatar.setAttribute('aria-hidden', 'true');
-            const userMeta = document.createElement('div');
-            userMeta.className = 'history-user-meta';
-            const userLabel = document.createElement('span');
-            userLabel.className = 'history-user-label';
-            userLabel.textContent = item.username || '-';
-            userMeta.appendChild(userLabel);
-            if (showSources) {
-                const sourceLabel = createSourceLabel(item);
-                if (sourceLabel) userMeta.appendChild(sourceLabel);
-            }
-            userSpan.appendChild(avatar);
-            userSpan.appendChild(userMeta);
-            userTd.appendChild(userSpan);
-
-            const titleTd = document.createElement('td');
-            titleTd.className = 'history-cell history-cell-title';
-            const titleWrap = document.createElement('div');
-            titleWrap.className = 'history-title-wrap';
-            const trackCover = createCoverImage({
-                sourceId: item.source_id,
-                id: item.track_id,
-                className: 'history-cover',
-            });
-            if (trackCover) titleWrap.appendChild(trackCover);
-            const titleDiv = document.createElement('div');
-            titleDiv.className = 'history-primary';
-            titleDiv.textContent = item.title || '-';
-            titleDiv.title = item.title || '';
-            titleWrap.appendChild(titleDiv);
-            titleTd.appendChild(titleWrap);
-
-            const artistTd = document.createElement('td');
-            artistTd.className = 'history-cell history-cell-artist';
-            artistTd.textContent = item.artist || '-';
-            artistTd.title = item.artist || '';
-
-            const albumTd = document.createElement('td');
-            albumTd.className = 'history-cell history-cell-album';
-            albumTd.textContent = item.album || '-';
-            albumTd.title = item.album || '';
-
-            const playedTd = document.createElement('td');
-            playedTd.className = 'history-cell history-cell-played';
-            playedTd.textContent = formatPlayedAt(item.last_played_at);
-
-            const countTd = document.createElement('td');
-            countTd.className = 'history-cell history-cell-count';
-            const badge = document.createElement('span');
-            badge.className = 'history-count-badge stat-value';
-            badge.textContent = String(item.play_count ?? 0);
-            countTd.appendChild(badge);
-
-            tr.appendChild(userTd);
-            tr.appendChild(titleTd);
-            tr.appendChild(artistTd);
-            tr.appendChild(albumTd);
-            tr.appendChild(playedTd);
-            tr.appendChild(countTd);
-            tbody.appendChild(tr);
-        });
-        setPanelSummary('history', dashboardMessage('aria.historySummary', {
-            count: dashboardNumber(rows.length),
-        }));
-        applyHistoryColumns(historyColumns);
-    }
-
-    function updateNewUserGuide(snapshot) {
-        const summary = snapshot && snapshot.summary;
-        const noPlays = summary && Number(summary.total_plays) === 0;
-        const noHistory = Array.isArray(snapshot && snapshot.history)
-            && snapshot.history.length === 0;
-        document.getElementById('newUserGuide').classList.toggle(
-            'hidden',
-            !(noPlays && noHistory && !currentEmptyStateIsFiltered()),
-        );
-    }
-
     let lastStatsSnapshot = null;
     let lastRankingMetric = 'plays';
 
     function renderStatPanels(snapshot) {
-        renderPanelSafely('summary', () => updateSummary(snapshot.summary, snapshot.transcoding));
-        renderPanelSafely('players', () => renderPlayerChart(snapshot.players));
-        renderPanelSafely('transcoding', () => renderTranscodingChart(snapshot.transcoding));
-        renderPanelSafely('hourly', () => renderHourlyChart(snapshot.hourly));
-        renderPanelSafely('daily', () => renderDailyChart(snapshot.daily));
-        renderPanelSafely('heatmap', () => renderWeekdayHourChart(snapshot.heatmap));
-        renderPanelSafely('artists', () => renderTopArtistsChart(snapshot.top_artists, lastRankingMetric));
-        renderPanelSafely('albums', () => renderTopAlbumsChart(snapshot.top_albums, lastRankingMetric));
-        renderPanelSafely('history', () => renderHistoryTable(snapshot.history, !selectedSourceId));
-        renderPanelSafely('sources', () => renderServerSourceBreakdown(snapshot.servers));
+        historicalDashboard.render(snapshot, lastRankingMetric);
+        renderPanelSafely('history', () => history.render(
+            snapshot.history,
+            { showSources: !selectedSourceId },
+        ));
     }
 
     async function fetchStats() {
         const requestState = captureStatsRequestState();
-        if (playAccountingPopover?.open) fetchPlayAccounting({ force: true });
+        if (playAccounting.isOpen()) playAccounting.refresh({ force: true });
         const generation = ++statsRequestGeneration;
         if (statsRequestController) statsRequestController.abort();
         const controller = new AbortController();
@@ -1657,7 +577,7 @@ import {
             }
             const snapshot = await snapshotRes.json();
             if (generation !== statsRequestGeneration || controller.signal.aborted) return;
-            if (!playAccountingPopover?.open) playAccountingLoadedQuery = null;
+            playAccounting.invalidate();
             if (
                 Number(snapshot.summary?.total_plays) > 0
                 || (Array.isArray(snapshot.history) && snapshot.history.length > 0)
@@ -1672,8 +592,8 @@ import {
                 snapshot.servers,
             );
             renderStatPanels(snapshot);
-            updateNewUserGuide(snapshot);
-            window.requestAnimationFrame(resizeDashboardCharts);
+            history.updateFirstUse(snapshot);
+            window.requestAnimationFrame(historicalDashboard.resize);
 
             hasLoadedOnce = true;
             hideError();
@@ -1705,45 +625,9 @@ import {
                 if (sourceSelectionReset) {
                     window.queueMicrotask(() => {
                         fetchStats();
-                        fetchNowPlaying();
+                        nowPlaying.refresh();
                     });
                 }
-            }
-        }
-    }
-
-    async function fetchNowPlaying() {
-        const requestState = captureNowPlayingRequestState();
-        const generation = ++nowPlayingRequestGeneration;
-        if (nowPlayingRequestController) nowPlayingRequestController.abort();
-        const controller = new AbortController();
-        nowPlayingRequestController = controller;
-        stopNowPlayingTicker();
-        if (!nowPlayingLoadedOnce) setPanelState('nowPlaying', 'loading');
-        try {
-            const sourceParam = requestState.sourceId
-                ? `?source_id=${encodeURIComponent(requestState.sourceId)}`
-                : '';
-            const response = await apiFetch(`/api/stats/now-playing${sourceParam}`, {
-                signal: controller.signal,
-            });
-            if (generation !== nowPlayingRequestGeneration || controller.signal.aborted) return;
-            if (!response.ok) throw new Error('now-playing request failed');
-            const payload = await response.json();
-            if (generation !== nowPlayingRequestGeneration || controller.signal.aborted) return;
-            const visible = requestState.username
-                ? payload.filter((item) => item.username === requestState.username)
-                : payload;
-            renderNowPlaying(visible, !requestState.sourceId);
-            if (Array.isArray(payload)) nowPlayingLoadedOnce = true;
-        } catch (error) {
-            if (isAbortError(error) || generation !== nowPlayingRequestGeneration) return;
-            console.error('Error fetching now playing:', error);
-            stopNowPlayingTicker();
-            setPanelState('nowPlaying', 'error', dashboardMessage('error.nowPlaying'));
-        } finally {
-            if (generation === nowPlayingRequestGeneration) {
-                nowPlayingRequestController = null;
             }
         }
     }
@@ -1757,7 +641,7 @@ import {
         );
         if (!document.hidden) {
             nowPlayingRefreshTimer = setInterval(
-                fetchNowPlaying,
+                nowPlaying.refresh,
                 NOW_PLAYING_REFRESH_MS,
             );
         }
@@ -1846,7 +730,7 @@ import {
             persistFilters();
             renderSourceOptions();
             fetchStats();
-            fetchNowPlaying();
+            nowPlaying.refresh();
         },
     });
 
@@ -1860,7 +744,7 @@ import {
             persistFilters();
             renderUserOptions();
             fetchStats();
-            fetchNowPlaying();
+            nowPlaying.refresh();
         },
     });
 
@@ -1889,8 +773,8 @@ import {
     });
 
     setActiveStatsWindowButton(statsDays);
-    playAccountingPopover = setupPlayAccounting();
-    setupHistoryColumns();
+    playAccounting.mount();
+    history.mount();
     updateSourceOptions([]);
     renderUserOptions();
 
@@ -1909,7 +793,7 @@ import {
 
     document.getElementById('refreshBtn').addEventListener('click', () => {
         fetchStats();
-        fetchNowPlaying();
+        nowPlaying.refresh();
     });
 
     document.getElementById('loginForm').addEventListener('submit', async (event) => {
@@ -1928,11 +812,11 @@ import {
     document.addEventListener('visibilitychange', () => {
         scheduleRefresh();
         if (document.hidden) {
-            stopNowPlayingTicker();
+            nowPlaying.stopTicker();
         } else if (document.getElementById('loginOverlay').classList.contains('hidden')) {
-            startNowPlayingTicker();
+            nowPlaying.startTicker();
             fetchStats();
-            fetchNowPlaying();
+            nowPlaying.refresh();
         }
     });
 
@@ -1940,10 +824,10 @@ import {
         if (event.key !== 'navidrome-language') return;
         refreshDashboardLanguage();
         fetchStats();
-        fetchNowPlaying();
+        nowPlaying.refresh();
     });
 
-    window.addEventListener('resize', resizeDashboardCharts);
+    window.addEventListener('resize', historicalDashboard.resize);
 
     async function bootstrap() {
         try {
@@ -1973,11 +857,11 @@ import {
         await Promise.all([
             Promise.allSettled([fetchUserOptions(), fetchDashboardDiagnostics()]),
             fetchStats(),
-            fetchNowPlaying(),
+            nowPlaying.refresh(),
         ]);
         if (lastStatsSnapshot) {
-            renderHistoryTable(lastStatsSnapshot.history, !selectedSourceId);
-            updateNewUserGuide(lastStatsSnapshot);
+            history.render(lastStatsSnapshot.history, { showSources: !selectedSourceId });
+            history.updateFirstUse(lastStatsSnapshot);
         }
         scheduleRefresh();
     }

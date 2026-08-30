@@ -1,11 +1,13 @@
 """StatsService owns every playback write path and the snapshot cache."""
 
 import asyncio
+import sqlite3
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 import src.stats_service as stats_module
+from src.stats_scope import StatsScope
 from src.stats_service import StatsService
 
 
@@ -81,6 +83,23 @@ async def test_record_session_retries_then_invalidates(cache, service):
 
 
 @pytest.mark.asyncio
+async def test_sqlite_busy_retry_is_observable(cache, service, monkeypatch):
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState()
+    monkeypatch.setattr(stats_module, "runtime_state", state)
+    monkeypatch.setattr(stats_module.asyncio, "sleep", AsyncMock())
+    stats_module.save_play_session = AsyncMock(
+        side_effect=[sqlite3.OperationalError("database is locked"), None]
+    )
+
+    await service.record_session({"duration_sec": 30})
+
+    assert state.sqlite_busy_count == 1
+    assert state.sqlite_retry_count == 1
+
+
+@pytest.mark.asyncio
 async def test_record_session_exhausted_retries_records_failure_and_skips_invalidation(
     cache, service, restore_runtime_counters
 ):
@@ -140,6 +159,19 @@ async def test_import_invalidates_on_written_rows(cache, service):
     await service.import_user("u", {}, merge=True)
     assert cache.invalidations == 1
 
+
+@pytest.mark.asyncio
+async def test_import_duration_is_observable(cache, service, monkeypatch):
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState()
+    monkeypatch.setattr(stats_module, "runtime_state", state)
+    stats_module.import_user_data = AsyncMock(return_value={"imported": 0, "attempts_imported": 0})
+
+    await service.import_user("u", {}, merge=True)
+
+    assert state.import_count == 1
+    assert state.import_duration_seconds >= 0
 
 @pytest.mark.asyncio
 async def test_delete_user_invalidates_only_when_rows_deleted(cache, service):
@@ -228,14 +260,9 @@ async def test_dashboard_builds_through_cache(cache, service):
         }
     )
 
-    query = {
-        "days": 7,
-        "timezone_name": "UTC",
-        "metric": "plays",
-        "source_id": None,
-    }
-    await service.dashboard(**query)
-    first = await service.dashboard(**query)
+    scope = StatsScope.create(days=7, timezone_name="UTC", metric="plays")
+    await service.dashboard(scope)
+    first = await service.dashboard(scope)
 
     assert cache.builds == 2  # FakeCache has no dedup; both calls build through it
     assert set(first) == {
@@ -251,6 +278,21 @@ async def test_dashboard_builds_through_cache(cache, service):
         "top_artists",
         "top_albums",
     }
+
+
+@pytest.mark.asyncio
+async def test_dashboard_build_duration_is_observable(cache, service, monkeypatch):
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState()
+    monkeypatch.setattr(stats_module, "runtime_state", state)
+    service._build_snapshot = AsyncMock(return_value={"summary": {}})
+
+    result = await service.dashboard(StatsScope.create(days=30))
+
+    assert result == {"summary": {}}
+    assert state.dashboard_build_count == 1
+    assert state.dashboard_build_duration_seconds >= 0
 
 
 @pytest.mark.asyncio
@@ -273,12 +315,12 @@ async def test_dashboard_keeps_local_stats_when_album_art_lookup_fails(cache, se
     lookup = AsyncMock(side_effect=ValueError("upstream credentials unavailable"))
     monkeypatch.setattr(stats_module.cover_art_service, "resolve_album_id", lookup)
 
-    result = await service.dashboard(
+    result = await service.dashboard(StatsScope.create(
         days=30,
         timezone_name="UTC",
         metric="plays",
         source_id=None,
-    )
+    ))
 
     assert result["summary"] == {"total_plays": 7}
     assert result["top_albums"] == [

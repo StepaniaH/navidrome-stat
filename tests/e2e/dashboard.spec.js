@@ -384,7 +384,7 @@ function emptySnapshot() {
   };
 }
 
-test("empty dashboard shows per-section empty states", async ({ page }) => {
+test("first-use dashboard collapses historical analysis", async ({ page }) => {
   await page.unroute("**/api/diagnostics");
   await page.route("**/api/diagnostics", (route) =>
     route.fulfill({ json: { history_record_count: 0 } }),
@@ -396,19 +396,13 @@ test("empty dashboard shows per-section empty states", async ({ page }) => {
     route.fulfill({ json: [] }),
   );
   await page.goto("/");
-  await expect(page.locator("#playerChartEmpty")).toBeVisible();
-  await expect(page.locator("#transcodingChartEmpty")).toBeVisible();
-  await expect(page.locator("#hourlyChartEmpty")).toBeVisible();
-  await expect(page.locator("#historyEmpty")).toBeVisible();
+  await expect(page.locator("#playerChartEmpty")).toBeHidden();
+  await expect(page.locator("#summarySection")).toBeHidden();
+  await expect(page.locator("[data-history-analysis]:visible")).toHaveCount(0);
   await expect(page.locator("#nowPlayingEmpty")).toBeVisible();
   await expect(page.locator("#playerChartError")).toBeHidden();
   await expect(page.locator("#errorBanner")).toBeHidden();
-  await expect(page.locator("#playerChartSummary")).toHaveText("No client data");
   await expect(page.locator("#newUserGuide")).toBeVisible();
-  const emptyChartHeight = await page.locator("#playerChartWrap").evaluate(
-    (element) => Math.round(element.getBoundingClientRect().height),
-  );
-  expect(emptyChartHeight).toBeLessThan(200);
 });
 
 test("empty filtered results do not look like first use", async ({ page }) => {
@@ -423,6 +417,8 @@ test("empty filtered results do not look like first use", async ({ page }) => {
     "No plays match these filters",
   );
   await expect(page.locator("#newUserGuide")).toBeHidden();
+  await expect(page.locator("#historyEmpty")).toBeVisible();
+  await expect(page.locator("#summarySection")).toBeVisible();
 });
 
 test("401 shows login instead of empty statistics", async ({ page }) => {
@@ -856,6 +852,7 @@ test("the user filter narrows stats and now playing, and persists", async ({ pag
   await expect(page).toHaveURL(/username=listener/);
   await expect(page.locator("#nowPlayingEmpty")).toBeVisible();
   await expect(page.locator("#statsUserButton")).toContainText("listener");
+  await expect(page.locator("#reviewLink")).toHaveAttribute("href", /username=listener/);
 
   await page.reload();
   await page.waitForFunction(() => {

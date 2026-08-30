@@ -28,6 +28,7 @@ from src.database import (
     utc_instant,
 )
 from src.main import app
+from src.stats_scope import StatsScope
 
 
 def _iso(dt: datetime) -> str:
@@ -749,7 +750,7 @@ async def test_dashboard_propagates_username():
         ) as client:
             response = await client.get("/api/stats/dashboard?days=30&username=bob")
     assert response.status_code == 200
-    build.assert_awaited_once_with(
+    build.assert_awaited_once_with(StatsScope.create(
         days=30,
         timezone_name="UTC",
         metric="plays",
@@ -757,7 +758,7 @@ async def test_dashboard_propagates_username():
         start_date=None,
         end_date=None,
         username="bob",
-    )
+    ))
 
 
 def _dashboard_snapshot():

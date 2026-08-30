@@ -231,7 +231,7 @@
                         <div class="section-heading">
                             <div>
                                 <h3 id="storageTitle" data-i18n="privacy.storage">Data footprint</h3>
-                                <p data-i18n="privacy.storageDescription">These estimates cover the statistics database only, never media files.</p>
+                                <p data-i18n="privacy.storageDescription">Cleanup deletes statistics records. SQLite reuses their pages but does not automatically shrink the database file.</p>
                             </div>
                         </div>
                         <div class="storage-metrics">
@@ -241,7 +241,7 @@
                                 <small id="storageCurrentRecords">—</small>
                             </div>
                             <div class="storage-metric">
-                                <span data-i18n="privacy.estimatedStorage">Estimated with this policy</span>
+                                <span data-i18n="privacy.estimatedStorage">Database file after cleanup</span>
                                 <strong id="storageEstimatedSize">—</strong>
                                 <small id="storageEstimatedDetail">Estimate appears after the policy loads</small>
                             </div>

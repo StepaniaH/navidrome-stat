@@ -3,9 +3,11 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 import src.stats_service as stats_service_module
 from src.database import get_review_summary, init_db, save_play_session
+from src.main import app
 
 
 class FakeCache:
@@ -145,9 +147,57 @@ async def test_review_endpoint_is_cached(seeded_db, isolated_db, monkeypatch):
 
     import src.stats_service as stats_module
     monkeypatch.setattr(stats_module, "get_review_summary", counting)
-    await service.review(year=seeded_db, timezone_name="UTC", source_id=None)
-    await service.review(year=seeded_db, timezone_name="UTC", source_id=None)
-    assert builds["n"] == 1
+    await service.review(year=seeded_db, timezone_name="UTC", source_id=None, username="alice")
+    await service.review(year=seeded_db, timezone_name="UTC", source_id=None, username="alice")
+    await service.review(year=seeded_db, timezone_name="UTC", source_id=None, username="bob")
+    assert builds["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_review_filters_every_aggregate_by_username(seeded_db, isolated_db):
+    year = seeded_db
+    await save_play_session(
+        {
+            **session(0, 12, track="other-track", title="Other Song"),
+            "username": "other-user",
+            "session_id": "other-user-session",
+        },
+        isolated_db,
+    )
+
+    review = await get_review_summary(
+        year,
+        "UTC",
+        db_path=isolated_db,
+        username="synthetic-user",
+    )
+
+    assert review["username"] == "synthetic-user"
+    assert review["total_plays"] == 4
+    assert {entry["name"] for entry in review["top_tracks"]} == {
+        "Morning Song",
+        "Night Song",
+    }
+
+
+@pytest.mark.asyncio
+async def test_review_endpoint_forwards_and_returns_visible_username_scope(
+    seeded_db,
+    isolated_db,
+):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            "/api/stats/review",
+            params={
+                "year": seeded_db,
+                "timezone": "UTC",
+                "username": "synthetic-user",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "synthetic-user"
+    assert response.json()["total_plays"] == 4
 
 
 @pytest.mark.asyncio
@@ -162,9 +212,9 @@ async def test_review_top_tracks_carry_source_id(seeded_db, isolated_db):
 @pytest.mark.asyncio
 async def test_review_albums_stamp_single_server_source(seeded_db, isolated_db, monkeypatch):
     year = seeded_db
-    async def fake_list_servers():
+    async def fake_list_server_options():
         return [{"id": "srv-1", "display_name": "Main"}]
-    monkeypatch.setattr(stats_service_module, "list_servers", fake_list_servers)
+    monkeypatch.setattr(stats_service_module, "list_server_options", fake_list_server_options)
     service = stats_service_module.StatsService(cache=FakeCache(), retry_attempts=1)
     review = await service.review(year=year, timezone_name="UTC", source_id=None)
     assert review["top_albums"]
@@ -175,12 +225,12 @@ async def test_review_albums_stamp_single_server_source(seeded_db, isolated_db, 
 @pytest.mark.asyncio
 async def test_review_albums_source_id_null_without_effective_source(seeded_db, isolated_db, monkeypatch):
     year = seeded_db
-    async def fake_list_servers():
+    async def fake_list_server_options():
         return [
             {"id": "srv-1", "display_name": "Main"},
             {"id": "srv-2", "display_name": "Second"},
         ]
-    monkeypatch.setattr(stats_service_module, "list_servers", fake_list_servers)
+    monkeypatch.setattr(stats_service_module, "list_server_options", fake_list_server_options)
     service = stats_service_module.StatsService(cache=FakeCache(), retry_attempts=1)
     review = await service.review(year=year, timezone_name="UTC", source_id=None)
     assert review["top_albums"]

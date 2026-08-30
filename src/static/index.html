@@ -174,7 +174,7 @@
         </section>
 
         <!-- Summary cards -->
-        <section id="summarySection" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" role="region" aria-label="概览统计" data-i18n-attr="aria-label:dashboard.summary">
+        <section id="summarySection" data-history-analysis class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8" role="region" aria-label="概览统计" data-i18n-attr="aria-label:dashboard.summary">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 border border-white/5 backdrop-blur-sm">
                 <p class="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1" data-i18n="dashboard.totalPlays">总播放次数</p>
                 <p id="statTotalPlays" class="stat-value text-3xl font-bold text-white">—</p>
@@ -195,7 +195,7 @@
         </section>
 
         <!-- Charts -->
-        <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" role="region" aria-label="图表" data-i18n-attr="aria-label:dashboard.charts">
+        <section data-history-analysis class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" role="region" aria-label="图表" data-i18n-attr="aria-label:dashboard.charts">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
                 <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.clients">客户端分布</h2>
                 <p class="text-xs text-slate-600 mb-4" data-i18n="subtitle.byPlays">按播放次数统计</p>
@@ -232,7 +232,7 @@
         </section>
 
         <!-- Hourly & Daily charts -->
-        <section class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" role="region" aria-label="时段与每日趋势" data-i18n-attr="aria-label:dashboard.hourlyDaily">
+        <section data-history-analysis class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-8" role="region" aria-label="时段与每日趋势" data-i18n-attr="aria-label:dashboard.hourlyDaily">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
                 <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.hourly">播放时段分布</h2>
                 <p class="text-xs text-slate-600 mb-4" data-i18n="subtitle.hourly">按一天内各时段播放次数统计</p>
@@ -268,7 +268,7 @@
         </section>
 
         <!-- Weekday x Hour heatmap -->
-        <section class="mb-8" role="region" aria-label="周时热力图" data-i18n-attr="aria-label:dashboard.heatmap">
+        <section data-history-analysis class="mb-8" role="region" aria-label="周时热力图" data-i18n-attr="aria-label:dashboard.heatmap">
             <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
                 <h2 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="dashboard.heatmap">周时热力图</h2>
                 <p class="text-xs text-slate-600 mb-4" data-i18n="subtitle.heatmap">按星期 × 小时统计播放次数（0=周一 … 6=周日）</p>
@@ -288,7 +288,7 @@
         </section>
 
         <!-- Top Artists & Top Albums -->
-        <section class="mb-8" role="region" aria-label="热门艺人与专辑" data-i18n-attr="aria-label:dashboard.rankings">
+        <section data-history-analysis class="mb-8" role="region" aria-label="热门艺人与专辑" data-i18n-attr="aria-label:dashboard.rankings">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                 <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.rankings">热门艺人与专辑</h2>
                 <div role="group" aria-label="榜单指标" data-i18n-attr="aria-label:aria.rankingMetric" id="rankingMetricControl"
@@ -336,7 +336,7 @@
         </section>
 
         <!-- Server sources -->
-        <section class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5 mb-8" role="region" aria-label="服务器来源分析" data-i18n-attr="aria-label:aria.serverSources">
+        <section data-history-analysis class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5 mb-8" role="region" aria-label="服务器来源分析" data-i18n-attr="aria-label:aria.serverSources">
             <div class="flex items-center justify-between gap-3 mb-1">
                 <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.sources">服务器来源</h2>
                 <span class="text-xs text-slate-600" data-i18n="subtitle.currentWindow">按当前统计窗口</span>
@@ -355,7 +355,7 @@
         </section>
 
         <!-- Recent plays -->
-        <section class="history-section rounded-2xl bg-ink-900/80 shadow-card border border-white/5" role="region" aria-label="播放历史" data-i18n-attr="aria-label:dashboard.history">
+        <section data-history-analysis class="history-section rounded-2xl bg-ink-900/80 shadow-card border border-white/5" role="region" aria-label="播放历史" data-i18n-attr="aria-label:dashboard.history">
             <div class="px-5 sm:px-6 py-5 border-b border-white/5">
                 <div class="flex items-center justify-between gap-3">
                     <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.history">最近播放</h2>

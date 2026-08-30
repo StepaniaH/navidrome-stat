@@ -29,6 +29,13 @@ async def test_metrics_contains_expected_metric_names():
     assert "navidrome_stat_seconds_since_last_poll" in body
     assert "navidrome_stat_upstream_error_code" in body
     assert "navidrome_stat_polling_task_up" in body
+    assert "navidrome_stat_dashboard_build_duration_seconds" in body
+    assert "navidrome_stat_dashboard_cache_hit_total" in body
+    assert "navidrome_stat_sqlite_busy_total" in body
+    assert "navidrome_stat_import_duration_seconds" in body
+    assert "navidrome_stat_coverart_cache_hit_total" in body
+    assert "navidrome_stat_coverart_cache_bytes" in body
+    assert "navidrome_stat_stats_query_duration_seconds" in body
 
 
 @pytest.mark.asyncio
@@ -236,3 +243,37 @@ async def test_readiness_reports_backfill_counter_totals(monkeypatch):
     assert report["metrics"]["backfill_run_total"] == 2
     assert report["metrics"]["backfill_imported_total"] == 5
     assert report["metrics"]["backfill_error_total"] == 1
+
+
+def test_product_metrics_render_low_cardinality_counters_and_summaries(monkeypatch):
+    import src.metrics as metrics
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState()
+    state.record_dashboard_cache_hit()
+    state.record_dashboard_cache_miss()
+    state.record_dashboard_cache_shared()
+    state.record_dashboard_build(0.125)
+    state.record_sqlite_busy(retried=True)
+    state.record_import(0.25)
+    state.record_coverart_cache_access(hit=True, cache_bytes=1024, limit_bytes=4096)
+    state.record_stats_query("summary", 0.3, budget_seconds=0.25)
+    monkeypatch.setattr(metrics, "runtime_state", state)
+
+    body = metrics.format_prometheus_metrics(0)
+
+    assert "navidrome_stat_dashboard_cache_hit_total 1\n" in body
+    assert "navidrome_stat_dashboard_cache_miss_total 1\n" in body
+    assert "navidrome_stat_dashboard_cache_shared_total 1\n" in body
+    assert "navidrome_stat_dashboard_build_duration_seconds_count 1\n" in body
+    assert "navidrome_stat_dashboard_build_duration_seconds_sum 0.125000000\n" in body
+    assert "navidrome_stat_sqlite_busy_total 1\n" in body
+    assert "navidrome_stat_sqlite_retry_total 1\n" in body
+    assert "navidrome_stat_import_duration_seconds_count 1\n" in body
+    assert "navidrome_stat_coverart_cache_hit_total 1\n" in body
+    assert "navidrome_stat_coverart_cache_bytes 1024\n" in body
+    assert "navidrome_stat_coverart_cache_limit_bytes 4096\n" in body
+    assert 'navidrome_stat_stats_query_duration_seconds_count{query="summary"} 1\n' in body
+    assert 'navidrome_stat_stats_query_duration_seconds_sum{query="summary"} 0.300000000\n' in body
+    assert 'navidrome_stat_stats_query_max_duration_seconds{query="summary"} 0.300000000\n' in body
+    assert 'navidrome_stat_stats_query_over_budget_total{query="summary"} 1\n' in body

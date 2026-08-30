@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from src.dashboard_cache import DashboardSnapshotCache, dashboard_snapshot_cache
 from src.main import app
+from src.stats_scope import StatsScope
 
 
 def _snapshot():
@@ -87,7 +88,7 @@ async def test_dashboard_custom_range_is_validated_and_forwarded():
             )
 
     assert response.status_code == 200
-    build.assert_awaited_once_with(
+    build.assert_awaited_once_with(StatsScope.create(
         days=30,
         timezone_name="Asia/Shanghai",
         metric="plays",
@@ -95,7 +96,7 @@ async def test_dashboard_custom_range_is_validated_and_forwarded():
         start_date=date(2026, 1, 2),
         end_date=date(2026, 1, 31),
         username=None,
-    )
+    ))
 
 
 @pytest.mark.asyncio
@@ -159,6 +160,32 @@ async def test_cache_single_flight_deduplicates_same_key():
     assert await first == {"value": 1}
     assert await second == {"value": 1}
     build.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cache_records_hits_misses_and_shared_builds(monkeypatch):
+    import src.dashboard_cache as cache_module
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState()
+    monkeypatch.setattr(cache_module, "runtime_state", state)
+    cache = DashboardSnapshotCache()
+    release = asyncio.Event()
+
+    async def factory():
+        await release.wait()
+        return {"value": 1}
+
+    first = asyncio.create_task(cache.get_or_create(("observed",), factory))
+    second = asyncio.create_task(cache.get_or_create(("observed",), factory))
+    await asyncio.sleep(0)
+    release.set()
+    await asyncio.gather(first, second)
+    await cache.get_or_create(("observed",), factory)
+
+    assert state.dashboard_cache_miss_count == 1
+    assert state.dashboard_cache_shared_count == 1
+    assert state.dashboard_cache_hit_count == 1
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,7 @@ from src.windows import (
     TIMEZONE_DEFAULT,
     _played_at_to_local_datetime,
     _source_predicate,
+    _username_predicate,
     _window_predicate,
     resolve_timezone,
 )
@@ -30,6 +31,7 @@ async def get_review_summary(
     timezone_name: str = TIMEZONE_DEFAULT,
     db_path: str | None = None,
     source_id: str | None = None,
+    username: str | None = None,
 ):
     """Aggregate one local calendar year for the review page.
 
@@ -42,6 +44,7 @@ async def get_review_summary(
     end = date(year, 12, 31)
     pred, params = _window_predicate(0, timezone_name, start, end)
     pred, params = _source_predicate(pred, params, source_id)
+    pred, params = _username_predicate(pred, params, username)
 
     path = _path(db_path)
     hourly_counts = [0] * 24
@@ -105,6 +108,7 @@ async def get_review_summary(
         metric="plays",
         db_path=db_path,
         source_id=source_id,
+        username=username,
         start_date=start,
         end_date=end,
     )
@@ -116,6 +120,7 @@ async def get_review_summary(
         metric="listen_time",
         db_path=db_path,
         source_id=source_id,
+        username=username,
         start_date=start,
         end_date=end,
     )
@@ -159,6 +164,9 @@ async def get_review_summary(
 
     return {
         "year": year,
+        "timezone": timezone_name,
+        "source_id": source_id,
+        "username": username,
         "total_plays": total_plays,
         "total_listen_sec": total_listen_sec,
         "unique_tracks": len(unique_tracks),

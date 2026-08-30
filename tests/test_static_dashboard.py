@@ -6,6 +6,11 @@ import pytest
 
 INDEX_HTML = Path(__file__).resolve().parent.parent / "src" / "static" / "index.html"
 DASHBOARD_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.js"
+DASHBOARD_MODULE_DIR = DASHBOARD_JS.parent / "js" / "dashboard"
+NOW_PLAYING_JS = DASHBOARD_MODULE_DIR / "now-playing.js"
+HISTORY_JS = DASHBOARD_MODULE_DIR / "history.js"
+PLAY_ACCOUNTING_JS = DASHBOARD_MODULE_DIR / "play-accounting.js"
+HISTORICAL_DASHBOARD_JS = DASHBOARD_MODULE_DIR / "historical-dashboard.js"
 LOCALES_DIR = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "i18n" / "locales"
 DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
 LISTBOX_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "listbox.js"
@@ -21,8 +26,33 @@ TAILWIND_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "vend
 def source() -> str:
     return "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (INDEX_HTML, DASHBOARD_JS, DASHBOARD_CSS, THEMES_CSS, THEME_BOOTSTRAP_JS)
+        for path in (
+            INDEX_HTML,
+            DASHBOARD_JS,
+            NOW_PLAYING_JS,
+            HISTORY_JS,
+            PLAY_ACCOUNTING_JS,
+            HISTORICAL_DASHBOARD_JS,
+            DASHBOARD_CSS,
+            THEMES_CSS,
+            THEME_BOOTSTRAP_JS,
+        )
     )
+
+
+@pytest.fixture(scope="module")
+def now_playing_source() -> str:
+    return NOW_PLAYING_JS.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def play_accounting_source() -> str:
+    return PLAY_ACCOUNTING_JS.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def history_source() -> str:
+    return HISTORY_JS.read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
@@ -76,15 +106,30 @@ def _function_block(source: str, fn_name: str) -> str:
     raise AssertionError(f"function {fn_name} not balanced")
 
 
-def test_now_playing_ticker_state_exists(source):
-    assert "let nowPlayingTicker = null;" in source
-    assert "nowPlayingEntries" in source
-    assert "startNowPlayingTicker" in source
-    assert "stopNowPlayingTicker" in source
+def test_dashboard_behaviors_are_composed_through_small_module_interfaces():
+    source = DASHBOARD_JS.read_text(encoding="utf-8")
+    for factory in (
+        "createNowPlaying",
+        "createHistory",
+        "createPlayAccounting",
+        "createHistoricalDashboard",
+    ):
+        assert f"import {{ {factory} }}" in source
+    assert "nowPlaying.refresh()" in source
+    assert "history.render(" in source
+    assert "playAccounting.mount()" in source
+    assert "historicalDashboard.render(" in source
 
 
-def test_now_playing_ticker_uses_textcontent_only(source):
-    block = _function_block(source, "startNowPlayingTicker")
+def test_now_playing_ticker_state_exists(now_playing_source):
+    assert "let ticker = null;" in now_playing_source
+    assert "renderedEntries" in now_playing_source
+    assert "startTicker" in now_playing_source
+    assert "stopTicker" in now_playing_source
+
+
+def test_now_playing_ticker_uses_textcontent_only(now_playing_source):
+    block = _function_block(now_playing_source, "startTicker")
     # The ticker updates DOM text through the existing formatElapsed +
     # .textContent assignment; no raw HTML mutation surfaces.
     assert "textContent" in block
@@ -92,8 +137,8 @@ def test_now_playing_ticker_uses_textcontent_only(source):
     assert "insertAdjacentHTML" not in block
 
 
-def test_now_playing_ticker_interval_is_one_second(source):
-    block = _function_block(source, "startNowPlayingTicker")
+def test_now_playing_ticker_interval_is_one_second(now_playing_source):
+    block = _function_block(now_playing_source, "startTicker")
     assert "setInterval(" in block
     assert ", 1000)" in block
 
@@ -105,29 +150,29 @@ def test_now_playing_ticker_respects_visibility(source):
     end = block.index("});") + 3
     block = block[:end]
     assert "document.hidden" in block
-    assert "stopNowPlayingTicker()" in block
-    assert "startNowPlayingTicker()" in block
+    assert "nowPlaying.stopTicker()" in block
+    assert "nowPlaying.startTicker()" in block
 
 
-def test_now_playing_ticker_stops_when_empty(source):
-    block = _function_block(source, "renderNowPlaying")
+def test_now_playing_ticker_stops_when_empty(now_playing_source):
+    block = _function_block(now_playing_source, "render")
     # When there are no items the ticker is cleared and baselines reset.
     empty_branch = block[block.index("items.length === 0") :]
     head = empty_branch[: empty_branch.index("return;") + len("return;")]
-    assert "stopNowPlayingTicker()" in head
+    assert "stopTicker()" in head
 
 
-def test_now_playing_ticker_uses_server_baseline(source):
-    block = _function_block(source, "renderNowPlaying")
+def test_now_playing_ticker_uses_server_baseline(now_playing_source):
+    block = _function_block(now_playing_source, "render")
     # Baseline comes from server-provided seconds_elapsed.
     assert "Number(item.seconds_elapsed)" in block
-    assert "nowPlayingRenderedAt = Date.now()" in block
-    assert "startNowPlayingTicker()" in block
+    assert "renderedAt = Date.now()" in block
+    assert "startTicker()" in block
 
 
-def test_now_playing_ticker_makes_no_api_call(source):
-    for fn in ("startNowPlayingTicker", "stopNowPlayingTicker"):
-        block = _function_block(source, fn)
+def test_now_playing_ticker_makes_no_api_call(now_playing_source):
+    for fn in ("startTicker", "stopTicker"):
+        block = _function_block(now_playing_source, fn)
         assert "fetch(" not in block
 
 
@@ -239,18 +284,18 @@ def test_historical_fetch_urls_use_stats_days(source):
         "top-albums?",
     ):
         assert f"/api/stats/{endpoint}" not in block
-    now_block = _function_block(source, "fetchNowPlaying")
+    now_block = _function_block(NOW_PLAYING_JS.read_text(encoding="utf-8"), "refresh")
     assert "/api/stats/now-playing${sourceParam}" in now_block
     assert "timezone" not in now_block
     assert "days" not in now_block
 
 
-def test_playback_accounting_is_lazy_and_uses_dashboard_scope(source):
-    block = _function_block(source, "fetchPlayAccounting")
-    assert "buildStatsScopeQuery(captureStatsRequestState())" in block
+def test_playback_accounting_is_lazy_and_uses_dashboard_scope(play_accounting_source):
+    block = _function_block(play_accounting_source, "refresh")
+    assert "buildStatsScopeQuery(getScope())" in block
     assert "/api/stats/short-plays?${query}" in block
-    assert "playAccountingValue').textContent" in source
-    assert "fetchPlayAccounting();" in _function_block(source, "setupPlayAccounting")
+    assert "playAccountingValue').textContent" in play_accounting_source
+    assert "refresh();" in _function_block(play_accounting_source, "mount")
 
 
 def test_dashboard_header_has_no_preference_controls(source):
@@ -292,7 +337,7 @@ def test_history_table_has_no_horizontal_scroll_container(source):
     assert "overflow-x-auto" not in history
     for column in ("user", "track", "artist", "album", "played", "count"):
         assert f"history-col-{column}" in history
-    block = _function_block(source, "renderHistoryTable")
+    block = _function_block(HISTORY_JS.read_text(encoding="utf-8"), "render")
     for column in ("user", "title", "artist", "album", "played", "count"):
         assert f"history-cell-{column}" in block
     assert "hidden sm:table-cell" not in history
@@ -370,9 +415,9 @@ def test_dashboard_has_local_i18n_and_theme_palette(source):
 def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(source, catalog_source):
     for token in (
         "dashboardMessage('status.lastUpdated'",
-        "dashboardMessage('summary.activeDays'",
-        "dashboardDuration(item.listenSec)",
-        "dashboardMessage('label.play')",
+        "t('summary.activeDays'",
+        "formatDuration(item.listenSec)",
+        "t('label.play')",
         "dashboardMessage('daily.subtitle'",
     ):
         assert token in source
@@ -402,9 +447,9 @@ def test_heatmap_static_axis_labels_exist(source):
         "weekday.sun",
     ):
         assert key in source
-    assert "WEEKDAY_MESSAGE_KEYS.map(key => dashboardMessage(key))" in source
+    assert "WEEKDAY_MESSAGE_KEYS.map((key) => t(key))" in source
     # 24 hour categories 0..23 generated as strings.
-    assert "Array.from({ length: 24 }, (_, h) => String(h))" in source
+    assert "Array.from({ length: 24 }, (_, hour) => String(hour))" in source
 
 
 def test_heatmap_render_function_exists(source):
@@ -440,9 +485,9 @@ def test_heatmap_skeleton_in_set_loading(source):
 
 
 def test_heatmap_resize_in_window_resize_handler(source):
-    assert "window.addEventListener('resize', resizeDashboardCharts)" in source
+    assert "window.addEventListener('resize', historicalDashboard.resize)" in source
     block = _function_block(source, "resizeDashboardCharts")
-    assert "weekdayHourChart" in block
+    assert "weekdayHourChart," in source[source.index("const charts = [") :]
     # Resize is skipped when the size already matches so update animations
     # are not interrupted by the post-render resize pass.
     assert "chart.getWidth() !== dom.clientWidth" in block
@@ -462,8 +507,10 @@ def test_update_summary_populates_change_badges(source):
     assert "statTotalPlaysChange" in block
     assert "statListenTimeChange" in block
     assert "statActiveDays" in block
-    assert "formatChangeText(summary.plays_change_pct, { compareLabel: compareLabel() })" in block
-    assert "formatChangeText(summary.listen_change_pct, { compareLabel: compareLabel() })" in block
+    assert block.count("formatChangeText(") == 2
+    assert "summary.plays_change_pct" in block
+    assert "summary.listen_change_pct" in block
+    assert block.count("compareLabel: compareLabel()") == 2
     assert "summary.active_days" in block
     assert "summary.average_daily_plays" in block
     # No innerHTML/outerHTML mutation in summary rendering.
@@ -484,8 +531,8 @@ def test_ranking_fetch_propagates_metric_and_uses_selected_value(source):
     assert "metric: requestState.metric" in block
     assert "renderStatPanels(snapshot);" in block
     assert "renderPanelSafely" not in block  # dispatch lives in the helper now
-    assert "renderTopArtistsChart(snapshot.top_artists, lastRankingMetric)" in source
-    assert "renderTopAlbumsChart(snapshot.top_albums, lastRankingMetric)" in source
+    assert "renderTopArtistsChart(snapshot.top_artists, metric)" in source
+    assert "renderTopAlbumsChart(snapshot.top_albums, metric)" in source
 
 
 def test_ranking_covers_prefer_the_row_source(source):
@@ -502,8 +549,8 @@ def test_ranking_metric_switch_fetches_only_rankings(source):
 
 def test_ranking_renderer_shows_both_metrics_safely(source):
     block = _function_block(source, "renderRankingList")
-    assert "Number(d.value)" in block
-    assert "dashboardDuration(totalListenSec)" in block
+    assert "Number(item.value)" in block
+    assert "formatDuration(totalListenSec)" in block
     assert "textContent" in block
     assert "innerHTML" not in block
 
@@ -533,7 +580,7 @@ def test_realtime_and_historical_refresh_are_split(source):
     assert "const NOW_PLAYING_REFRESH_MS = 10000;" in source
     schedule = _function_block(source, "scheduleRefresh")
     assert "fetchStats," in schedule
-    assert "fetchNowPlaying," in schedule
+    assert "nowPlaying.refresh," in schedule
 
 
 def test_server_filter_is_safe_and_propagated(source):
@@ -542,9 +589,9 @@ def test_server_filter_is_safe_and_propagated(source):
     assert '<select id="statsSource' not in source
     assert "let selectedSourceId = initialFilters.sourceId;" in source
     stats = _function_block(source, "fetchStats")
-    now_playing = _function_block(source, "fetchNowPlaying")
+    now_playing = _function_block(NOW_PLAYING_JS.read_text(encoding="utf-8"), "refresh")
     assert "sourceId: requestState.sourceId" in stats
-    assert "?source_id=${encodeURIComponent(requestState.sourceId)}" in now_playing
+    assert "?source_id=${encodeURIComponent(scope.sourceId)}" in now_playing
     options = _function_block(source, "renderSourceOptions")
     assert "textContent" in options
     assert "innerHTML" not in options
@@ -586,7 +633,7 @@ def test_user_filter_shares_the_source_filter_pipeline(source):
     assert "username: selectedUsername" in source
     fetch_block = _function_block(source, "fetchStats")
     assert "username: requestState.username" in fetch_block
-    assert "item.username === requestState.username" in source
+    assert "item.username === scope.username" in source
 
 
 def test_panel_state_helper_covers_loading_empty_error(source):
@@ -599,8 +646,8 @@ def test_panel_state_helper_covers_loading_empty_error(source):
     assert "insertAdjacentHTML" not in block
 
 
-def test_fetch_now_playing_surfaces_section_error(source):
-    block = _function_block(source, "fetchNowPlaying")
+def test_fetch_now_playing_surfaces_section_error(now_playing_source):
+    block = _function_block(now_playing_source, "refresh")
     assert "setPanelState('nowPlaying', 'error'" in block
     assert "error.nowPlaying" in block
     assert "innerHTML" not in block
@@ -615,8 +662,8 @@ def test_fetch_stats_isolates_panel_render_failures(source):
     assert "innerHTML" not in block
 
 
-def test_history_empty_state_does_not_use_innerhtml(source):
-    block = _function_block(source, "renderHistoryTable")
+def test_history_empty_state_does_not_use_innerhtml(history_source):
+    block = _function_block(history_source, "render")
     assert "beginArrayPanel" in block
     assert "innerHTML" not in block
     assert "insertAdjacentHTML" not in block
@@ -628,12 +675,12 @@ def test_render_panel_safely_sets_section_error(source):
     assert "innerHTML" not in block
 
 
-def test_dashboard_requests_abort_and_ignore_stale_responses(source):
+def test_dashboard_requests_abort_and_ignore_stale_responses(source, now_playing_source):
     stats = _function_block(source, "fetchStats")
-    now_playing = _function_block(source, "fetchNowPlaying")
+    now_playing = _function_block(now_playing_source, "refresh")
     for block, generation, controller in (
         (stats, "statsRequestGeneration", "statsRequestController"),
-        (now_playing, "nowPlayingRequestGeneration", "nowPlayingRequestController"),
+        (now_playing, "requestGeneration", "requestController"),
     ):
         assert "new AbortController()" in block
         assert f"++{generation}" in block
@@ -643,14 +690,13 @@ def test_dashboard_requests_abort_and_ignore_stale_responses(source):
         assert "controller.signal.aborted" in block
 
 
-def test_dashboard_request_state_is_immutable_and_complete(source):
+def test_dashboard_request_state_is_immutable_and_complete(source, now_playing_source):
     stats = _function_block(source, "captureStatsRequestState")
-    realtime = _function_block(source, "captureNowPlayingRequestState")
     assert "Object.freeze" in stats
-    for field in ("days", "startDate", "endDate", "sourceId", "metric", "timezone"):
+    for field in ("days", "startDate", "endDate", "sourceId", "username", "metric", "timezone"):
         assert f"{field}:" in stats
-    assert "Object.freeze" in realtime
-    assert "sourceId: selectedSourceId" in realtime
+    realtime = _function_block(now_playing_source, "refresh")
+    assert "Object.freeze({ ...getScope() })" in realtime
 
 
 def test_login_pauses_activity_and_success_restarts_refresh(source):
@@ -672,7 +718,7 @@ def test_login_pauses_activity_and_success_restarts_refresh(source):
     assert "requestAnimationFrame" in auth
     assert "function trapTab" in auth
     assert "stopRefreshTimers()" in stop_activity
-    assert "stopNowPlayingTicker()" in stop_activity
+    assert "nowPlaying.stopTicker()" in stop_activity
     assert "cancelDashboardRequests()" in stop_activity
 
 
@@ -688,10 +734,10 @@ def test_source_options_replace_with_available_and_historical_union(source):
     assert "snapshot.servers" in stats
 
 
-def test_all_server_rows_render_source_badges_safely(source):
-    now_playing = _function_block(source, "renderNowPlaying")
-    history = _function_block(source, "renderHistoryTable")
-    badge = _function_block(source, "createSourceBadge")
+def test_all_server_rows_render_source_badges_safely(now_playing_source, history_source):
+    now_playing = _function_block(now_playing_source, "render")
+    history = _function_block(history_source, "render")
+    badge = _function_block(now_playing_source, "createSourceBadge")
     assert "showSources" in now_playing
     assert "createSourceBadge(item)" in now_playing
     assert "showSources" in history
@@ -731,15 +777,24 @@ def test_filter_listboxes_support_roving_keyboard_focus(source):
     assert 'id="customRangePanel"' in source
 
 
-def test_empty_panels_are_compact_and_show_onboarding(source):
+def test_empty_panels_are_compact_and_show_onboarding(source, history_source):
     assert '[data-panel-state="empty"] > .chart-container' in source
     assert 'id="newUserGuide"' in source
-    block = _function_block(source, "updateNewUserGuide")
+    block = _function_block(history_source, "updateFirstUse")
     assert "total_plays" in block
     assert "snapshot.history" in block
-    assert "currentEmptyStateIsFiltered()" in block
+    assert "isFiltered()" in block
+    assert "[data-history-analysis]" in block
+    assert "section.classList.toggle('hidden', firstUse)" in block
     assert "globalHistoryRecordCount" in source
     assert "history.filterEmpty" in source
+
+
+def test_review_link_carries_server_user_and_timezone_scope(source):
+    block = _function_block(source, "syncReviewLink")
+    assert "params.set('source_id', selectedSourceId)" in block
+    assert "params.set('username', selectedUsername)" in block
+    assert "resolveStatsTimezone()" in block
 
 
 def test_ranking_uses_list_semantics(source):
@@ -759,7 +814,7 @@ def test_history_server_label_lives_in_user_column(source):
 
 def test_history_column_visibility_persisted_with_min_one_rule(source):
     assert "navidrome-history-columns" in source
-    assert "historyColumns.size === 1" in source
+    assert "columns.size === 1" in source
     assert "column-hidden" in source
 
 
@@ -779,16 +834,15 @@ def test_no_hardcoded_versions_in_frontend():
         assert "0.8." not in text, path
 
 
-def test_history_column_visibility_reapplied_after_render(source):
+def test_history_column_visibility_reapplied_after_render(history_source):
     # Column hiding must survive every table rebuild (auto-refresh rebuilds
     # all <td>s): a single live Set is re-applied after each render, not just
     # during setup or preference changes.
-    assert "let historyColumns = readHistoryColumns();" in source
-    block = _function_block(source, "renderHistoryTable")
-    assert "applyHistoryColumns(historyColumns)" in block
-    setup = _function_block(source, "setupHistoryColumns")
-    assert "let columns" not in setup
-    assert "historyColumns = readHistoryColumns();" in setup
+    assert "let columns = readColumns();" in history_source
+    block = _function_block(history_source, "render")
+    assert "applyColumns()" in block
+    setup = _function_block(history_source, "mount")
+    assert "columns = readColumns();" in setup
 
 
 def test_column_menu_fixes_are_pinned():

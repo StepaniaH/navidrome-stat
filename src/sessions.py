@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Awaitable, Callable
 
 from src.config import env_int
+from src.core_types import PlaybackObservation, PlaybackSession
 
 PLAY_THRESHOLD_SEC = 30
 STALE_THRESHOLD_SEC = 30
@@ -23,7 +24,7 @@ _DEFAULT_CHECKPOINT_INTERVAL_SEC = env_int(
     "CHECKPOINT_INTERVAL_SEC", default=60, min_value=10, max_value=3600
 )
 
-SaveSessionCallback = Callable[[dict], Awaitable[None]]
+SaveSessionCallback = Callable[[PlaybackSession], Awaitable[None]]
 
 
 class SessionFinalizationError(RuntimeError):
@@ -55,7 +56,7 @@ class PlaybackSessionTracker:
         supports_playback_report: bool = False,
         checkpoint_interval_sec: int = _DEFAULT_CHECKPOINT_INTERVAL_SEC,
     ):
-        self._sessions: dict[str, dict] = {}
+        self._sessions: dict[str, PlaybackSession] = {}
         self._save_session = save_session
         self.play_threshold_sec = play_threshold_sec
         self.stale_threshold_sec = stale_threshold_sec
@@ -124,7 +125,7 @@ class PlaybackSessionTracker:
         self._sessions.pop(player_id, None)
 
     @staticmethod
-    async def _persist(callback: SaveSessionCallback, payload: dict) -> None:
+    async def _persist(callback: SaveSessionCallback, payload: PlaybackSession) -> None:
         try:
             await callback(payload)
         except PlaybackPersistenceError:
@@ -134,7 +135,7 @@ class PlaybackSessionTracker:
 
     async def _commit_session(
         self,
-        session: dict,
+        session: PlaybackSession,
         duration_sec: int,
         *,
         finalized: bool,
@@ -183,14 +184,26 @@ class PlaybackSessionTracker:
                 f"Failed to finalize {len(errors)} playback sessions"
             )
 
-    def _normalize_entries(self, entries) -> list[dict]:
-        if isinstance(entries, dict):
+    def _normalize_entries(self, entries) -> list[PlaybackObservation]:
+        if isinstance(entries, PlaybackObservation):
             return [entries]
+        if isinstance(entries, dict):
+            return [PlaybackObservation.from_mapping(entries)]
         if isinstance(entries, list):
-            return entries
+            return [
+                entry
+                if isinstance(entry, PlaybackObservation)
+                else PlaybackObservation.from_mapping(entry)
+                for entry in entries
+                if isinstance(entry, (dict, PlaybackObservation))
+            ]
         return []
 
-    def _session_from_entry(self, entry: dict, current_time: datetime) -> dict:
+    def _session_from_entry(
+        self,
+        entry: PlaybackObservation,
+        current_time: datetime,
+    ) -> PlaybackSession:
         position_ms = self._position_ms(entry)
         return {
             "session_id": uuid.uuid4().hex,
@@ -204,23 +217,23 @@ class PlaybackSessionTracker:
                 if self._has_playback_report(entry) and position_ms is not None
                 else "estimated"
             ),
-            "username": entry.get("username"),
-            "client_name": entry.get("playerName"),
-            "track_id": entry.get("id"),
-            "title": entry.get("title"),
-            "artist": entry.get("artist"),
-            "artist_id": entry.get("artistId"),
-            "album": entry.get("album"),
-            "album_id": entry.get("albumId"),
-            "is_transcoding": 1 if entry.get("transcodedContentType") else 0,
+            "username": entry.username,
+            "client_name": entry.player_name,
+            "track_id": entry.track_id,
+            "title": entry.title,
+            "artist": entry.artist,
+            "artist_id": entry.artist_id,
+            "album": entry.album,
+            "album_id": entry.album_id,
+            "is_transcoding": 1 if entry.transcoded_content_type else 0,
             "paused": False,
             "source_id": self.source_id,
             "source_name": self.source_name,
         }
 
     @staticmethod
-    def _position_ms(entry: dict) -> float | None:
-        value = entry.get("positionMs")
+    def _position_ms(entry: PlaybackObservation) -> float | None:
+        value = entry.position_ms
         if isinstance(value, bool):
             return None
         try:
@@ -230,8 +243,8 @@ class PlaybackSessionTracker:
         return position if position >= 0 else None
 
     @staticmethod
-    def _playback_rate(entry: dict) -> float:
-        value = entry.get("playbackRate", 1)
+    def _playback_rate(entry: PlaybackObservation) -> float:
+        value = entry.playback_rate
         if isinstance(value, bool):
             return 1.0
         try:
@@ -240,23 +253,28 @@ class PlaybackSessionTracker:
             return 1.0
         return rate if rate > 0 else 1.0
 
-    def _has_playback_report(self, entry: dict) -> bool:
-        return self.supports_playback_report and entry.get("state") is not None
+    def _has_playback_report(self, entry: PlaybackObservation) -> bool:
+        return self.supports_playback_report and entry.state is not None
 
-    def _is_playing(self, entry: dict) -> bool:
+    def _is_playing(self, entry: PlaybackObservation) -> bool:
         if self.supports_playback_report:
-            state = entry.get("state")
+            state = entry.state
             if isinstance(state, str):
                 return state.lower() in {"starting", "playing"}
-        return bool(entry.get("isPlaying", True))
+        return bool(entry.is_playing)
 
-    def _is_terminal_state(self, entry: dict) -> bool:
+    def _is_terminal_state(self, entry: PlaybackObservation) -> bool:
         if not self.supports_playback_report:
             return False
-        state = entry.get("state")
+        state = entry.state
         return isinstance(state, str) and state.lower() in TERMINAL_PLAYBACK_STATES
 
-    def _active_delta(self, session: dict, entry: dict, current_time: datetime) -> float:
+    def _active_delta(
+        self,
+        session: PlaybackSession,
+        entry: PlaybackObservation,
+        current_time: datetime,
+    ) -> float:
         wall_delta = (current_time - session["last_active_at"]).total_seconds()
         if wall_delta <= 0:
             return 0.0
@@ -290,12 +308,12 @@ class PlaybackSessionTracker:
         actively_seen_player_ids: set[str] = set()
 
         for entry in self._normalize_entries(entries):
-            player_id_raw = entry.get("playerId")
+            player_id_raw = entry.player_id
             if player_id_raw is None:
                 continue
 
             player_id = str(player_id_raw)
-            track_id = entry.get("id")
+            track_id = entry.track_id
 
             if self._is_terminal_state(entry):
                 # stopped/expired end the session at once; do not linger in

@@ -6,13 +6,19 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ### Added
 
+- Prometheus metrics now cover dashboard build duration and cache outcomes, SQLite busy retries, import duration, and cover-art cache hits, misses, usage, and limit.
+- Fixed-section Dashboard query metrics now expose count, total/max duration, and configured-budget violations without high-cardinality scope labels.
 - Recent Plays now offers on-demand details for attempts below the configured counting threshold. The details follow the current date, server, user, and timezone filters and describe counting semantics without inferring listener intent.
 - Privacy export format v3 adds stable record IDs and fingerprints. Merge imports now report inserted, skipped, and conflicting rows; formats v1 and v2 remain importable and gain deterministic repeat-import deduplication.
 - Readiness reports durable playback-write health separately from upstream polling health.
 
 ### Changed
 
+- First-use dashboards keep connection guidance and current collection status visible while collapsing empty historical analysis sections. Filtered empty results still show section-specific guidance.
+- Dashboard reads now use one immutable `StatsScope` for validation, cache identity, and repository query conditions.
 - Dashboard cache misses now read all local sections through one SQLite transaction and connection. IANA-timezone bucket scans stream rows instead of retaining another full timestamp list in memory.
+- Dashboard, Settings privacy, statistics queries, and privacy operations now compose focused behavior-owning modules while retaining the existing plain-JavaScript runtime and Python compatibility import surfaces.
+- Server configuration and playback observations now cross core boundaries as immutable values; playback-session dictionaries have an explicit structural type.
 - Settings page styles now live in a standalone stylesheet. Dashboard and Settings reuse the same authentication, HTTP, duration, preference, and listbox modules without adding a frontend build framework.
 - The product display name is consistently "Navidrome Stat" across the interface, documentation, API metadata, and releases. Existing repository and Docker image names remain unchanged.
 - New local checkouts keep runtime data under `.data/`, while existing root-level databases remain automatically discoverable and Docker deployments continue using `/data`.
@@ -23,15 +29,20 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ### Fixed
 
+- Cover-art caching preserves validated WebP and AVIF content types instead of defaulting unrecognized images to JPEG.
+- Cover-art proxy responses are size-bounded while streaming, checked against their real image signature, read and written off the event loop, and no longer retain unused per-key locks.
+- Retention previews no longer claim that `DELETE` shrinks the SQLite database file; they report deleted record payload while explaining that SQLite reuses freed pages internally.
+- Older application versions now refuse databases with a newer schema before creating or changing schema objects and provide upgrade-or-restore guidance.
+- Review album-cover tests now patch the current server-option seam after its registry refactor, restoring the complete Python test suite.
 - Finite date-window queries now use schema v13 UTC epoch columns and source/user/time indexes instead of wrapping `played_at` in `datetime()`, allowing SQLite to use the time index while preserving local-calendar and DST boundaries.
 - Docker build contexts now exclude local credential keys, databases, cover-art caches, backups, and `.data/` contents.
 - The Settings header distinguishes browser-only display preferences from connections and data controls saved by the service.
-- The roadmap now lists viewer/admin separation, per-user year-in-review scope, and time-limited read-only sharing instead of shipped per-user dashboard filtering.
+- The roadmap now lists viewer/admin separation and time-limited read-only sharing instead of shipped per-user dashboard and year-in-review filtering.
 - Recent playback metadata is selected by playback time rather than insertion order, so importing older history cannot replace the latest title or timestamp.
 - Album rankings persist upstream album IDs and keep same-named albums separate by source and artist; multi-server cover art uses each ranking row's source.
 - Native `getSongHistory` imports commit and checkpoint each page, resume after bounded runs or restarts, and retry failures with persisted exponential backoff.
 - Deleting a user's data discards active in-memory sessions and suppresses their already queued writes while allowing future plays to start fresh sessions.
-- Year-in-review links and requests preserve year, server, and timezone scope; the page now reports loading and retry states, prevents outdated responses from replacing the selected year, and provides text summaries for charts.
+- Year-in-review links, requests, responses, cache entries, aggregates, and visible labels preserve year, server, user, and timezone scope; the page reports loading and retry states, prevents outdated responses from replacing the selected year, and provides text summaries for charts.
 - The review login dialog keeps keyboard focus within the dialog, the dashboard localizes its review link, and recent-play column preferences apply on mobile.
 - The recent-play column menu remains visible outside short empty-state cards and stays open while multiple columns are changed.
 

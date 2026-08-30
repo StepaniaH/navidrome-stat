@@ -281,6 +281,21 @@ function updateReviewUrl() {
     window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
 }
 
+function requestedScope() {
+    const params = new URLSearchParams(window.location.search);
+    return {
+        sourceId: params.get('source_id') || '',
+        username: params.get('username') || '',
+    };
+}
+
+function renderReviewScope(username, sourceId) {
+    const userLabel = username || t('user.all');
+    const sourceLabel = sourceId || t('dashboard.allServers');
+    document.getElementById('reviewScope').textContent =
+        `${t('history.user')}: ${userLabel} · ${t('dashboard.serverFilter')}: ${sourceLabel}`;
+}
+
 function showReviewState(state) {
     document.getElementById('reviewLoading').classList.toggle('hidden', state !== 'loading');
     document.getElementById('reviewContent').classList.toggle('hidden', state !== 'content');
@@ -297,9 +312,11 @@ async function loadReview() {
         year: String(currentYear),
         timezone: resolveTimezone(),
     });
-    const sourceId = new URLSearchParams(window.location.search).get('source_id') || '';
+    const { sourceId, username } = requestedScope();
     if (sourceId) params.set('source_id', sourceId);
+    if (username) params.set('username', username);
     document.getElementById('reviewSubtitle').textContent = t('review.subtitle', { year: String(currentYear) });
+    renderReviewScope(username, sourceId);
     showReviewState('loading');
     try {
         const response = await apiFetch(`/api/stats/review?${params.toString()}`, { signal: controller.signal });
@@ -308,6 +325,7 @@ async function loadReview() {
         if (generation !== reviewRequestGeneration) return;
         document.getElementById('reviewSubtitle').textContent =
             t('review.subtitle', { year: String(review.year) });
+        renderReviewScope(review.username ?? username, review.source_id ?? sourceId);
         renderReview(review, sourceId);
         showReviewState(review.total_plays > 0 ? 'content' : 'empty');
     } catch (error) {

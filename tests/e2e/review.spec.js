@@ -37,8 +37,17 @@ test.beforeEach(async ({ page }) => {
     }),
   );
   await page.route("**/api/stats/review*", (route) => {
-    const year = Number(new URL(route.request().url()).searchParams.get("year")) || REVIEW.year;
-    route.fulfill({ json: { ...REVIEW, year } });
+    const params = new URL(route.request().url()).searchParams;
+    const year = Number(params.get("year")) || REVIEW.year;
+    route.fulfill({
+      json: {
+        ...REVIEW,
+        year,
+        timezone: params.get("timezone") || "UTC",
+        source_id: params.get("source_id"),
+        username: params.get("username"),
+      },
+    });
   });
 });
 
@@ -77,19 +86,22 @@ test("review page switches years through the selector", async ({ page }) => {
   await expect(page).toHaveURL(/year=2025/);
 });
 
-test("review restores a shared year, timezone, and source", async ({ page }) => {
+test("review restores and visibly labels its shared scope", async ({ page }) => {
   const reviewRequests = [];
   page.on("request", (request) => {
     if (request.url().includes("/api/stats/review")) reviewRequests.push(request.url());
   });
-  await page.goto("/review?year=1970&timezone=UTC&source_id=server-1");
+  await page.goto("/review?year=1970&timezone=UTC&source_id=server-1&username=alice");
   await expect(page.locator("#reviewYearButtonLabel")).toHaveText("1970");
   await expect(page.locator("#reviewTotalPlays")).toHaveText("486");
+  await expect(page.locator("#reviewScope")).toContainText("User: alice");
+  await expect(page.locator("#reviewScope")).toContainText("Server: server-1");
   await expect.poll(() => reviewRequests.some((url) => {
     const params = new URL(url).searchParams;
     return params.get("year") === "1970"
       && params.get("timezone") === "UTC"
-      && params.get("source_id") === "server-1";
+      && params.get("source_id") === "server-1"
+      && params.get("username") === "alice";
   })).toBe(true);
 });
 

@@ -416,6 +416,9 @@ class ReviewTopItem(BaseModel):
 
 class ReviewResponse(BaseModel):
     year: int
+    timezone: str = TIMEZONE_DEFAULT
+    source_id: Optional[str] = None
+    username: Optional[str] = None
     total_plays: int
     total_listen_sec: int
     unique_tracks: int

@@ -74,7 +74,10 @@ def test_review_restores_shareable_scope_and_avoids_stale_responses():
     assert "initialReviewYear()" in js
     assert "REVIEW_YEAR_MIN = 1970" in js
     assert "params.set('source_id', sourceId)" in js
+    assert "params.set('username', username)" in js
     assert "params.set('timezone', resolveTimezone())" in js
+    assert "renderReviewScope(review.username ?? username, review.source_id ?? sourceId)" in js
+    assert 'id="reviewScope"' in _read(REVIEW_HTML)
     assert "new AbortController()" in js
     assert "generation !== reviewRequestGeneration" in js
 

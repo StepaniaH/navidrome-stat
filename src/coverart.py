@@ -9,25 +9,35 @@ hits and (time-boxed) misses in the ``album_art_map`` table.
 
 import asyncio
 import hashlib
+import threading
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src import config
-from src.client import NavidromeClient
+from src.client import DEFAULT_COVER_ART_MAX_BYTES, NavidromeClient
+from src.config import env_int
+from src.runtime_state import runtime_state
 from src.source_config import credentials_for_source
 from src.sqlite import connect_db
 from src.windows import utc_instant
 
 NEGATIVE_TTL = timedelta(hours=24)
 DEFAULT_MAX_BYTES = 256 * 1024 * 1024
+DEFAULT_MAX_RESPONSE_BYTES = env_int(
+    "COVER_ART_RESPONSE_MAX_BYTES",
+    default=DEFAULT_COVER_ART_MAX_BYTES,
+    min_value=64 * 1024,
+    max_value=64 * 1024 * 1024,
+)
 
 _MAGIC_TYPES = (
     (b"\xff\xd8\xff", "image/jpeg"),
-    (b"\x89P", "image/png"),
-    (b"GIF8", "image/gif"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
 )
-
-
 def album_key(album: str | None, artist: str | None) -> str:
     return (
         (album or "").strip().casefold()
@@ -36,11 +46,24 @@ def album_key(album: str | None, artist: str | None) -> str:
     )
 
 
-def _detect_type(data: bytes) -> str:
+def _detect_type(data: bytes) -> str | None:
     for magic, content_type in _MAGIC_TYPES:
         if data.startswith(magic):
             return content_type
-    return "image/jpeg"
+    if len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in {
+        b"avif",
+        b"avis",
+    }:
+        return "image/avif"
+    return None
+
+
+@dataclass(slots=True)
+class _LockEntry:
+    lock: asyncio.Lock
+    users: int = 0
 
 
 class CoverArtService:
@@ -51,16 +74,20 @@ class CoverArtService:
         *,
         cache_dir: Path | str | None = None,
         max_bytes: int = DEFAULT_MAX_BYTES,
+        max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
         client_factory=None,
         now=None,
     ):
         self._cache_dir = Path(cache_dir) if cache_dir else None
         self._max_bytes = max_bytes
+        self._max_response_bytes = max_response_bytes
         self._client_factory = client_factory or NavidromeClient
         self._now = now or (lambda: datetime.now(timezone.utc))
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks: dict[str, _LockEntry] = {}
         self._locks_guard = asyncio.Lock()
+        self._cache_io_guard = threading.RLock()
         self._tracked_bytes: int | None = None
+        runtime_state.set_coverart_cache_limit(max_bytes)
 
     def cache_dir(self) -> Path:
         directory = self._cache_dir
@@ -75,13 +102,31 @@ class CoverArtService:
         ).hexdigest()
         return self.cache_dir() / f"{digest}.img"
 
-    async def _lock_for(self, key: str) -> asyncio.Lock:
+    @staticmethod
+    def _mime_path(path: Path) -> Path:
+        return path.with_suffix(".mime")
+
+    def _cached_content_type(self, data: bytes) -> str | None:
+        # A sidecar or upstream header is advisory only. Bytes must identify as
+        # one of the supported formats before they are served by the proxy.
+        return _detect_type(data)
+
+    @asynccontextmanager
+    async def _key_lock(self, key: str):
         async with self._locks_guard:
-            lock = self._locks.get(key)
-            if lock is None:
-                lock = asyncio.Lock()
-                self._locks[key] = lock
-            return lock
+            entry = self._locks.get(key)
+            if entry is None:
+                entry = _LockEntry(asyncio.Lock())
+                self._locks[key] = entry
+            entry.users += 1
+        try:
+            async with entry.lock:
+                yield
+        finally:
+            async with self._locks_guard:
+                entry.users -= 1
+                if entry.users == 0 and self._locks.get(key) is entry:
+                    self._locks.pop(key, None)
 
     async def _client_for(self, source_id: str):
         credentials = await credentials_for_source(source_id)
@@ -95,50 +140,93 @@ class CoverArtService:
 
     async def load(self, source_id: str, item_id: str, size: int):
         """Return ``(bytes, content_type)`` for an item's cover, or None."""
-        path = self._path_for(source_id, item_id, size)
-        lock = await self._lock_for(path.name)
-        async with lock:
-            if path.exists():
-                path.touch()
-                data = path.read_bytes()
-                return data, _detect_type(data)
+        path = await asyncio.to_thread(self._path_for, source_id, item_id, size)
+        async with self._key_lock(path.name):
+            cached = await asyncio.to_thread(self._read_cached, path)
+            if cached is not None:
+                data, content_type, cache_bytes = cached
+                runtime_state.record_coverart_cache_access(
+                    hit=True,
+                    cache_bytes=cache_bytes,
+                    limit_bytes=self._max_bytes,
+                )
+                return data, content_type
+            runtime_state.record_coverart_cache_access(
+                hit=False,
+                cache_bytes=await asyncio.to_thread(self._cache_bytes),
+                limit_bytes=self._max_bytes,
+            )
             fetched = await self._fetch(source_id, item_id, size)
             if fetched is None:
                 return None
-            data, _ = fetched
-            self._store(path, data)
-            return data, _detect_type(data)
+            data, _upstream_content_type = fetched
+            if len(data) > self._max_response_bytes:
+                return None
+            content_type = _detect_type(data)
+            if content_type is None:
+                return None
+            cache_bytes = await asyncio.to_thread(self._store, path, data, content_type)
+            runtime_state.coverart_cache_bytes = cache_bytes
+            return data, content_type
 
     async def _fetch(self, source_id: str, item_id: str, size: int):
         client = await self._client_for(source_id)
         if client is None:
             return None
         try:
-            return await client.get_cover_art(item_id, size)
+            return await client.get_cover_art(
+                item_id,
+                size,
+                max_bytes=self._max_response_bytes,
+            )
         except Exception:
             return None
         finally:
             await client.close()
 
-    def _store(self, path: Path, data: bytes) -> None:
-        if self._tracked_bytes is None:
-            self._tracked_bytes = sum(
-                p.stat().st_size for p in self.cache_dir().glob("*.img")
-            )
-        path.write_bytes(data)
-        self._tracked_bytes += len(data)
-        if self._tracked_bytes > self._max_bytes:
-            self._evict()
+    def _read_cached(self, path: Path) -> tuple[bytes, str, int] | None:
+        with self._cache_io_guard:
+            if not path.exists():
+                return None
+            path.touch()
+            data = path.read_bytes()
+            content_type = self._cached_content_type(data)
+            if content_type is not None and len(data) <= self._max_response_bytes:
+                return data, content_type, self._cache_bytes()
+            path.unlink(missing_ok=True)
+            self._mime_path(path).unlink(missing_ok=True)
+            self._tracked_bytes = None
+            return None
+
+    def _store(self, path: Path, data: bytes, content_type: str) -> int:
+        with self._cache_io_guard:
+            self._cache_bytes()
+            path.write_bytes(data)
+            self._mime_path(path).write_text(content_type, encoding="ascii")
+            self._tracked_bytes += len(data)
+            if self._tracked_bytes > self._max_bytes:
+                self._evict()
+            return self._tracked_bytes
+
+    def _cache_bytes(self) -> int:
+        with self._cache_io_guard:
+            if self._tracked_bytes is None:
+                self._tracked_bytes = sum(
+                    path.stat().st_size for path in self.cache_dir().glob("*.img")
+                )
+            return self._tracked_bytes
 
     def _evict(self) -> None:
-        files = sorted(self.cache_dir().glob("*.img"), key=lambda p: p.stat().st_mtime)
-        total = sum(p.stat().st_size for p in files)
-        for path in files:
-            if total <= self._max_bytes:
-                break
-            total -= path.stat().st_size
-            path.unlink(missing_ok=True)
-        self._tracked_bytes = total
+        with self._cache_io_guard:
+            files = sorted(self.cache_dir().glob("*.img"), key=lambda p: p.stat().st_mtime)
+            total = sum(p.stat().st_size for p in files)
+            for path in files:
+                if total <= self._max_bytes:
+                    break
+                total -= path.stat().st_size
+                path.unlink(missing_ok=True)
+                self._mime_path(path).unlink(missing_ok=True)
+            self._tracked_bytes = total
 
     async def resolve_album_id(
         self,
