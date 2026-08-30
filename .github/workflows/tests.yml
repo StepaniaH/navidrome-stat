@@ -1,6 +1,7 @@
 name: Tests
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -30,6 +31,9 @@ jobs:
       - name: Ruff
         run: .venv/bin/ruff check .
 
+      - name: Check Markdown links
+        run: .venv/bin/python scripts/check_md_links.py
+
       - name: Pytest with coverage
         run: .venv/bin/python -m pytest -q --cov=src --cov-fail-under=80 --cov-report=term-missing:skip-covered
 
@@ -46,12 +50,11 @@ jobs:
       - name: Run stats benchmark
         id: benchmark
         if: github.event_name == 'schedule'
-        continue-on-error: true
         run: |
-          .venv/bin/python scripts/benchmark_stats.py --sizes 100000,1000000 --json | tee benchmark-output.json
+          .venv/bin/python scripts/benchmark_stats.py --sizes 100000,1000000 --max-query-ms 2500 --json | tee benchmark-output.json
 
       - name: Upload benchmark results
-        if: github.event_name == 'schedule' && steps.benchmark.outcome != 'skipped'
+        if: always() && github.event_name == 'schedule' && steps.benchmark.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results

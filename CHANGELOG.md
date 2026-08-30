@@ -12,10 +12,18 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ### Changed
 
+- The product display name is consistently "Navidrome Stat" across the interface, documentation, API metadata, and releases. Existing repository and Docker image names remain unchanged.
+- New local checkouts keep runtime data under `.data/`, while existing root-level databases remain automatically discoverable and Docker deployments continue using `/data`.
+- Tag releases now require strict SemVer, matching source and Docker versions, release notes, the complete test workflow, and a container smoke test. Stable releases publish `latest`; prereleases do not. Successful image builds create a GitHub Release with the image digest and rollback guidance.
+- The scheduled million-row statistics benchmark now enforces a 2500 ms per-query regression ceiling and retains its report when the budget fails.
+- Backup guidance archives the complete data volume and includes a restore integrity check before production recovery.
 - Advanced theme settings summarize contrast by text role without exposing raw ratios, while retaining validation across every editable background.
 
 ### Fixed
 
+- Docker build contexts now exclude local credential keys, databases, cover-art caches, backups, and `.data/` contents.
+- The Settings header distinguishes browser-only display preferences from connections and data controls saved by the service.
+- The roadmap now lists viewer/admin separation, per-user year-in-review scope, and time-limited read-only sharing instead of shipped per-user dashboard filtering.
 - Recent playback metadata is selected by playback time rather than insertion order, so importing older history cannot replace the latest title or timestamp.
 - Album rankings persist upstream album IDs and keep same-named albums separate by source and artist; multi-server cover art uses each ranking row's source.
 - Native `getSongHistory` imports commit and checkpoint each page, resume after bounded runs or restarts, and retry failures with persisted exponential backoff.

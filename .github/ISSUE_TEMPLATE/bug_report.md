@@ -22,7 +22,7 @@ Describe what you expected to happen.
 
 ## Environment
 
-- Navidrome Statistic version or image tag:
+- Navidrome Stat version or image tag:
 - Navidrome version:
 - Installation method:
 - Browser and operating system, if relevant:

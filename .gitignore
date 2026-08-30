@@ -9,10 +9,11 @@ __pycache__/
 node_modules/
 test-results/
 playwright-report/
+.data/
+backups/
+restore-test/
 
-# Local cover art disk cache
+# Legacy local data paths
 coverart-cache/
-.openchamber/
-
-# Local credential key
 secret.key
+.openchamber/

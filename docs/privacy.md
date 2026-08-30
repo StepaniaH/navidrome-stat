@@ -1,6 +1,6 @@
 # Privacy
 
-Navidrome Statistic stores listening activity so it can build a shared dashboard across Navidrome servers, clients, and devices. This page describes what the application handles and what operators should protect.
+Navidrome Stat stores listening activity so it can build a shared dashboard across Navidrome servers, clients, and devices. This page describes what the application handles and what operators should protect.
 
 ## Data stored
 

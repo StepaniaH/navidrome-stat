@@ -10,6 +10,12 @@ from src.database import (
 )
 
 
+def test_init_db_creates_missing_data_directory(tmp_path):
+    db_path = tmp_path / ".data" / "navidrome_stats.db"
+    asyncio.run(init_db(str(db_path)))
+    assert db_path.is_file()
+
+
 def test_save_play_session(db_path):
     asyncio.run(init_db(db_path))
 

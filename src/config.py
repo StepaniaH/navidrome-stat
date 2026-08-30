@@ -3,11 +3,25 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Optional
+
+LOCAL_DATA_DIR = ".data"
+DATABASE_FILENAME = "navidrome_stats.db"
+
+
+def default_database_path(base_dir: str | Path = ".") -> str:
+    """Use the organized local data directory without hiding legacy data."""
+    base = Path(base_dir)
+    legacy_path = base / DATABASE_FILENAME
+    if legacy_path.exists():
+        return str(legacy_path)
+    return str(base / LOCAL_DATA_DIR / DATABASE_FILENAME)
+
 
 # Single source of truth for the SQLite file location. Modules resolve this
 # attribute at call time so tests can patch it in one place.
-DATABASE_PATH = os.getenv("DATABASE_URL", "navidrome_stats.db")
+DATABASE_PATH = os.getenv("DATABASE_URL", default_database_path())
 
 
 def parse_clamped_int(

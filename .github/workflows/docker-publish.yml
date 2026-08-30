@@ -1,14 +1,53 @@
-name: Build and push image
+name: Build and publish release
 
 on:
   push:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  validate-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require a release commit from main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Validate tag, source version, and changelog
+        run: python3 scripts/validate_release.py "$GITHUB_REF_NAME"
+
+  verify:
+    needs: validate-release
+    uses: ./.github/workflows/tests.yml
+    permissions:
+      contents: read
+
+  container-smoke:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build and run container smoke test
+        run: scripts/docker_smoke_test.sh
+
   build-and-push:
+    needs: container-smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -24,21 +63,64 @@ jobs:
 
       - name: Extract version
         id: version
+        shell: bash
         run: |
-          echo "app_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          version="${GITHUB_REF_NAME#v}"
+          echo "app_version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: docker/build-push-action@v6
+        id: build
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             stepaniah/navidrome-statistic:${{ github.ref_name }}
-            stepaniah/navidrome-statistic:latest
+            ${{ steps.version.outputs.is_prerelease == 'false' && 'stepaniah/navidrome-statistic:latest' || '' }}
           labels: |
             org.opencontainers.image.source=https://github.com/StepaniaH/navidrome-stat
-            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.version=${{ steps.version.outputs.app_version }}
+            org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             APP_VERSION=${{ steps.version.outputs.app_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Compose GitHub release notes
+        env:
+          APP_VERSION: ${{ steps.version.outputs.app_version }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_NAME: stepaniah/navidrome-statistic
+        run: |
+          python3 scripts/release_notes.py "$APP_VERSION" > release-notes.md
+          printf '\n\n### Container image\n\n' >> release-notes.md
+          printf 'Image: `%s:%s`\n\n' "$IMAGE_NAME" "$GITHUB_REF_NAME" >> release-notes.md
+          printf 'Digest: `%s@%s`\n\n' "$IMAGE_NAME" "$IMAGE_DIGEST" >> release-notes.md
+          printf '%s\n' 'To roll back, deploy a previously published version tag. If the target version predates a schema migration, restore the matching data-volume backup instead of starting an unsupported downgrade.' >> release-notes.md
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IS_PRERELEASE: ${{ steps.version.outputs.is_prerelease }}
+        shell: bash
+        run: |
+          prerelease_args=()
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            prerelease_args+=(--prerelease)
+          fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "Navidrome Stat $GITHUB_REF_NAME" \
+              --notes-file release-notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --verify-tag \
+              --title "Navidrome Stat $GITHUB_REF_NAME" \
+              --notes-file release-notes.md \
+              "${prerelease_args[@]}"
+          fi

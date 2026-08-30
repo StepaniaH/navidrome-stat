@@ -1,6 +1,6 @@
 # Architecture
 
-Navidrome Statistic is a single-process FastAPI application with background collectors, an in-memory playback session tracker, a local SQLite database, and a static dashboard.
+Navidrome Stat is a single-process FastAPI application with background collectors, an in-memory playback session tracker, a local SQLite database, and a static dashboard.
 
 ## Data flow
 
@@ -53,7 +53,7 @@ To avoid double counting, imports never land on or after live-poller coverage: e
 
 ## Storage
 
-SQLite stores listening records, source information, retention settings, and any Navidrome credentials saved through the server list or compatible fallback API. Saved credentials are encrypted at rest with AES-256-GCM using a per-installation key file (`secret.key`, mode 0600) next to the database; startup migrations re-wrap legacy plaintext values once. Schema migrations run during startup; schema v12 adds durable privacy-export record IDs and upstream album IDs. Connections use write-ahead logging, foreign-key checks, and a bounded busy timeout.
+SQLite stores listening records, source information, retention settings, and any Navidrome credentials saved through the server list or compatible fallback API. New local checkouts place the database under `.data/`; when a root-level `navidrome_stats.db` already exists, the resolver keeps using it so an upgrade cannot silently present an empty installation. Docker Compose continues to set the explicit `/data/navidrome_stats.db` volume path. Saved credentials are encrypted at rest with AES-256-GCM using a per-installation key file (`secret.key`, mode 0600) next to the database; startup migrations re-wrap legacy plaintext values once. Schema migrations run during startup; schema v12 adds durable privacy-export record IDs and upstream album IDs. Connections use write-ahead logging, foreign-key checks, and a bounded busy timeout.
 
 Privacy exports use format v3. Every history row and short-play attempt carries a stable record ID plus a canonical SHA-256 fingerprint, so repeated merge imports report inserted, skipped, and conflicting records instead of duplicating them. Import formats v1 and v2 remain readable and derive deterministic identities during import.
 

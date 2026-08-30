@@ -19,6 +19,7 @@ async def test_about_returns_public_project_identity():
     assert body["schema_version"] == SCHEMA_VERSION
     assert body["license"] == LICENSE
     assert body["project_url"] == PROJECT_URL
+    assert PROJECT_NAME == "Navidrome Stat"
     assert PROJECT_URL.startswith("https://github.com/StepaniaH/navidrome-stat")
 
 

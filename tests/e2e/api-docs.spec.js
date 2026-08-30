@@ -3,7 +3,7 @@ const { test, expect } = require("@playwright/test");
 test("API reference loads, expands, and filters the runtime schema", async ({ page }) => {
   await page.goto("/docs");
 
-  await expect(page).toHaveTitle("Navidrome Statistic API");
+  await expect(page).toHaveTitle("Navidrome Stat API");
   const endpoints = page.locator(".api-endpoint");
   await expect(page.locator("#apiStatus")).toHaveText(/^\d+ endpoints?$/);
   expect(await endpoints.count()).toBeGreaterThan(10);

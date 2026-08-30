@@ -4,7 +4,19 @@ from pathlib import Path
 
 import pytest
 
-from src.config import env_flag, env_int, parse_clamped_int
+from src.config import default_database_path, env_flag, env_int, parse_clamped_int
+
+
+def test_default_database_path_uses_data_directory_for_new_checkout(tmp_path):
+    assert default_database_path(tmp_path) == str(
+        tmp_path / ".data" / "navidrome_stats.db"
+    )
+
+
+def test_default_database_path_preserves_legacy_root_database(tmp_path):
+    legacy = tmp_path / "navidrome_stats.db"
+    legacy.touch()
+    assert default_database_path(tmp_path) == str(legacy)
 
 
 @pytest.mark.parametrize(

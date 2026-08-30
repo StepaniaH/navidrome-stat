@@ -1,5 +1,7 @@
 """SQLite schema, migrations, and the shared metadata key/value store."""
 
+from pathlib import Path
+
 import aiosqlite
 
 from src import config
@@ -305,6 +307,7 @@ async def _encrypt_saved_credentials(db: aiosqlite.Connection, db_path: str) -> 
 async def init_db(db_path: str | None = None):
     """Initialize the schema and recover durable playback checkpoints."""
     path = _path(db_path)
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     async with connect_db(path, initialize=True) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS play_history (

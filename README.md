@@ -2,10 +2,10 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.svg">
-  <img src="assets/icon.svg" alt="Navidrome Statistic" width="140">
+  <img src="assets/icon.svg" alt="Navidrome Stat" width="140">
 </picture>
 
-# Navidrome Statistic
+# Navidrome Stat
 
 <a href="https://www.producthunt.com/products/navidrome-stat/launches/navidrome-stat?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-navidrome-stat" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1207528&amp;theme=dark&amp;t=1787616376509"><img alt="Navidrome Stat - A self-hosted service track and display your Navidrome usage | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1207528&amp;theme=light&amp;t=1787616376509"></picture></a>
 
@@ -19,7 +19,7 @@
 
 [简体中文](README.zh-CN.md) · [Product Hunt](https://www.producthunt.com/products/navidrome-stat)
 
-Navidrome Statistic collects playback activity reported by Navidrome and presents it in one dashboard. It provides a consistent view across Subsonic-compatible clients, browsers, phones, computers, and multiple Navidrome servers without requiring every client to implement its own statistics.
+Navidrome Stat collects playback activity reported by Navidrome and presents it in one dashboard. It provides a consistent view across Subsonic-compatible clients, browsers, phones, computers, and multiple Navidrome servers without requiring every client to implement its own statistics.
 
 The service polls `getNowPlaying`, tracks listening sessions in memory, stores results in SQLite, and serves a self-contained web interface.
 
@@ -47,7 +47,7 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 
 ## Important limitations
 
-- Run a single Navidrome Statistic instance for a set of sources. Multiple instances polling the same sources can double-count plays.
+- Run a single Navidrome Stat instance for a set of sources. Multiple instances polling the same sources can double-count plays.
 - Active sessions are held in one process. Multi-worker Uvicorn deployments are not supported.
 - Listening records in SQLite are stored unencrypted; saved server credentials are encrypted at rest with a local key file (`secret.key`) that is not a defense against a fully compromised host.
 - The application does not provide TLS. Use a trusted network or an HTTPS reverse proxy for remote access.
@@ -150,7 +150,7 @@ Open `http://localhost:39421`. When `STATS_API_TOKEN` is configured, enter it in
 | `NAVIDROME_URL` | None | Fallback Navidrome base URL; used only while the saved server list is empty. |
 | `NAVIDROME_USER` | None | Username for the fallback Subsonic connection. |
 | `NAVIDROME_PASS` | None | Password for the fallback Subsonic connection. |
-| `DATABASE_URL` | `navidrome_stats.db` | SQLite file path; despite the name, this is not a general database URL. |
+| `DATABASE_URL` | `.data/navidrome_stats.db` | SQLite file path for new local checkouts; an existing root-level `navidrome_stats.db` is still detected. Docker Compose sets `/data/navidrome_stats.db`. Despite the name, this is not a general database URL. |
 | `STATS_API_TOKEN` | Empty | Protects dashboard data, application APIs, and OpenAPI routes when set. |
 | `STATS_METRICS_AUTH` | `false` | Requires authentication for `/metrics` when both this option and `STATS_API_TOKEN` are set. |
 | `OPENAPI_ENABLED` | `true` | Set to `false` to remove `/docs`, `/redoc`, and `/openapi.json`. |
@@ -205,13 +205,13 @@ docker compose pull
 docker compose up -d
 ```
 
-Back up the database and review the changelog before updating a pinned version.
+Back up the data volume and review the changelog before updating a pinned version.
 
 ### Backup and restore
 
 The data volume contains listening history and the credential key file and may contain saved Navidrome credentials. Treat backups as sensitive.
 
-Stop the service before copying the SQLite file:
+Stop the service and archive the complete data volume so the database and its matching `secret.key` stay together:
 
 ```bash
 mkdir -p backups
@@ -220,11 +220,29 @@ docker run --rm \
   --volumes-from navidrome-stat:ro \
   -v "$PWD/backups:/backup" \
   alpine:3.20 \
-  cp /data/navidrome_stats.db /backup/navidrome_stats.db
+  tar -C /data -czf /backup/navidrome-stat-data.tar.gz .
 docker compose start navidrome-stat
 ```
 
-To restore, stop the service, preserve the current database, copy a verified backup to `/data/navidrome_stats.db`, ensure UID and GID `1000:1000` can write it, and start the service. Restore `secret.key` from the same backup if it exists; otherwise re-enter saved passwords in Settings. Test restores away from the production volume first.
+Before relying on a backup, extract it outside the production volume and run SQLite's integrity check against the restored copy:
+
+```bash
+mkdir -p restore-test
+docker run --rm \
+  -v "$PWD/backups:/backup:ro" \
+  -v "$PWD/restore-test:/restore" \
+  alpine:3.20 \
+  tar -C /restore -xzf /backup/navidrome-stat-data.tar.gz
+test -f restore-test/navidrome_stats.db
+test -f restore-test/secret.key || echo "No credential key in this archive"
+docker compose run --rm --no-deps \
+  -e DATABASE_URL=/restore/navidrome_stats.db \
+  -v "$PWD/restore-test:/restore:ro" \
+  navidrome-stat \
+  python -c "import sqlite3; db = sqlite3.connect('file:/restore/navidrome_stats.db?mode=ro', uri=True); result = db.execute('PRAGMA integrity_check').fetchone()[0]; assert result == 'ok', result; print(result)"
+```
+
+To restore production, stop the service, preserve the current volume, extract the verified archive into an empty replacement volume, and ensure UID and GID `1000:1000` can write the restored files. Start the pinned application version, verify `/health/ready`, and test a saved connection. If the archive has no `secret.key`, re-enter saved passwords in Settings. Never merge an archive into a running or non-empty data volume.
 
 ## Security and privacy
 
@@ -240,6 +258,8 @@ See [Privacy](docs/privacy.md) and the [security policy](SECURITY.md) for detail
 ## Development
 
 Python 3.11 is the supported runtime.
+
+New local checkouts keep the database, credential key, and cover-art cache under `.data/`, which is ignored by Git. If a legacy root-level `navidrome_stats.db` exists, it remains in use until you explicitly move the database and matching `secret.key` together or set `DATABASE_URL`.
 
 ```bash
 python3.11 -m venv .venv
@@ -281,4 +301,4 @@ Tests use temporary databases and synthetic API data; they do not require a live
 
 ## License
 
-Navidrome Statistic is available under the [MIT License](LICENSE). Bundled Tailwind CSS and Apache ECharts retain their respective license and notice files under `src/static/vendor/`.
+Navidrome Stat is available under the [MIT License](LICENSE). Bundled Tailwind CSS and Apache ECharts retain their respective license and notice files under `src/static/vendor/`.

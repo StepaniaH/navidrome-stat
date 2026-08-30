@@ -125,7 +125,7 @@
         });
 
         const info = schema.info || {};
-        document.title = `${info.title || 'Navidrome Statistic'} API`;
+        document.title = `${info.title || 'Navidrome Stat'} API`;
         document.getElementById('apiDescription').textContent = info.description
             || `OpenAPI ${schema.openapi || ''} · Version ${info.version || 'unknown'}`;
         applyFilter();

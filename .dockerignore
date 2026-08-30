@@ -3,6 +3,11 @@ __pycache__/
 *.py[cod]
 *.db
 *.db-*
+secret.key
+coverart-cache/
+.data/
+backups/
+restore-test/
 .env
 .env.*
 .git/

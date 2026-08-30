@@ -290,6 +290,14 @@ def test_about_panel_has_version_row_served_by_api():
     assert "data-app-version" in html
 
 
+def test_settings_header_distinguishes_browser_and_service_storage():
+    html = _read(SETTINGS_HTML)
+    header = html[html.index('<header class="page-header">') : html.index("</header>")]
+    assert 'data-i18n="page.storageDescription"' in header
+    assert 'data-i18n="preferences.description"' not in header
+    assert html.count('data-i18n="preferences.description"') == 1
+
+
 def test_settings_runtime_fills_version_from_about_endpoint():
     js = _read(SETTINGS_JS)
     assert "applyAppVersion" in js

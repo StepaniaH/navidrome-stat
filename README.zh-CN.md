@@ -2,10 +2,10 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.svg">
-  <img src="assets/icon.svg" alt="Navidrome Statistic" width="140">
+  <img src="assets/icon.svg" alt="Navidrome Stat" width="140">
 </picture>
 
-# Navidrome Statistic
+# Navidrome Stat
 
 <a href="https://www.producthunt.com/products/navidrome-stat/launches/navidrome-stat?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-navidrome-stat" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1207528&amp;theme=dark&amp;t=1787616376509"><img alt="Navidrome Stat - A self-hosted service track and display your Navidrome usage | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1207528&amp;theme=light&amp;t=1787616376509"></picture></a>
 
@@ -19,7 +19,7 @@
 
 [English](README.md)
 
-Navidrome Statistic 汇总 Navidrome 上报的播放活动，并通过一个仪表盘统一展示。无论使用 Subsonic 兼容客户端、浏览器、手机、电脑，还是连接多个 Navidrome 服务器，都可以得到一致的统计视图，无需每个客户端单独实现统计功能。
+Navidrome Stat 汇总 Navidrome 上报的播放活动，并通过一个仪表盘统一展示。无论使用 Subsonic 兼容客户端、浏览器、手机、电脑，还是连接多个 Navidrome 服务器，都可以得到一致的统计视图，无需每个客户端单独实现统计功能。
 
 服务通过轮询 `getNowPlaying`、在内存中追踪收听会话、将结果保存到 SQLite，并提供完整的本地网页界面。
 
@@ -47,7 +47,7 @@ Navidrome Statistic 汇总 Navidrome 上报的播放活动，并通过一个仪�
 
 ## 重要限制
 
-- 同一组数据源只能运行一个 Navidrome Statistic 实例。多个实例轮询同一数据源可能导致重复计数。
+- 同一组数据源只能运行一个 Navidrome Stat 实例。多个实例轮询同一数据源可能导致重复计数。
 - 活跃会话只保存在单个进程中，不支持多 worker 的 Uvicorn 部署。
 - SQLite 中的收听记录为未加密存储；已保存的服务器凭据使用随库生成的本地密钥文件（`secret.key`）静态加密，该方案不抵御主机被完全攻陷的情形。
 - 应用本身不提供 TLS。远程访问时应使用可信网络或 HTTPS 反向代理。
@@ -150,7 +150,7 @@ docker compose ps
 | `NAVIDROME_URL` | 无 | 回退连接使用的 Navidrome 基础 URL；仅在已保存的服务器列表为空时使用。 |
 | `NAVIDROME_USER` | 无 | 回退 Subsonic 连接使用的用户名。 |
 | `NAVIDROME_PASS` | 无 | 回退 Subsonic 连接使用的密码。 |
-| `DATABASE_URL` | `navidrome_stats.db` | SQLite 文件路径；虽然名称中包含 URL，但不支持其他数据库。 |
+| `DATABASE_URL` | `.data/navidrome_stats.db` | 新本地检出默认使用的 SQLite 文件路径；若根目录已有 `navidrome_stats.db`，仍会继续使用。Docker Compose 设置为 `/data/navidrome_stats.db`。虽然名称中包含 URL，但不支持其他数据库。 |
 | `STATS_API_TOKEN` | 空 | 设置后保护仪表盘数据、应用接口和 OpenAPI 路由。 |
 | `STATS_METRICS_AUTH` | `false` | 本项与 `STATS_API_TOKEN` 同时设置时，`/metrics` 需要认证。 |
 | `OPENAPI_ENABLED` | `true` | 设为 `false` 时移除 `/docs`、`/redoc` 和 `/openapi.json`。 |
@@ -205,13 +205,13 @@ docker compose pull
 docker compose up -d
 ```
 
-更新固定版本前，请备份数据库并阅读变更记录。
+更新固定版本前，请备份数据卷并阅读变更记录。
 
 ### 备份与恢复
 
 数据卷包含收听历史与凭据密钥文件，也可能包含已保存的 Navidrome 凭据。所有备份都应按敏感数据处理。
 
-复制 SQLite 文件前先停止服务：
+先停止服务并归档完整数据卷，使数据库与对应的 `secret.key` 始终保存在同一份备份中：
 
 ```bash
 mkdir -p backups
@@ -220,11 +220,29 @@ docker run --rm \
   --volumes-from navidrome-stat:ro \
   -v "$PWD/backups:/backup" \
   alpine:3.20 \
-  cp /data/navidrome_stats.db /backup/navidrome_stats.db
+  tar -C /data -czf /backup/navidrome-stat-data.tar.gz .
 docker compose start navidrome-stat
 ```
 
-恢复时应先停止服务、保留当前数据库、把已验证的备份复制到 `/data/navidrome_stats.db`，确认 UID 和 GID `1000:1000` 具有写权限，然后启动服务。若备份中包含 `secret.key` 请一并恢复；否则请在设置页重新输入已保存的密码。请先在生产卷之外验证恢复流程。
+依赖备份前，应先在生产卷之外解压，并对恢复副本执行 SQLite 完整性检查：
+
+```bash
+mkdir -p restore-test
+docker run --rm \
+  -v "$PWD/backups:/backup:ro" \
+  -v "$PWD/restore-test:/restore" \
+  alpine:3.20 \
+  tar -C /restore -xzf /backup/navidrome-stat-data.tar.gz
+test -f restore-test/navidrome_stats.db
+test -f restore-test/secret.key || echo "此备份中没有凭据密钥"
+docker compose run --rm --no-deps \
+  -e DATABASE_URL=/restore/navidrome_stats.db \
+  -v "$PWD/restore-test:/restore:ro" \
+  navidrome-stat \
+  python -c "import sqlite3; db = sqlite3.connect('file:/restore/navidrome_stats.db?mode=ro', uri=True); result = db.execute('PRAGMA integrity_check').fetchone()[0]; assert result == 'ok', result; print(result)"
+```
+
+恢复生产环境时，应停止服务、保留当前数据卷、把已验证的归档解压到空的替代卷，并确认 UID 和 GID `1000:1000` 可写恢复后的文件。使用原先固定的应用版本启动，验证 `/health/ready` 并测试已保存的连接。若归档中没有 `secret.key`，需要在设置页重新输入密码。不要把归档合并到正在使用或已有内容的数据卷中。
 
 ## 安全与隐私
 
@@ -240,6 +258,8 @@ docker compose start navidrome-stat
 ## 开发
 
 项目支持 Python 3.11。
+
+新的本地检出会把数据库、凭据密钥和封面缓存集中存放在 Git 忽略的 `.data/` 下。如果根目录已有旧的 `navidrome_stats.db`，应用会继续使用它，直到你明确把数据库与对应的 `secret.key` 一并移动，或设置 `DATABASE_URL`。
 
 ```bash
 python3.11 -m venv .venv
@@ -279,4 +299,4 @@ npm run test:e2e
 
 ## 许可证
 
-Navidrome Statistic 使用 [MIT License](LICENSE)。随应用分发的 Tailwind CSS 与 Apache ECharts 在 `src/static/vendor/` 中保留各自的许可证和声明文件。
+Navidrome Stat 使用 [MIT License](LICENSE)。随应用分发的 Tailwind CSS 与 Apache ECharts 在 `src/static/vendor/` 中保留各自的许可证和声明文件。

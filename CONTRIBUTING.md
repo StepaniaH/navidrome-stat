@@ -6,7 +6,7 @@ English is used for issues, pull requests, and commit messages. User-facing docu
 
 ## Development setup
 
-Navidrome Statistic uses Python 3.11.
+Navidrome Stat uses Python 3.11.
 
 ```bash
 python3.11 -m venv .venv
@@ -41,7 +41,7 @@ Run the synthetic statistics benchmark after changing aggregate queries, indexes
 python3 scripts/benchmark_stats.py --sizes 100000,1000000
 ```
 
-The report measures all-history time buckets plus source-and-user-filtered summary and history queries, and verifies the filtered history query plan. Use `--json` for machine-readable output and `--max-query-ms <budget>` when a stable CI host has an agreed performance budget. The older `--rows` single-size option remains available for compatibility.
+The report measures all-history time buckets plus source-and-user-filtered summary and history queries, and verifies the filtered history query plan. Use `--json` for machine-readable output and `--max-query-ms <budget>` to enforce a ceiling. The scheduled GitHub Actions run uses a deliberately generous 2500 ms per-query budget at 100,000 and 1,000,000 rows; it is a regression guard for shared runners, not a local performance target. The older `--rows` single-size option remains available for compatibility.
 
 Run the container smoke test after changing the Dockerfile, runtime dependencies, startup behavior, or health endpoints. It requires Docker and uses an ephemeral loopback port by default. Set `SMOKE_HOST_PORT` only when a fixed host port is needed.
 
@@ -96,20 +96,20 @@ git diff --check
 
 ## Maintainer releases
 
-Releases are tag-only: pushing a `v*` tag starts the Docker workflow. The workflow publishes `stepaniah/navidrome-statistic:<tag>` and updates `stepaniah/navidrome-statistic:latest`; it does not create a GitHub Release.
+Releases are tag-only: pushing a strict semantic-version tag starts the release workflow. The workflow validates the release metadata, runs the complete test workflow and container smoke test, publishes `stepaniah/navidrome-statistic:<tag>`, and creates a GitHub Release with the changelog section, image digest, and rollback guidance. Stable tags update `stepaniah/navidrome-statistic:latest`; prerelease tags do not.
 
 Before tagging:
 
 1. Move the release notes from `Unreleased` to a versioned, dated section in `CHANGELOG.md`.
-2. Verify the version on a clean `main` checkout with the backend checks, browser tests, Markdown link checker, and container smoke test.
+2. Set the same version in `src/version.py` and the Dockerfile, then verify it on a clean `main` checkout with the backend checks, browser tests, Markdown link checker, and container smoke test.
 3. Confirm that the repository has valid `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets.
-4. Create and push an annotated semantic-version tag:
+4. Create and push an annotated semantic-version tag from a commit on `main`:
 
    ```bash
    git tag -a vX.Y.Z -m "vX.Y.Z"
    git push origin vX.Y.Z
    ```
 
-5. Verify that the Docker Hub manifest contains both `linux/amd64` and `linux/arm64`, then confirm `/api/about` reports the expected version from the published image.
+5. Verify that the Docker Hub manifest contains both `linux/amd64` and `linux/arm64`, confirm the GitHub Release digest matches the manifest, then confirm `/api/about` reports the expected version from the published image.
 
-Every matching tag also moves `latest`, so only tag a prerelease when that behavior is intended. Do not move or reuse a published tag. To roll back, deploy a previously published version tag rather than `latest`.
+Do not move or reuse a published tag. To roll back, deploy a previously published version tag rather than `latest`. If that version predates a schema migration, restore its matching data-volume backup instead of attempting an unsupported database downgrade.
