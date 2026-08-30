@@ -494,8 +494,9 @@
         .filter-control.columns .filter-popover { left: auto; right: 0; width: 11rem; }
         .column-option-off .option-check { visibility: hidden; }
         .column-option[aria-pressed="true"] .option-check { opacity: 1; }
+        .history-table th.column-hidden,
+        .history-table td.column-hidden { display: none; }
         @media (min-width: 641px) {
-            .history-table .column-hidden { display: none; }
             .history-table col.column-hidden { visibility: collapse; }
         }
         .custom-range-panel {
@@ -791,6 +792,7 @@
 
         .review-subtitle { color: var(--app-muted); font-size: 0.9rem; margin: 0.25rem 0 1rem; }
         .review-metric-row { display: flex; justify-content: flex-end; margin-bottom: 0.75rem; }
+        #reviewYearMenu { max-height: min(22rem, calc(100vh - 8rem)); overflow-y: auto; }
 
         .review-hero {
             display: grid;
@@ -912,3 +914,15 @@
             text-align: center;
             color: var(--app-dim);
         }
+        .review-retry-button {
+            margin-top: 14px;
+            border: 1px solid var(--app-border);
+            border-radius: 8px;
+            padding: 8px 14px;
+            color: var(--app-text);
+            background: var(--app-field);
+            font-size: 0.8125rem;
+            font-weight: 600;
+        }
+        .review-retry-button:hover,
+        .review-retry-button:focus-visible { border-color: var(--app-accent); color: var(--app-accent); }

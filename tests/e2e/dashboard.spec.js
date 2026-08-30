@@ -214,6 +214,48 @@ test("server filter is encoded into historical and realtime requests", async ({
   await expect.poll(() =>
     requests.some((url) => url.includes("source_id=server-1")),
   ).toBe(true);
+  await expect(page.locator("#reviewLink")).toHaveAttribute("href", /source_id=server-1/);
+  await expect(page.locator("#reviewLink")).toHaveAttribute("title", "Year in Review");
+});
+
+test("shared timezone and mobile history columns are restored", async ({ page }) => {
+  const dashboardRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/stats/dashboard")) dashboardRequests.push(request.url());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem("navidrome-timezone", "UTC");
+    localStorage.setItem("navidrome-history-columns", "track");
+  });
+  await page.goto("/?timezone=Europe%2FBerlin");
+  await expect(page.locator("#historyTable .history-cell-title")).toBeVisible();
+  await expect(page.locator("#historyTable .history-cell-artist")).toBeHidden();
+  await expect.poll(() => dashboardRequests.some((url) => (
+    new URL(url).searchParams.get("timezone") === "Europe/Berlin"
+  ))).toBe(true);
+});
+
+test("history column menu stays usable when history is empty", async ({ page }) => {
+  await page.unroute("**/api/stats/dashboard?*");
+  await page.route("**/api/stats/dashboard?*", (route) => route.fulfill({
+    json: { ...snapshot, history: [] },
+  }));
+  await page.setViewportSize({ width: 1440, height: 648 });
+  await page.goto("/");
+  await page.locator("#historyColumnsButton").click();
+
+  const options = page.locator("#historyColumnsPanel .column-option");
+  await expect(options).toHaveCount(6);
+  const lastOptionIsExposed = await options.last().evaluate((option) => {
+    const rect = option.getBoundingClientRect();
+    const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return top === option || option.contains(top);
+  });
+  expect.soft(lastOptionIsExposed).toBe(true);
+
+  await options.nth(2).click();
+  await expect(page.locator("#historyColumnsPanel")).toBeVisible();
 });
 
 test("custom date range is encoded into the dashboard request", async ({

@@ -57,6 +57,8 @@ test("review page renders the yearly story", async ({ page }) => {
   await expect(page.locator("#reviewTopAlbums img[src*='id=al-1']")).toHaveCount(1);
   await expect(page.locator("#reviewTopTracks img[src*='id=tr-1']")).toHaveCount(1);
   await expect(page.locator("#reviewEmpty")).toBeHidden();
+  await expect(page.locator("#reviewMonthlyChart")).toHaveAttribute("aria-describedby", "reviewMonthlySummary");
+  await expect(page.locator("#reviewMonthlySummary")).toContainText("03");
 });
 
 test("review page switches years through the selector", async ({ page }) => {
@@ -72,6 +74,45 @@ test("review page switches years through the selector", async ({ page }) => {
   await page.locator("#reviewYearButton").click();
   await page.getByRole("option", { name: "2025" }).click();
   await expect(page.locator("#reviewSubtitle")).toContainText("2025");
+  await expect(page).toHaveURL(/year=2025/);
+});
+
+test("review restores a shared year, timezone, and source", async ({ page }) => {
+  const reviewRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/stats/review")) reviewRequests.push(request.url());
+  });
+  await page.goto("/review?year=1970&timezone=UTC&source_id=server-1");
+  await expect(page.locator("#reviewYearButtonLabel")).toHaveText("1970");
+  await expect(page.locator("#reviewTotalPlays")).toHaveText("486");
+  await expect.poll(() => reviewRequests.some((url) => {
+    const params = new URL(url).searchParams;
+    return params.get("year") === "1970"
+      && params.get("timezone") === "UTC"
+      && params.get("source_id") === "server-1";
+  })).toBe(true);
+});
+
+test("review exposes retry after a failed request", async ({ page }) => {
+  await page.unroute("**/api/stats/review*");
+  let attempts = 0;
+  await page.route("**/api/stats/review*", (route) => {
+    attempts += 1;
+    if (attempts === 1) return route.fulfill({ status: 500, body: "failed" });
+    return route.fulfill({ json: REVIEW });
+  });
+  await page.goto("/review");
+  await expect(page.locator("#reviewError")).toBeVisible();
+  await page.locator("#reviewRetryButton").click();
+  await expect(page.locator("#reviewTotalPlays")).toHaveText("486");
+});
+
+test("review login dialog makes the background inert", async ({ page }) => {
+  await page.unroute("**/api/stats/review*");
+  await page.route("**/api/stats/review*", (route) => route.fulfill({ status: 401 }));
+  await page.goto("/review");
+  await expect(page.locator("#loginOverlay")).toBeVisible();
+  await expect(page.locator("#reviewApp")).toHaveAttribute("inert", "");
 });
 
 test("review distribution charts switch between plays and listening time", async ({ page }) => {

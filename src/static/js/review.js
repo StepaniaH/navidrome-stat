@@ -20,15 +20,30 @@ try {
     browserTimezone = null;
 }
 function resolveTimezone() {
+    const requested = new URLSearchParams(window.location.search).get('timezone');
+    if (requested) return requested === 'browser' ? (browserTimezone || 'UTC') : requested;
     const saved = readPreference('navidrome-timezone', 'browser');
     if (saved === 'browser' || saved === 'UTC') return saved === 'browser' ? (browserTimezone || 'UTC') : saved;
     return saved || 'UTC';
 }
 
+const REVIEW_YEAR_MIN = 1970;
+const REVIEW_YEAR_MAX = 2075;
+
+function initialReviewYear() {
+    const requested = Number(new URLSearchParams(window.location.search).get('year'));
+    if (Number.isInteger(requested) && requested >= REVIEW_YEAR_MIN && requested <= REVIEW_YEAR_MAX) {
+        return requested;
+    }
+    return Math.min(REVIEW_YEAR_MAX, Math.max(REVIEW_YEAR_MIN, new Date().getFullYear()));
+}
+
 let monthlyChart = null;
 let hourlyChart = null;
 let weekdayChart = null;
-let currentYear = new Date().getFullYear();
+let currentYear = initialReviewYear();
+let reviewRequestController = null;
+let reviewRequestGeneration = 0;
 
 function initCharts() {
     const mount = (id) => echarts.init(document.getElementById(id), null, { renderer: 'canvas' });
@@ -89,6 +104,20 @@ function metricValueFormatter(value) {
     return reviewMetric === 'listen_time' ? formatDuration(Number(value) || 0, t) : t('unit.plays', { count: num(value) });
 }
 
+function setChartSummary(id, messageKey, entries, labelForEntry) {
+    if (!entries.length) {
+        setText(id, '');
+        return;
+    }
+    const peak = entries.reduce((best, entry) => (
+        metricValue(entry) > metricValue(best) ? entry : best
+    ));
+    setText(id, t(messageKey, {
+        label: labelForEntry(peak),
+        value: metricValueFormatter(metricValue(peak)),
+    }));
+}
+
 function renderCharts(review) {
     const seriesName = t(reviewMetric === 'listen_time' ? 'metric.listenTime' : 'metric.plays');
     const valueFormatter = (value) => metricValueFormatter(value);
@@ -106,6 +135,11 @@ function renderCharts(review) {
         review.weekday.map((entry) => t(`weekday.${['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][entry.weekday]}`)),
         review.weekday.map(metricValue),
         { horizontal: true, seriesName, valueFormatter },
+    ));
+    setChartSummary('reviewMonthlySummary', 'review.aria.monthlySummary', review.monthly, (entry) => entry.month.slice(5));
+    setChartSummary('reviewHourlySummary', 'review.aria.hourlySummary', review.hourly, (entry) => `${entry.hour}:00`);
+    setChartSummary('reviewWeekdaySummary', 'review.aria.weekdaySummary', review.weekday, (entry) => (
+        t(`weekday.${['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][entry.weekday]}`)
     ));
     resizeCharts();
 }
@@ -192,6 +226,8 @@ function renderReview(review, sourceId) {
     document.getElementById('reviewContent').classList.toggle('hidden', !hasPlays);
     if (!hasPlays) {
         [monthlyChart, hourlyChart, weekdayChart].forEach((chart) => chart && chart.clear());
+        ['reviewMonthlySummary', 'reviewHourlySummary', 'reviewWeekdaySummary']
+            .forEach((id) => setText(id, ''));
         return;
     }
     renderCharts(review);
@@ -203,9 +239,9 @@ function renderReview(review, sourceId) {
 function fillYearSelect() {
     const menu = document.getElementById('reviewYearMenu');
     const label = document.getElementById('reviewYearButtonLabel');
-    const current = new Date().getFullYear();
+    const current = Math.min(REVIEW_YEAR_MAX, Math.max(REVIEW_YEAR_MIN, new Date().getFullYear()));
     const fragment = document.createDocumentFragment();
-    for (let year = current; year >= current - 5; year -= 1) {
+    for (let year = Math.max(current, currentYear); year >= REVIEW_YEAR_MIN; year -= 1) {
         const option = document.createElement('button');
         option.type = 'button';
         option.setAttribute('role', 'option');
@@ -230,31 +266,54 @@ function fillYearSelect() {
             if (!Number.isFinite(year) || year === currentYear) return;
             currentYear = year;
             label.textContent = String(currentYear);
+            updateReviewUrl();
             loadReview();
         },
     });
     yearListbox.setSelected(String(currentYear));
 }
 
+function updateReviewUrl() {
+    const params = new URLSearchParams(window.location.search);
+    params.set('year', String(currentYear));
+    params.set('timezone', resolveTimezone());
+    const query = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+}
+
+function showReviewState(state) {
+    document.getElementById('reviewLoading').classList.toggle('hidden', state !== 'loading');
+    document.getElementById('reviewContent').classList.toggle('hidden', state !== 'content');
+    document.getElementById('reviewEmpty').classList.toggle('hidden', state !== 'empty');
+    document.getElementById('reviewError').classList.toggle('hidden', state !== 'error');
+}
+
 async function loadReview() {
-    const content = document.getElementById('reviewContent');
-    const empty = document.getElementById('reviewEmpty');
-    const errorEl = document.getElementById('reviewError');
-    content.classList.add('hidden');
-    empty.classList.add('hidden');
-    errorEl.classList.add('hidden');
+    reviewRequestController?.abort();
+    const controller = new AbortController();
+    reviewRequestController = controller;
+    const generation = ++reviewRequestGeneration;
+    const params = new URLSearchParams({
+        year: String(currentYear),
+        timezone: resolveTimezone(),
+    });
+    const sourceId = new URLSearchParams(window.location.search).get('source_id') || '';
+    if (sourceId) params.set('source_id', sourceId);
+    document.getElementById('reviewSubtitle').textContent = t('review.subtitle', { year: String(currentYear) });
+    showReviewState('loading');
     try {
-        const params = new URLSearchParams({ year: String(currentYear), timezone: resolveTimezone() });
-        const response = await apiFetch(`/api/stats/review?${params.toString()}`);
+        const response = await apiFetch(`/api/stats/review?${params.toString()}`, { signal: controller.signal });
         if (!response.ok) throw new Error(`review request failed (${response.status})`);
         const review = await response.json();
+        if (generation !== reviewRequestGeneration) return;
         document.getElementById('reviewSubtitle').textContent =
             t('review.subtitle', { year: String(review.year) });
-        const sourceId = new URLSearchParams(window.location.search).get('source_id') || '';
         renderReview(review, sourceId);
+        showReviewState(review.total_plays > 0 ? 'content' : 'empty');
     } catch (error) {
         if (isAbortError(error)) return;
-        errorEl.classList.remove('hidden');
+        if (generation !== reviewRequestGeneration) return;
+        showReviewState('error');
         console.error('Unable to load review', error);
     }
 }
@@ -295,9 +354,11 @@ function setReviewMetric(metric) {
 document.querySelectorAll('#reviewMetricControl [data-review-metric]').forEach((btn) => {
     btn.addEventListener('click', () => setReviewMetric(btn.dataset.reviewMetric));
 });
+document.getElementById('reviewRetryButton').addEventListener('click', loadReview);
 
 async function bootstrap() {
     localize();
+    updateReviewUrl();
     fillYearSelect();
     initCharts();
     window.addEventListener('resize', () => {

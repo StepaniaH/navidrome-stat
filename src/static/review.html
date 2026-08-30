@@ -43,6 +43,10 @@
         <main class="review-main" aria-label="Year in review page" data-i18n-attr="aria-label:review.aria.page">
             <p id="reviewSubtitle" class="review-subtitle"></p>
 
+            <section id="reviewLoading" class="review-empty" role="status" aria-live="polite">
+                <p data-i18n="review.loading">Building your review…</p>
+            </section>
+
             <section id="reviewEmpty" class="review-empty hidden">
                 <p data-i18n="review.emptyYear">No plays were recorded for this year yet.</p>
             </section>
@@ -86,17 +90,20 @@
 
                 <div class="review-chart-card review-chart-wide">
                     <h2 class="review-chart-title" data-i18n="review.monthly">Plays per month</h2>
-                    <div id="reviewMonthlyChart" class="review-chart review-chart-tall" role="img" aria-label="Monthly plays bar chart" data-i18n-attr="aria-label:review.aria.monthlyChart"></div>
+                    <div id="reviewMonthlyChart" class="review-chart review-chart-tall" role="img" aria-label="Monthly plays bar chart" aria-describedby="reviewMonthlySummary" data-i18n-attr="aria-label:review.aria.monthlyChart"></div>
+                    <p id="reviewMonthlySummary" class="visually-hidden"></p>
                 </div>
 
                 <div class="review-charts-row">
                     <div class="review-chart-card">
                         <h2 class="review-chart-title" data-i18n="review.hourly">Listening by hour of day</h2>
-                        <div id="reviewHourlyChart" class="review-chart" role="img" aria-label="Listening by hour bar chart" data-i18n-attr="aria-label:review.aria.hourlyChart"></div>
+                        <div id="reviewHourlyChart" class="review-chart" role="img" aria-label="Listening by hour bar chart" aria-describedby="reviewHourlySummary" data-i18n-attr="aria-label:review.aria.hourlyChart"></div>
+                        <p id="reviewHourlySummary" class="visually-hidden"></p>
                     </div>
                     <div class="review-chart-card">
                         <h2 class="review-chart-title" data-i18n="review.weekday">Spread across the week</h2>
-                        <div id="reviewWeekdayChart" class="review-chart" role="img" aria-label="Weekday distribution bar chart" data-i18n-attr="aria-label:review.aria.weekdayChart"></div>
+                        <div id="reviewWeekdayChart" class="review-chart" role="img" aria-label="Weekday distribution bar chart" aria-describedby="reviewWeekdaySummary" data-i18n-attr="aria-label:review.aria.weekdayChart"></div>
+                        <p id="reviewWeekdaySummary" class="visually-hidden"></p>
                     </div>
                 </div>
 
@@ -116,8 +123,9 @@
                 </div>
             </section>
 
-            <section id="reviewError" class="review-empty hidden">
+            <section id="reviewError" class="review-empty hidden" role="alert">
                 <p data-i18n="review.error">Could not build the year in review. Please try again.</p>
+                <button id="reviewRetryButton" type="button" class="review-retry-button" data-i18n="review.retry">Retry</button>
             </section>
         </main>
     </div>

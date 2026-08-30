@@ -75,41 +75,52 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         const panel = document.getElementById('historyColumnsPanel');
         attachPopover({ trigger: button, panel });
 
-        function renderPanel() {
+        function updatePanel() {
+            panel.querySelectorAll('.column-option').forEach((option) => {
+                const column = HISTORY_COLUMNS.find(({ id }) => id === option.dataset.columnId);
+                if (!column) return;
+                const active = historyColumns.has(column.id);
+                option.querySelector('.column-option-label').textContent = dashboardMessage(column.label);
+                option.setAttribute('aria-pressed', active ? 'true' : 'false');
+                option.classList.toggle('column-option-off', !active);
+                option.disabled = active && historyColumns.size === 1;
+            });
+        }
+
+        function buildPanel() {
             const list = document.createElement('div');
             list.className = 'columns-menu';
             for (const column of HISTORY_COLUMNS) {
                 const option = document.createElement('button');
                 option.type = 'button';
                 option.className = 'filter-option column-option';
+                option.dataset.columnId = column.id;
                 const text = document.createElement('span');
-                text.textContent = dashboardMessage(column.label);
+                text.className = 'column-option-label';
                 const check = document.createElement('span');
                 check.className = 'option-check';
                 check.setAttribute('aria-hidden', 'true');
                 check.textContent = '✓';
                 option.append(text, check);
-                option.setAttribute('aria-pressed', historyColumns.has(column.id) ? 'true' : 'false');
-                option.classList.toggle('column-option-off', !historyColumns.has(column.id));
-                option.disabled = historyColumns.has(column.id) && historyColumns.size === 1;
                 option.addEventListener('click', () => {
                     if (historyColumns.has(column.id)) historyColumns.delete(column.id);
                     else historyColumns.add(column.id);
                     writePreference(HISTORY_COLUMNS_KEY, [...historyColumns].join(','));
                     historyColumns = readHistoryColumns();
-                    renderPanel();
+                    updatePanel();
                     applyHistoryColumns(historyColumns);
                 });
                 list.appendChild(option);
             }
             panel.replaceChildren(list);
+            updatePanel();
         }
 
-        renderPanel();
+        buildPanel();
         applyHistoryColumns(historyColumns);
         onPreferenceChange(HISTORY_COLUMNS_KEY, () => {
             historyColumns = readHistoryColumns();
-            renderPanel();
+            updatePanel();
             applyHistoryColumns(historyColumns);
         });
     }
@@ -146,13 +157,17 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
             startDate: customStartDate,
             endDate: customEndDate,
         });
+        syncReviewLink();
     }
     let lastFocusBeforeLogin = null;
 
     // `browser` resolves to an IANA zone before requests; the API does not accept the token.
-    let statsTimezone = 'browser';
+    const hasSharedTimezone = new URLSearchParams(window.location.search).has('timezone');
+    let statsTimezone = hasSharedTimezone ? initialFilters.timezone : 'browser';
     const savedStatsTimezone = readPreference('navidrome-timezone');
-    if (savedStatsTimezone === 'browser' || savedStatsTimezone === 'UTC') statsTimezone = savedStatsTimezone;
+    if (!hasSharedTimezone && (savedStatsTimezone === 'browser' || savedStatsTimezone === 'UTC')) {
+        statsTimezone = savedStatsTimezone;
+    }
     let browserTimezone = null;
     try {
         browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
@@ -162,6 +177,14 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
     function resolveStatsTimezone() {
         return statsTimezone === 'browser' ? (browserTimezone || 'UTC') : statsTimezone;
     }
+    function syncReviewLink() {
+        const link = document.getElementById('reviewLink');
+        if (!link) return;
+        const params = new URLSearchParams({ timezone: resolveStatsTimezone() });
+        if (selectedSourceId) params.set('source_id', selectedSourceId);
+        link.href = `/review?${params.toString()}`;
+    }
+    syncReviewLink();
 
     const fetchOptions = { credentials: 'same-origin' };
 
@@ -277,7 +300,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
 
 
     const dashboardI18n = createI18n({
-        messages: pageMessages('dashboard'),
+        messages: pageMessages('dashboard', 'review'),
         fallbackLocale: 'en',
     });
     function translateDashboard() {

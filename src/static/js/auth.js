@@ -33,8 +33,8 @@ export function createLoginController({
             overlay().classList.remove('hidden');
         } else {
             overlay().hidden = false;
-            shell().inert = true;
         }
+        shell().inert = true;
         window.requestAnimationFrame(() => tokenInput().focus());
         if (message !== undefined) setMessage(message);
     }
@@ -42,11 +42,10 @@ export function createLoginController({
     function hide() {
         if (useHiddenClass) {
             overlay().classList.add('hidden');
-            shell().inert = false;
         } else {
             overlay().hidden = true;
-            shell().inert = false;
         }
+        shell().inert = false;
         if (lastFocus instanceof HTMLElement) lastFocus.focus();
         lastFocus = null;
     }

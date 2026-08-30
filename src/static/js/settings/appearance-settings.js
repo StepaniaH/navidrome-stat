@@ -158,13 +158,13 @@ export function createAppearanceSettings({ t, confirmDiscard = window.confirm })
         const target = document.getElementById('themeContrastChecks');
         target.replaceChildren();
         if (!validation.colors) return;
-        for (const check of validation.checks) {
+        for (const foreground of ['text', 'muted', 'accent']) {
+            const checks = validation.checks.filter((check) => check.foreground === foreground);
+            const passes = checks.every((check) => check.pass);
             const item = document.createElement('li');
-            item.dataset.pass = String(check.pass);
-            item.textContent = t('preferences.themeEditor.contrastCheck', {
-                background: t(`preferences.themeEditor.${check.background}`),
-                foreground: t(`preferences.themeEditor.${check.foreground}`),
-                ratio: check.ratio.toFixed(2),
+            item.dataset.pass = String(passes);
+            item.textContent = t(`preferences.themeEditor.${passes ? 'contrastGroupPass' : 'contrastGroupFail'}`, {
+                foreground: t(`preferences.themeEditor.${foreground}`),
             });
             target.appendChild(item);
         }

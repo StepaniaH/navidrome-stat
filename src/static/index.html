@@ -123,7 +123,7 @@
                     <p id="statsScopeLabel" class="visually-hidden" aria-live="polite"></p>
                 </div>
                 <div class="dashboard-actions">
-                    <a href="/review" aria-label="Year in review" title="Year in review" data-i18n-attr="aria-label:review.title,title:review.title" class="header-icon-button">
+                    <a id="reviewLink" href="/review" aria-label="Year in review" title="Year in review" data-i18n-attr="aria-label:review.title,title:review.title" class="header-icon-button">
                         <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3M5 11h14M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 16l2-2 2 2 3-3"/></svg>
                     </a>
                     <a href="/settings" aria-label="设置" title="设置" data-i18n-attr="aria-label:dashboard.settings,title:dashboard.settings" class="header-icon-button">
@@ -355,7 +355,7 @@
         </section>
 
         <!-- Recent plays -->
-        <section class="history-section rounded-2xl bg-ink-900/80 shadow-card border border-white/5 overflow-hidden" role="region" aria-label="播放历史" data-i18n-attr="aria-label:dashboard.history">
+        <section class="history-section rounded-2xl bg-ink-900/80 shadow-card border border-white/5" role="region" aria-label="播放历史" data-i18n-attr="aria-label:dashboard.history">
             <div class="px-5 sm:px-6 py-5 border-b border-white/5">
                 <div class="flex items-center justify-between gap-3">
                     <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.history">最近播放</h2>

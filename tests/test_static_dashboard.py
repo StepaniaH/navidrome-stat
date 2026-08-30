@@ -296,7 +296,8 @@ def test_dashboard_status_preserves_header_dot_class(source):
 
 def test_timezone_state_and_resolver_exist(source):
     # Global state declared near the other dashboard state variables.
-    assert "let statsTimezone = 'browser';" in source
+    assert "let statsTimezone = hasSharedTimezone ? initialFilters.timezone : 'browser';" in source
+    assert "new URLSearchParams(window.location.search).has('timezone')" in source
     assert "let browserTimezone = null;" in source
     block = _function_block(source, "resolveStatsTimezone")
     # The browser token is never sent to the API verbatim; it is resolved to
@@ -317,7 +318,7 @@ def test_dashboard_reads_shared_timezone_preference(source):
 
 def test_dashboard_has_local_i18n_and_theme_palette(source):
     assert '<html lang="en">' in source
-    assert "pageMessages('dashboard')" in source
+    assert "pageMessages('dashboard', 'review')" in source
     assert "const dashboardI18n = createI18n({" in source
     assert "function translateDashboard()" in source
     assert "dashboardI18n.translate()" in source
@@ -740,4 +741,4 @@ def test_history_column_visibility_reapplied_after_render(source):
 def test_column_menu_fixes_are_pinned():
     css = DASHBOARD_CSS.read_text(encoding="utf-8")
     assert '.column-option[aria-pressed="true"] .option-check { opacity: 1; }' in css
-    assert "@media (min-width: 641px)" in css
+    assert ".history-table td.column-hidden { display: none; }" in css

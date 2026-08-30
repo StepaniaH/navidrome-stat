@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 REVIEW_HTML = ROOT / "src" / "static" / "review.html"
 REVIEW_JS = ROOT / "src" / "static" / "js" / "review.js"
+AUTH_JS = ROOT / "src" / "static" / "js" / "auth.js"
 
 
 def _read(path: Path) -> str:
@@ -66,3 +67,29 @@ def test_review_distribution_charts_support_metric_toggle():
     toggle = js[js.index("function setReviewMetric") :]
     assert "aria-pressed" in toggle
     assert "renderCharts(lastReview)" in js
+
+
+def test_review_restores_shareable_scope_and_avoids_stale_responses():
+    js = _read(REVIEW_JS)
+    assert "initialReviewYear()" in js
+    assert "REVIEW_YEAR_MIN = 1970" in js
+    assert "params.set('source_id', sourceId)" in js
+    assert "params.set('timezone', resolveTimezone())" in js
+    assert "new AbortController()" in js
+    assert "generation !== reviewRequestGeneration" in js
+
+
+def test_review_exposes_loading_retry_and_chart_summaries():
+    html = _read(REVIEW_HTML)
+    assert 'id="reviewLoading"' in html
+    assert 'id="reviewRetryButton"' in html
+    for summary in ("reviewMonthlySummary", "reviewHourlySummary", "reviewWeekdaySummary"):
+        assert f'aria-describedby="{summary}"' in html
+        assert f'id="{summary}"' in html
+
+
+def test_hidden_class_login_dialog_always_makes_background_inert():
+    js = _read(AUTH_JS)
+    show = js[js.index("function show(message)") : js.index("function hide()")]
+    assert "shell().inert = true;" in show
+    assert show.index("shell().inert = true;") > show.index("if (useHiddenClass)")

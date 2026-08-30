@@ -9,12 +9,19 @@ All notable user-facing changes are documented in this file. The format follows 
 - Privacy export format v3 adds stable record IDs and fingerprints. Merge imports now report inserted, skipped, and conflicting rows; formats v1 and v2 remain importable and gain deterministic repeat-import deduplication.
 - Readiness reports durable playback-write health separately from upstream polling health.
 
+### Changed
+
+- Advanced theme settings summarize contrast by text role without exposing raw ratios, while retaining validation across every editable background.
+
 ### Fixed
 
 - Recent playback metadata is selected by playback time rather than insertion order, so importing older history cannot replace the latest title or timestamp.
 - Album rankings persist upstream album IDs and keep same-named albums separate by source and artist; multi-server cover art uses each ranking row's source.
 - Native `getSongHistory` imports commit and checkpoint each page, resume after bounded runs or restarts, and retry failures with persisted exponential backoff.
 - Deleting a user's data discards active in-memory sessions and suppresses their already queued writes while allowing future plays to start fresh sessions.
+- Year-in-review links and requests preserve year, server, and timezone scope; the page now reports loading and retry states, prevents outdated responses from replacing the selected year, and provides text summaries for charts.
+- The review login dialog keeps keyboard focus within the dialog, the dashboard localizes its review link, and recent-play column preferences apply on mobile.
+- The recent-play column menu remains visible outside short empty-state cards and stays open while multiple columns are changed.
 
 ## [0.8.7] - 2026-08-29
 

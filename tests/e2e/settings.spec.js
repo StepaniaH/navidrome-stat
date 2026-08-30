@@ -258,6 +258,16 @@ test("system mode follows the OS and resolves every palette in both schemes", as
   await expect(nord).toBeEnabled();
 });
 
+test("theme contrast guidance does not outnumber the editable colors", async ({ page }) => {
+  await page.goto("/settings#preferences");
+  await page.locator("#themeCustomization > summary").click();
+  const editableColorCount = await page.locator("[data-theme-hex]").count();
+  const checkCount = await page.locator("#themeContrastChecks li").count();
+  expect(checkCount).toBeGreaterThan(0);
+  expect(checkCount).toBeLessThanOrEqual(editableColorCount);
+  await expect(page.locator("#themeContrastChecks")).not.toContainText(/\d+(?:\.\d+)?:1/);
+});
+
 test("advanced theme editor previews, validates, persists, and restores preset colors", async ({
   page,
 }) => {
@@ -276,12 +286,14 @@ test("advanced theme editor previews, validates, persists, and restores preset c
   await expect(background).toHaveValue("#e9edf2");
   await expect(accent).toHaveValue("#326783");
   await expect(save).toBeDisabled();
-  await expect(page.locator("#themeContrastChecks li")).toHaveCount(9);
   await expect(page.locator('#themeContrastChecks li[data-pass="false"]')).toHaveCount(0);
 
   await text.fill("#ffffff");
   await expect(save).toBeDisabled();
   await expect(page.locator('#themeContrastChecks li[data-pass="false"]')).not.toHaveCount(0);
+  await expect(page.locator('#themeContrastChecks li[data-pass="false"]').first()).toContainText(
+    "lacks sufficient contrast",
+  );
   await expect(page.locator("#themeCustomizationStatus")).toContainText(
     "Increase the contrast",
   );

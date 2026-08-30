@@ -27,11 +27,11 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 
 - Aggregates current and historical playback across clients, devices, users, and Navidrome servers.
 - Shows listening time, play history, hourly and daily trends, a weekday × hour heatmap, client usage, transcoding, and artist, album, or track rankings.
-- A year-in-review page with totals, listening streaks, monthly and time-of-day charts, and top lists.
+- A year-in-review page with totals, listening streaks, monthly and time-of-day charts, top lists, and URL-persisted year, server, and timezone scope.
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.
-- System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview, per-pair contrast checks, HEX copy, unsaved-change protection, and strict per-preset JSON import or export. Appearance choices stay in the browser and apply across the dashboard, year-in-review, settings, and API reference; seven interface languages are available.
-- Dashboard filters persist in the URL, so views survive reloads and can be shared as links.
-- The recent-plays table has configurable column visibility, saved per browser.
+- System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview, grouped contrast validation, HEX copy, unsaved-change protection, and strict per-preset JSON import or export. Appearance choices stay in the browser and apply across the dashboard, year-in-review, settings, and API reference; seven interface languages are available.
+- Dashboard filters and year-in-review scope persist in the URL, so views survive reloads and can be shared as links.
+- The recent-plays table has configurable column visibility on desktop and mobile, saved per browser.
 - Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
 - Supports per-server filtering, connection management with first-use guidance and redacted failure diagnosis, retention settings, and per-user JSON export, import, and deletion.
 - Filter the dashboard by user as well as server; the year-in-review charts switch between play counts and listening time.
