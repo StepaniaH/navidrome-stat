@@ -13,6 +13,7 @@ import pytest
 
 from src.database import init_db
 from src.persistence import save_imported_events
+from src.privacy_ops import delete_user_data
 from src.stats_service import StatsService
 
 
@@ -150,6 +151,29 @@ def test_save_imported_events_is_idempotent(db_path):
     assert stored == [("backfill", "alice", "trk-1"), ("backfill", "alice", "trk-2")]
 
 
+def test_delete_user_blocks_old_backfill_but_allows_future_events(db_path):
+    asyncio.run(init_db(db_path))
+    old_event = _event("old", "2024-03-24T01:00:00+00:00")
+    assert asyncio.run(save_imported_events([old_event], db_path=db_path)) == 1
+
+    asyncio.run(delete_user_data("alice", db_path=db_path))
+
+    future_event = _event("future", "2999-03-24T01:00:00+00:00")
+    inserted = asyncio.run(
+        save_imported_events([old_event, future_event], db_path=db_path)
+    )
+
+    assert inserted == 1
+    conn = sqlite3.connect(db_path)
+    try:
+        stored = conn.execute(
+            "SELECT track_id FROM play_history WHERE username = 'alice'"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert stored == [("future",)]
+
+
 class FakeCache:
     def __init__(self):
         self.invalidations = 0
@@ -160,9 +184,12 @@ class FakeCache:
 
 def test_record_imported_events_invalidates_only_on_new_rows(monkeypatch):
     import src.stats_service as stats_module
+    from src.runtime_state import RuntimeState
 
     cache = FakeCache()
     service = StatsService(cache=cache, retry_attempts=1)
+    state = RuntimeState()
+    monkeypatch.setattr(stats_module, "runtime_state", state)
 
     monkeypatch.setattr(stats_module, "save_imported_events", AsyncMock(return_value=0))
     asyncio.run(service.record_imported_events([_event("t1", "2024-03-24T01:00:00+00:00")]))
@@ -171,3 +198,19 @@ def test_record_imported_events_invalidates_only_on_new_rows(monkeypatch):
     monkeypatch.setattr(stats_module, "save_imported_events", AsyncMock(return_value=3))
     asyncio.run(service.record_imported_events([_event("t2", "2024-03-25T01:00:00+00:00")]))
     assert cache.invalidations == 1
+    assert state.save_success_count == 2
+    assert state.last_save_ok is True
+
+    monkeypatch.setattr(
+        stats_module,
+        "save_imported_events",
+        AsyncMock(side_effect=ConnectionError("unavailable")),
+    )
+    with pytest.raises(ConnectionError):
+        asyncio.run(
+            service.record_imported_events(
+                [_event("t3", "2024-03-26T01:00:00+00:00")]
+            )
+        )
+    assert state.save_failure_count == 1
+    assert state.last_save_ok is False

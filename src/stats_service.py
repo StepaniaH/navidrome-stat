@@ -145,14 +145,14 @@ class StatsService:
                     kind="play_session",
                     attempts=self._retry_attempts,
                 )
-                runtime_state.record_save_success(source_id)
-                await self._cache.invalidate()
-                logger.debug(
-                    "Recorded play session (duration=%ss)", session["duration_sec"]
-                )
             except Exception:
                 runtime_state.record_save_failure(source_id)
                 raise
+            runtime_state.record_save_success(source_id)
+            await self._cache.invalidate()
+            logger.debug(
+                "Recorded play session (duration=%ss)", session["duration_sec"]
+            )
 
     async def record_attempt(self, attempt: dict) -> None:
         source_id = str(attempt.get("source_id") or "legacy")
@@ -165,21 +165,28 @@ class StatsService:
                     kind="play_attempt",
                     attempts=self._retry_attempts,
                 )
-                runtime_state.record_save_success(source_id)
-                await self._cache.invalidate()
             except Exception:
                 runtime_state.record_save_failure(source_id)
                 raise
+            runtime_state.record_save_success(source_id)
+            await self._cache.invalidate()
 
     async def record_imported_events(self, events: list[dict]) -> int:
         """Write importer events through the idempotent dedup path."""
         if not events:
             return 0
-        imported = await retry_save(
-            lambda: save_imported_events(events),
-            kind="imported_events",
-            attempts=self._retry_attempts,
-        )
+        source_id = str(events[0].get("source_id") or "legacy")
+        async with playback_mutation_lock():
+            try:
+                imported = await retry_save(
+                    lambda: save_imported_events(events),
+                    kind="imported_events",
+                    attempts=self._retry_attempts,
+                )
+                runtime_state.record_save_success(source_id)
+            except Exception:
+                runtime_state.record_save_failure(source_id)
+                raise
         if imported:
             await self._cache.invalidate()
         return imported
@@ -198,9 +205,9 @@ class StatsService:
 
     async def delete_user(self, username: str) -> dict:
         async with playback_mutation_lock():
+            result = await delete_user_data(username)
             discarded = self._discard_user_sessions(username)
             self._suppress_sessions(discarded)
-            result = await delete_user_data(username)
         if result["deleted"]:
             await self._cache.invalidate()
         return result

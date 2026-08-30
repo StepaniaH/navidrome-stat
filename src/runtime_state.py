@@ -22,6 +22,8 @@ class CollectorRuntimeState:
     backfill_imported_total: int = 0
     backfill_error_count: int = 0
     last_backfill_at: Optional[datetime] = None
+    last_save_at: Optional[datetime] = None
+    last_save_ok: Optional[bool] = None
 
     def task_alive(self) -> bool:
         return self.task is not None and not self.task.done()
@@ -141,19 +143,40 @@ class RuntimeState:
     def record_backfill_error(self, source_id: str) -> None:
         self._collector(source_id).backfill_error_count += 1
 
-    def record_save_success(self, _source_id: str = "legacy") -> None:
+    def record_save_success(self, source_id: str = "legacy") -> None:
         self.save_success_count += 1
-        self.last_save_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        self.last_save_at = now
         self.last_save_ok = True
+        collector = self.collectors.get(source_id)
+        if collector is not None:
+            collector.last_save_at = now
+            collector.last_save_ok = True
 
     def record_save_failure(self, source_id: str = "legacy") -> None:
         self.save_failure_count += 1
         self.mark_save_failure(source_id)
 
-    def mark_save_failure(self, _source_id: str = "legacy") -> None:
+    def mark_save_failure(self, source_id: str = "legacy") -> None:
         """Mark durable writes unhealthy without incrementing a known failure twice."""
-        self.last_save_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        self.last_save_at = now
         self.last_save_ok = False
+        collector = self.collectors.get(source_id)
+        if collector is not None:
+            collector.last_save_at = now
+            collector.last_save_ok = False
+
+    def persistence_ok(self) -> Optional[bool]:
+        """Return durable-write health without masking one source with another."""
+        if self.collectors:
+            states = [collector.last_save_ok for collector in self.collectors.values()]
+            if any(state is False for state in states):
+                return False
+            if any(state is True for state in states):
+                return True
+            return None
+        return self.last_save_ok
 
     def polling_task_alive(self) -> bool:
         if self.collectors:

@@ -21,6 +21,7 @@ TEXT_COLUMNS = (
     "album",
     "artist_id",
     "album_id",
+    "record_id",
 )
 PAYLOAD_BYTES_SQL = " + ".join(
     f"COALESCE(LENGTH({column}), 0)" for column in TEXT_COLUMNS

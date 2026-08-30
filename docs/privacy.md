@@ -34,6 +34,8 @@ Per-user controls support JSON export, import, and deletion. Format v3 exports i
 
 Deleting a user discards that user's active in-memory sessions and suppresses writes already queued for those sessions. Playback observed after deletion starts a new session and is collected normally. Deletion from the application database does not remove exports or copies already present in backups or external storage.
 
+The database retains a completed history-import checkpoint and a deletion cutoff after deletion so history and playlist importers cannot restore older records. Their keys use SHA-256 digests of the source ID and username; their values contain only an import offset and completion state or the UTC deletion time, not the cleartext username or listening metadata. Removing the application database also removes these markers.
+
 SQLite uses write-ahead logging. The database file, `-wal` and `-shm` files, volume snapshots, and backups can all contain the same sensitive data. Stop the application before taking a simple file-level backup, as shown in the README.
 
 ## Browser and network behavior

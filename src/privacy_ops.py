@@ -11,7 +11,18 @@ from typing import Any, Optional
 import aiosqlite
 
 from src import config
-from src.schema import PAYLOAD_BYTES_SQL, get_meta_value, set_meta_value
+from src.importers.cursor_store import (
+    seal_song_history_cursor,
+    song_history_cursor_key,
+    song_history_cursor_prefix,
+)
+from src.privacy_markers import set_user_deletion_cutoff
+from src.schema import (
+    LEGACY_SOURCE_ID,
+    PAYLOAD_BYTES_SQL,
+    get_meta_value,
+    set_meta_value,
+)
 from src.sqlite import connect_db
 from src.windows import utc_instant
 
@@ -683,6 +694,16 @@ async def import_user_data(
                     skipped += 1
                 else:
                     conflicts += 1
+            if not merge and conflicts:
+                await db.rollback()
+                return {
+                    "imported": 0,
+                    "attempts_imported": 0,
+                    "inserted": 0,
+                    "skipped": 0,
+                    "conflicts": conflicts,
+                    "merge": 0,
+                }
             await db.commit()
         except Exception:
             await db.rollback()
@@ -716,11 +737,45 @@ async def preview_delete_user(username: str, db_path: str | None = None) -> dict
 
 async def delete_user_data(username: str, db_path: str | None = None) -> dict[str, int]:
     path = _path(db_path)
-    preview = await preview_delete_user(username, path)
-    if preview["records_to_delete"] == 0:
-        return {"deleted": 0}
-
     async with connect_db(path) as db:
+        await set_user_deletion_cutoff(
+            db,
+            username,
+            datetime.now(timezone.utc).isoformat(),
+        )
+        prefix = song_history_cursor_prefix(username)
+        async with db.execute(
+            "SELECT key, value FROM schema_meta WHERE key LIKE ?",
+            (f"{prefix}%",),
+        ) as cursor:
+            existing_cursors = await cursor.fetchall()
+        sealed_keys = set()
+        for key, raw in existing_cursors:
+            await set_meta_value(db, key, seal_song_history_cursor(raw))
+            sealed_keys.add(key)
+
+        async with db.execute(
+            """
+            SELECT DISTINCT COALESCE(source_id, ?) AS source_id
+            FROM play_history
+            WHERE username = ?
+            UNION
+            SELECT DISTINCT COALESCE(source_id, ?)
+            FROM play_attempts
+            WHERE username = ?
+            UNION
+            SELECT id FROM servers WHERE username = ?
+            """,
+            (LEGACY_SOURCE_ID, username, LEGACY_SOURCE_ID, username, username),
+        ) as cursor:
+            source_ids = [row[0] for row in await cursor.fetchall() if row[0]]
+        for source_id in source_ids:
+            key = song_history_cursor_key(str(source_id), username)
+            if key in sealed_keys:
+                continue
+            raw = await get_meta_value(db, key)
+            await set_meta_value(db, key, seal_song_history_cursor(raw))
+
         cursor = await db.execute(
             "DELETE FROM play_history WHERE username = ?",
             (username,),

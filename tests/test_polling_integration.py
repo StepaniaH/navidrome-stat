@@ -92,6 +92,7 @@ async def test_ok_null_now_playing_is_empty_success(monkeypatch):
     state = RuntimeState()
     monkeypatch.setattr(main, "runtime_state", state)
     tracker = PlaybackSessionTracker(AsyncMock())
+    state.set_collector_task(tracker.source_id, asyncio.current_task())
     client = AsyncMock()
     client.supports_playback_report.return_value = False
     client.get_now_playing.return_value = {

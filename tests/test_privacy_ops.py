@@ -4,6 +4,10 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from src.database import init_db, save_play_attempt, save_play_session
+from src.importers.cursor_store import (
+    load_song_history_cursor,
+    save_song_history_cursor,
+)
 from src.privacy_ops import (
     apply_retention_purge,
     delete_user_data,
@@ -182,6 +186,38 @@ async def test_replace_import_conflict_does_not_delete_existing_rows(db_path):
 
 
 @pytest.mark.asyncio
+async def test_replace_import_cross_user_id_conflict_rolls_back(db_path):
+    await init_db(db_path)
+    await save_play_session(
+        _session("alice", "2025-01-01T00:00:00+00:00", "alice-track"),
+        db_path=db_path,
+    )
+    await save_play_session(
+        _session("bob", "2025-02-01T00:00:00+00:00", "bob-track"),
+        db_path=db_path,
+    )
+    alice_export = await export_user_data("alice", db_path=db_path)
+    bob_export = await export_user_data("bob", db_path=db_path)
+    original_bob_id = bob_export["records"][0]["record_id"]
+    bob_export["records"][0]["record_id"] = alice_export["records"][0]["record_id"]
+
+    result = await import_user_data("bob", bob_export, merge=False, db_path=db_path)
+
+    assert result == {
+        "imported": 0,
+        "attempts_imported": 0,
+        "inserted": 0,
+        "skipped": 0,
+        "conflicts": 1,
+        "merge": 0,
+    }
+    restored = await export_user_data("bob", db_path=db_path)
+    assert restored["record_count"] == 1
+    assert restored["records"][0]["record_id"] == original_bob_id
+    assert restored["records"][0]["track_id"] == "bob-track"
+
+
+@pytest.mark.asyncio
 async def test_delete_user_preview_and_apply(db_path):
     await init_db(db_path)
     await save_play_session(_session("dave", "2025-01-01T00:00:00+00:00"), db_path=db_path)
@@ -192,6 +228,39 @@ async def test_delete_user_preview_and_apply(db_path):
 
     deleted = await delete_user_data("dave", db_path=db_path)
     assert deleted["deleted"] == 2
+
+
+@pytest.mark.asyncio
+async def test_delete_user_seals_history_import_cursor(db_path):
+    await init_db(db_path)
+    await save_play_session(
+        {
+            **_session("dave", "2025-01-01T00:00:00+00:00"),
+            "source_id": "server-a",
+        },
+        db_path=db_path,
+    )
+    await save_song_history_cursor(
+        "server-a",
+        "dave",
+        {
+            "next_offset": 37,
+            "complete": False,
+            "failure_count": 2,
+            "retry_at": "2026-08-30T03:00:00+00:00",
+        },
+        db_path=db_path,
+    )
+
+    await delete_user_data("dave", db_path=db_path)
+
+    cursor = await load_song_history_cursor("server-a", "dave", db_path=db_path)
+    assert cursor == {
+        "next_offset": 37,
+        "complete": True,
+        "failure_count": 0,
+        "retry_at": None,
+    }
 
 
 @pytest.mark.asyncio

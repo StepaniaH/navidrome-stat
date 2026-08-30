@@ -423,9 +423,10 @@ async def build_readiness_report() -> dict:
     else:
         upstream_status = "unknown"
 
-    if runtime_state.last_save_ok is True:
+    persistence_ok = runtime_state.persistence_ok()
+    if persistence_ok is True:
         persistence_status = "ok"
-    elif runtime_state.last_save_ok is False:
+    elif persistence_ok is False:
         persistence_status = "error"
     else:
         persistence_status = "unknown"

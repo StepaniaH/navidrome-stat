@@ -1,7 +1,7 @@
 """StatsService owns every playback write path and the snapshot cache."""
 
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -103,6 +103,20 @@ async def test_record_session_exhausted_retries_records_failure_and_skips_invali
 
 
 @pytest.mark.asyncio
+async def test_cache_failure_does_not_mark_successful_write_unhealthy(cache, service):
+    stats_module.save_play_session = AsyncMock()
+    cache.invalidate = AsyncMock(side_effect=RuntimeError("cache unavailable"))
+    failures_before = stats_module.runtime_state.save_failure_count
+
+    with pytest.raises(RuntimeError, match="cache unavailable"):
+        await service.record_session({"duration_sec": 30, "source_id": "source-a"})
+
+    stats_module.save_play_session.assert_awaited_once()
+    assert stats_module.runtime_state.last_save_ok is True
+    assert stats_module.runtime_state.save_failure_count == failures_before
+
+
+@pytest.mark.asyncio
 async def test_record_attempt_invalidates(cache, service):
     writes = AsyncMock()
     stats_module.save_play_attempt = writes
@@ -183,6 +197,19 @@ async def test_delete_user_suppresses_already_queued_session_write(cache, servic
     await write_task
 
     stats_module.save_play_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_user_failure_keeps_active_sessions(cache, service):
+    stats_module.delete_user_data = AsyncMock(side_effect=ConnectionError("unavailable"))
+    discard = Mock(return_value={"active-session"})
+    service.set_session_discarder(discard)
+
+    with pytest.raises(ConnectionError):
+        await service.delete_user("alice")
+
+    discard.assert_not_called()
+    assert "active-session" not in service._suppressed_session_ids
 
 
 @pytest.mark.asyncio

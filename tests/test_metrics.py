@@ -133,6 +133,41 @@ async def test_readiness_reports_one_failed_collector(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_readiness_keeps_per_source_persistence_failures_visible(monkeypatch):
+    import asyncio
+    from datetime import datetime, timezone
+
+    import src.collectors as collectors
+    from src.runtime_state import RuntimeState
+
+    state = RuntimeState(client_initialized=True)
+    first_task = asyncio.create_task(asyncio.Event().wait())
+    second_task = asyncio.create_task(asyncio.Event().wait())
+    state.set_collector_task("server-a", first_task)
+    state.set_collector_task("server-b", second_task)
+    now = datetime.now(timezone.utc)
+    state.record_poll_success(now, "server-a")
+    state.record_poll_success(now, "server-b")
+    state.record_save_failure("server-a")
+    state.record_save_success("server-b")
+    monkeypatch.setattr(collectors, "runtime_state", state)
+    monkeypatch.setattr(collectors, "ping_db", AsyncMock(return_value=True))
+    try:
+        report = await collectors.build_readiness_report()
+        state.record_save_success("server-a")
+        recovered = await collectors.build_readiness_report()
+    finally:
+        first_task.cancel()
+        second_task.cancel()
+        await asyncio.gather(first_task, second_task, return_exceptions=True)
+
+    assert report["checks"]["persistence"] == "error"
+    assert report["status"] == "not_ready"
+    assert recovered["checks"]["persistence"] == "ok"
+    assert recovered["status"] == "ready"
+
+
+@pytest.mark.asyncio
 async def test_polling_task_up_requires_every_collector_alive(monkeypatch):
     import asyncio
 

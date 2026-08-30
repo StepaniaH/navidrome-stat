@@ -9,6 +9,7 @@ reported, and timestamps reconcile to the latest known value.
 import uuid
 
 from src import config
+from src.privacy_markers import event_is_after_cutoff, get_user_deletion_cutoff
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
 from src.sqlite import connect_db
 
@@ -148,7 +149,19 @@ async def save_imported_events(events: list[dict], db_path: str | None = None) -
     async with connect_db(path) as db:
         await db.execute("BEGIN")
         try:
+            deletion_cutoffs: dict[str, str | None] = {}
             for event in events:
+                username = event.get("username")
+                if isinstance(username, str) and username:
+                    if username not in deletion_cutoffs:
+                        deletion_cutoffs[username] = await get_user_deletion_cutoff(
+                            db, username
+                        )
+                    cutoff = deletion_cutoffs[username]
+                    if cutoff and not event_is_after_cutoff(
+                        event.get("played_at"), cutoff
+                    ):
+                        continue
                 cursor = await db.execute(
                     f"""
                     INSERT INTO play_history ({columns})
