@@ -78,6 +78,14 @@ const snapshot = {
   }],
 };
 
+const playAccountingSnapshot = {
+  short_count: 2,
+  counted_count: 6,
+  attempt_count: 8,
+  short_listen_sec: 21,
+  short_play_rate_pct: 25,
+};
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({ json: { auth_required: false } }),
@@ -96,6 +104,9 @@ test.beforeEach(async ({ page }) => {
         source_name: "Synthetic Server",
       }],
     }),
+  );
+  await page.route("**/api/stats/short-plays?*", (route) =>
+    route.fulfill({ json: playAccountingSnapshot }),
   );
   await page.route("**/api/diagnostics", (route) =>
     route.fulfill({
@@ -256,6 +267,39 @@ test("history column menu stays usable when history is empty", async ({ page }) 
 
   await options.nth(2).click();
   await expect(page.locator("#historyColumnsPanel")).toBeVisible();
+});
+
+test("playback accounting details load only when opened", async ({ page }) => {
+  const requests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/stats/short-plays")) requests.push(request.url());
+  });
+
+  await page.goto("/");
+  expect(requests).toHaveLength(0);
+
+  await page.locator("#playAccountingButton").click();
+  const panel = page.locator("#playAccountingPanel");
+  await expect(panel).toBeVisible();
+  await expect(panel.locator("#playAccountingTitle")).toHaveText(
+    "Playback attempts below the counting threshold",
+  );
+  await expect(panel.locator("#playAccountingValue")).toHaveText(
+    "2 attempts · 25% of all playback attempts",
+  );
+  await expect(panel).toContainText("were not counted as plays");
+  await expect.poll(() => requests.length).toBe(1);
+  const query = new URL(requests[0]).searchParams;
+  expect(query.get("days")).toBe("30");
+  expect(query.has("timezone")).toBe(true);
+  expect(query.has("metric")).toBe(false);
+
+  await page.locator("#playAccountingClose").click();
+  await expect(panel).toBeHidden();
+  await expect(page.locator("#playAccountingButton")).toBeFocused();
+  await page.locator("#playAccountingButton").click();
+  await expect(panel).toBeVisible();
+  expect(requests).toHaveLength(1);
 });
 
 test("custom date range is encoded into the dashboard request", async ({

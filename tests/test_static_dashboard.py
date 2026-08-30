@@ -182,6 +182,11 @@ def test_stats_window_buttons_carry_data_days(source):
     "nowPlayingSummary",
     "historySummary",
     "summaryAria",
+    # on-demand playback accounting details
+    "playAccountingButton",
+    "playAccountingPanel",
+    "playAccountingValue",
+    "playAccountingRetry",
 ])
 def test_dashboard_element_ids_exist(source, element_id):
     assert f'id="{element_id}"' in source
@@ -235,6 +240,14 @@ def test_historical_fetch_urls_use_stats_days(source):
     assert "/api/stats/now-playing${sourceParam}" in now_block
     assert "timezone" not in now_block
     assert "days" not in now_block
+
+
+def test_playback_accounting_is_lazy_and_uses_dashboard_scope(source):
+    block = _function_block(source, "fetchPlayAccounting")
+    assert "buildStatsScopeQuery(captureStatsRequestState())" in block
+    assert "/api/stats/short-plays?${query}" in block
+    assert "playAccountingValue').textContent" in source
+    assert "fetchPlayAccounting();" in _function_block(source, "setupPlayAccounting")
 
 
 def test_dashboard_header_has_no_preference_controls(source):

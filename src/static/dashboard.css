@@ -492,6 +492,68 @@
         .filter-option[aria-selected="true"] .option-check { opacity: 1; }
         .columns-menu { display: flex; flex-direction: column; min-width: 10rem; }
         .filter-control.columns .filter-popover { left: auto; right: 0; width: 11rem; }
+        .history-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.125rem;
+        }
+        .filter-control.history-insight .filter-popover {
+            left: auto;
+            right: 0;
+            width: 21rem;
+        }
+        .play-accounting-popover { padding: 0.875rem; }
+        .play-accounting-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }
+        .play-accounting-title {
+            color: var(--app-text);
+            font-size: 0.8125rem;
+            font-weight: 600;
+            line-height: 1.4;
+        }
+        .play-accounting-close {
+            display: inline-flex;
+            width: 1.75rem;
+            height: 1.75rem;
+            flex: 0 0 auto;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.375rem;
+            color: var(--app-dim);
+        }
+        .play-accounting-close svg { width: 0.875rem; height: 0.875rem; }
+        .play-accounting-close:hover,
+        .play-accounting-close:focus-visible { background: var(--app-field); color: var(--app-text); }
+        .play-accounting-body { margin-top: 0.625rem; }
+        .play-accounting-value {
+            color: var(--app-muted);
+            font-size: 0.8125rem;
+            font-variant-numeric: tabular-nums;
+            line-height: 1.5;
+        }
+        .play-accounting-description,
+        .play-accounting-state {
+            color: var(--app-dim);
+            font-size: 0.75rem;
+            line-height: 1.55;
+        }
+        .play-accounting-description { margin-top: 0.375rem; }
+        .play-accounting-retry {
+            margin-top: 0.5rem;
+            border: 1px solid var(--app-border);
+            border-radius: 0.375rem;
+            padding: 0.3rem 0.55rem;
+            color: var(--app-muted);
+            font-size: 0.75rem;
+        }
+        .play-accounting-retry:hover,
+        .play-accounting-retry:focus-visible { border-color: var(--app-accent); color: var(--app-accent); }
+        .play-accounting-close:focus-visible,
+        .play-accounting-retry:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus); }
         .column-option-off .option-check { visibility: hidden; }
         .column-option[aria-pressed="true"] .option-check { opacity: 1; }
         .history-table th.column-hidden,
@@ -755,6 +817,11 @@
                 max-width: none;
                 max-height: calc(100dvh - 2rem);
                 overflow-y: auto;
+            }
+            .filter-control.history-insight .filter-popover {
+                left: 1rem;
+                right: 1rem;
+                width: auto;
             }
             .app-footer { margin-top: 1.5rem; }
         }

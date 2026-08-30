@@ -6,6 +6,7 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ### Added
 
+- Recent Plays now offers on-demand details for attempts below the configured counting threshold. The details follow the current date, server, user, and timezone filters and describe counting semantics without inferring listener intent.
 - Privacy export format v3 adds stable record IDs and fingerprints. Merge imports now report inserted, skipped, and conflicting rows; formats v1 and v2 remain importable and gain deterministic repeat-import deduplication.
 - Readiness reports durable playback-write health separately from upstream polling health.
 

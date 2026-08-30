@@ -102,12 +102,44 @@ def _validate_ranking_metric(metric: str) -> str:
     return metric
 
 
+def _validate_custom_date_range(
+    start_date: date | None,
+    end_date: date | None,
+) -> tuple[date | None, date | None]:
+    if (start_date is None) != (end_date is None):
+        raise HTTPException(
+            status_code=422,
+            detail="start_date and end_date must be provided together",
+        )
+    if start_date is not None and end_date is not None:
+        if start_date > end_date:
+            raise HTTPException(
+                status_code=422,
+                detail="start_date must not be after end_date",
+            )
+        if (end_date - start_date).days + 1 > 366:
+            raise HTTPException(
+                status_code=422,
+                detail="custom date range must not exceed 366 days",
+            )
+    return start_date, end_date
+
+
 def _source_kwargs(source_id: str | None) -> dict:
     return {"source_id": source_id} if source_id else {}
 
 
 def _user_kwargs(username: str | None) -> dict:
     return {"username": username} if username else {}
+
+
+def _date_range_kwargs(
+    start_date: date | None,
+    end_date: date | None,
+) -> dict:
+    if start_date is None or end_date is None:
+        return {}
+    return {"start_date": start_date, "end_date": end_date}
 
 
 @router.get("/api/stats/users", response_model=UsersResponse)
@@ -151,22 +183,7 @@ async def api_dashboard_snapshot(
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     ranking = _validate_ranking_metric(metric)
-    if (start_date is None) != (end_date is None):
-        raise HTTPException(
-            status_code=422,
-            detail="start_date and end_date must be provided together",
-        )
-    if start_date is not None and end_date is not None:
-        if start_date > end_date:
-            raise HTTPException(
-                status_code=422,
-                detail="start_date must not be after end_date",
-            )
-        if (end_date - start_date).days + 1 > 366:
-            raise HTTPException(
-                status_code=422,
-                detail="custom date range must not exceed 366 days",
-            )
+    start_date, end_date = _validate_custom_date_range(start_date, end_date)
     return await _query_stats(
         lambda: stats_service.dashboard(
             days=window,
@@ -246,14 +263,18 @@ async def api_short_play_stats(
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
     username: str | None = Query(default=None, min_length=1, max_length=128),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
 ):
     """Return short-play rate; it does not claim intentional skips."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
+    start_date, end_date = _validate_custom_date_range(start_date, end_date)
     return await _query_stats(
         lambda: get_short_play_stats(
             days=window,
             timezone_name=tz,
+            **_date_range_kwargs(start_date, end_date),
             **_source_kwargs(source_id),
             **_user_kwargs(username),
         )

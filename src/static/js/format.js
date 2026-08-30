@@ -23,21 +23,31 @@ export function formatChangeText(pct, { compareLabel }) {
     return `${sign} ${absVal}% ${compareLabel}`;
 }
 
-/**
- * Build the dashboard statistics query string. `filters` uses camelCase keys;
- * empty source ids and missing custom ranges are omitted.
- */
-export function buildStatsQuery(filters) {
+function statsScopeParams(filters) {
     const params = new URLSearchParams();
     params.set('days', String(filters.days));
     params.set('timezone', filters.timezone);
-    params.set('metric', filters.metric);
     if (filters.sourceId) params.set('source_id', filters.sourceId);
     if (filters.username) params.set('username', filters.username);
     if (filters.startDate && filters.endDate) {
         params.set('start_date', filters.startDate);
         params.set('end_date', filters.endDate);
     }
+    return params;
+}
+
+/** Build a query for endpoints that share the dashboard's current scope. */
+export function buildStatsScopeQuery(filters) {
+    return statsScopeParams(filters).toString();
+}
+
+/**
+ * Build the dashboard statistics query string. `filters` uses camelCase keys;
+ * empty source ids and missing custom ranges are omitted.
+ */
+export function buildStatsQuery(filters) {
+    const params = statsScopeParams(filters);
+    params.set('metric', filters.metric);
     return params.toString();
 }
 

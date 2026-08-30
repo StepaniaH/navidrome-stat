@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildStatsQuery,
+  buildStatsScopeQuery,
   escapeHtml,
   formatChangeText,
   validateCustomRange,
@@ -45,6 +46,21 @@ test("buildStatsQuery omits empty source and custom ranges", () => {
   assert.ok(full.includes("username=alice"));
   assert.ok(full.includes("start_date=2026-01-01"));
   assert.ok(full.includes("end_date=2026-01-31"));
+});
+
+test("buildStatsScopeQuery follows dashboard filters without ranking metric", () => {
+  assert.equal(
+    buildStatsScopeQuery({
+      days: 30,
+      timezone: "Europe/Berlin",
+      metric: "listen_time",
+      sourceId: "server-1",
+      username: "alice",
+      startDate: "2026-01-01",
+      endDate: "2026-01-31",
+    }),
+    "days=30&timezone=Europe%2FBerlin&source_id=server-1&username=alice&start_date=2026-01-01&end_date=2026-01-31",
+  );
 });
 
 test("validateCustomRange rejects missing, inverted and oversized ranges", () => {

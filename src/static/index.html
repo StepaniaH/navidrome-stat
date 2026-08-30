@@ -359,11 +359,38 @@
             <div class="px-5 sm:px-6 py-5 border-b border-white/5">
                 <div class="flex items-center justify-between gap-3">
                     <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.history">最近播放</h2>
-                    <div class="filter-control columns" id="historyColumnsControl">
-                        <button id="historyColumnsButton" type="button" class="header-icon-button" aria-haspopup="true" aria-expanded="false" aria-controls="historyColumnsPanel" data-i18n-attr="aria-label:history.columns,title:history.columns" aria-label="列设置" title="列设置">
-                            <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 6h18M3 12h18M3 18h18"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 3v18"/></svg>
-                        </button>
-                        <div id="historyColumnsPanel" class="filter-popover hidden" role="group" aria-label="列设置" data-i18n-attr="aria-label:history.columns"></div>
+                    <div class="history-header-actions">
+                        <div class="filter-control history-insight" id="playAccountingControl">
+                            <button id="playAccountingButton" type="button" class="header-icon-button" aria-haspopup="dialog" aria-expanded="false" aria-controls="playAccountingPanel" data-i18n-attr="aria-label:insight.shortPlaysLabel,title:insight.shortPlaysLabel" aria-label="播放计入说明" title="播放计入说明">
+                                <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="1.8"/><path stroke-linecap="round" stroke-width="1.8" d="M12 10.5V16"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg>
+                            </button>
+                            <div id="playAccountingPanel" class="filter-popover play-accounting-popover hidden" role="dialog" aria-labelledby="playAccountingTitle">
+                                <div class="play-accounting-header">
+                                    <h3 id="playAccountingTitle" class="play-accounting-title" data-i18n="insight.shortPlaysTitle">未达到计入阈值的播放尝试</h3>
+                                    <button id="playAccountingClose" type="button" class="play-accounting-close" data-i18n-attr="aria-label:insight.close" aria-label="关闭">
+                                        <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="1.8" d="m7 7 10 10M17 7 7 17"/></svg>
+                                    </button>
+                                </div>
+                                <div id="playAccountingStatus" class="play-accounting-body" aria-live="polite">
+                                    <p id="playAccountingLoading" class="play-accounting-state" data-i18n="insight.shortPlaysLoading">正在加载播放尝试…</p>
+                                    <div id="playAccountingContent" class="hidden">
+                                        <p id="playAccountingValue" class="play-accounting-value"></p>
+                                        <p class="play-accounting-description" data-i18n="insight.shortPlaysDescription">这些播放尝试在达到当前计入阈值前结束，因此没有计入播放次数。</p>
+                                    </div>
+                                    <p id="playAccountingEmpty" class="play-accounting-state hidden" data-i18n="insight.shortPlaysEmpty">当前筛选范围内暂无播放尝试。</p>
+                                    <div id="playAccountingError" class="play-accounting-state hidden" role="status">
+                                        <p data-i18n="insight.shortPlaysError">暂时无法加载播放尝试。</p>
+                                        <button id="playAccountingRetry" type="button" class="play-accounting-retry" data-i18n="insight.retry">重试</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="filter-control columns" id="historyColumnsControl">
+                            <button id="historyColumnsButton" type="button" class="header-icon-button" aria-haspopup="true" aria-expanded="false" aria-controls="historyColumnsPanel" data-i18n-attr="aria-label:history.columns,title:history.columns" aria-label="列设置" title="列设置">
+                                <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 6h18M3 12h18M3 18h18"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 3v18"/></svg>
+                            </button>
+                            <div id="historyColumnsPanel" class="filter-popover hidden" role="group" aria-label="列设置" data-i18n-attr="aria-label:history.columns"></div>
+                        </div>
                     </div>
                 </div>
                 <p class="text-xs text-slate-600 mt-0.5" data-i18n="subtitle.history">按最近播放时间排序，重复收听会累加 Plays</p>

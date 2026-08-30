@@ -57,13 +57,18 @@ async def get_earliest_poller_played_at(
     return row[0] if row else None
 
 
-async def get_short_play_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
-                               db_path: str | None = None,
-                               source_id: str | None = None,
-                               username: str | None = None):
+async def get_short_play_stats(
+    days: int = 0,
+    timezone_name: str = TIMEZONE_DEFAULT,
+    db_path: str | None = None,
+    source_id: str | None = None,
+    username: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
     """Return short-play counts and rate; this is not a skip-rate claim."""
     path = _path(db_path)
-    pred, params = _window_predicate(days, timezone_name)
+    pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
     pred, params = _username_predicate(pred, params, username)
     async with connect_db(path) as db:

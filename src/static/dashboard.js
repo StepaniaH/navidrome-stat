@@ -1,7 +1,15 @@
 import { pageMessages } from './js/i18n/index.js';
 import { createI18n } from './localization.js';
 import { applyAppVersion } from './js/app-info.js';
-import { buildStatsQuery, coverArtUrl, escapeHtml, formatChangeText, formatDuration, validateCustomRange } from './js/format.js';
+import {
+    buildStatsQuery,
+    buildStatsScopeQuery,
+    coverArtUrl,
+    escapeHtml,
+    formatChangeText,
+    formatDuration,
+    validateCustomRange,
+} from './js/format.js';
 import { createThemeTokens } from './js/charts.js';
 import { onPreferenceChange, readPreference, writePreference } from './js/prefs.js';
 import { attachPopover, createListbox } from './js/listbox.js';
@@ -127,8 +135,14 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
 
     let statsRequestController = null;
     let nowPlayingRequestController = null;
+    let playAccountingRequestController = null;
     let statsRequestGeneration = 0;
     let nowPlayingRequestGeneration = 0;
+    let playAccountingRequestGeneration = 0;
+    let playAccountingPopover = null;
+    let playAccountingLoadedQuery = null;
+    let playAccountingPendingQuery = null;
+    let lastPlayAccountingPayload = null;
     let refreshTimer = null;
     let nowPlayingRefreshTimer = null;
     let hasLoadedOnce = false;
@@ -198,10 +212,14 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
     function cancelDashboardRequests() {
         statsRequestGeneration += 1;
         nowPlayingRequestGeneration += 1;
+        playAccountingRequestGeneration += 1;
         if (statsRequestController) statsRequestController.abort();
         if (nowPlayingRequestController) nowPlayingRequestController.abort();
+        if (playAccountingRequestController) playAccountingRequestController.abort();
         statsRequestController = null;
         nowPlayingRequestController = null;
+        playAccountingRequestController = null;
+        playAccountingPendingQuery = null;
     }
 
     function stopDashboardActivity() {
@@ -331,8 +349,110 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         setActiveRankingMetric(rankingMetric);
         renderSourceOptions();
         renderUserOptions();
+        if (lastPlayAccountingPayload) renderPlayAccounting(lastPlayAccountingPayload);
     }
     translateDashboard();
+
+    function setPlayAccountingState(state) {
+        const status = document.getElementById('playAccountingStatus');
+        const states = {
+            loading: document.getElementById('playAccountingLoading'),
+            content: document.getElementById('playAccountingContent'),
+            empty: document.getElementById('playAccountingEmpty'),
+            error: document.getElementById('playAccountingError'),
+        };
+        Object.entries(states).forEach(([name, element]) => {
+            element.classList.toggle('hidden', name !== state);
+        });
+        status.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+    }
+
+    function renderPlayAccounting(payload) {
+        lastPlayAccountingPayload = payload;
+        if (payload.attemptCount === 0) {
+            setPlayAccountingState('empty');
+            return;
+        }
+        document.getElementById('playAccountingValue').textContent = dashboardMessage(
+            'insight.shortPlaysValue',
+            {
+                short: dashboardNumber(payload.shortCount),
+                rate: dashboardNumber(Math.round(payload.rate * 10) / 10),
+            },
+        );
+        setPlayAccountingState('content');
+    }
+
+    async function fetchPlayAccounting({ force = false } = {}) {
+        const query = buildStatsScopeQuery(captureStatsRequestState());
+        if (!force && (query === playAccountingLoadedQuery || query === playAccountingPendingQuery)) {
+            return;
+        }
+
+        const generation = ++playAccountingRequestGeneration;
+        if (playAccountingRequestController) playAccountingRequestController.abort();
+        const controller = new AbortController();
+        playAccountingRequestController = controller;
+        playAccountingPendingQuery = query;
+        setPlayAccountingState('loading');
+
+        try {
+            const response = await fetch(`/api/stats/short-plays?${query}`, {
+                ...fetchOptions,
+                signal: controller.signal,
+            });
+            if (generation !== playAccountingRequestGeneration || controller.signal.aborted) return;
+            if (response.status === 401) {
+                showLogin(dashboardMessage('auth.expired'));
+                return;
+            }
+            if (!response.ok) throw new Error('playback accounting request failed');
+            const payload = await response.json();
+            if (generation !== playAccountingRequestGeneration || controller.signal.aborted) return;
+
+            const shortCount = Number(payload.short_count);
+            const attemptCount = Number(payload.attempt_count);
+            const rate = Number(payload.short_play_rate_pct);
+            if (
+                !Number.isFinite(shortCount)
+                || !Number.isFinite(attemptCount)
+                || !Number.isFinite(rate)
+                || shortCount < 0
+                || attemptCount < shortCount
+                || rate < 0
+                || rate > 100
+            ) {
+                throw new Error('invalid playback accounting response');
+            }
+            playAccountingLoadedQuery = query;
+            renderPlayAccounting({ shortCount, attemptCount, rate });
+        } catch (error) {
+            if (isAbortError(error) || generation !== playAccountingRequestGeneration) return;
+            setPlayAccountingState('error');
+            console.error('Error fetching playback accounting:', error);
+        } finally {
+            if (generation === playAccountingRequestGeneration) {
+                playAccountingRequestController = null;
+                playAccountingPendingQuery = null;
+            }
+        }
+    }
+
+    function setupPlayAccounting() {
+        const trigger = document.getElementById('playAccountingButton');
+        const panel = document.getElementById('playAccountingPanel');
+        const popover = attachPopover({ trigger, panel });
+        trigger.addEventListener('click', () => {
+            if (popover.open) fetchPlayAccounting();
+        });
+        document.getElementById('playAccountingClose').addEventListener('click', () => {
+            popover.setOpen(false, { restoreFocus: true });
+        });
+        document.getElementById('playAccountingRetry').addEventListener('click', () => {
+            fetchPlayAccounting({ force: true });
+        });
+        return popover;
+    }
 
     function setStatus(state, text) {
         const dot = document.getElementById('statusDot');
@@ -1538,6 +1658,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
 
     async function fetchStats() {
         const requestState = captureStatsRequestState();
+        if (playAccountingPopover?.open) fetchPlayAccounting({ force: true });
         const generation = ++statsRequestGeneration;
         if (statsRequestController) statsRequestController.abort();
         const controller = new AbortController();
@@ -1570,6 +1691,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
             }
             const snapshot = await snapshotRes.json();
             if (generation !== statsRequestGeneration || controller.signal.aborted) return;
+            if (!playAccountingPopover?.open) playAccountingLoadedQuery = null;
             if (
                 Number(snapshot.summary?.total_plays) > 0
                 || (Array.isArray(snapshot.history) && snapshot.history.length > 0)
@@ -1806,6 +1928,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
     });
 
     setActiveStatsWindowButton(statsDays);
+    playAccountingPopover = setupPlayAccounting();
     setupHistoryColumns();
     updateSourceOptions([]);
     renderUserOptions();
