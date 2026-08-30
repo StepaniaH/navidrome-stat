@@ -29,7 +29,7 @@ def cache():
 
 @pytest.fixture
 def service(cache):
-    return StatsService(cache=cache, retry_attempts=2)
+    return StatsService(cache=cache, retry_attempts=2, read_repository=Mock())
 
 
 @pytest.fixture(autouse=True)
@@ -44,15 +44,7 @@ def restore_module_symbols():
             "delete_user_data",
             "save_server",
             "delete_server",
-            "get_summary",
-            "get_player_stats",
-            "get_transcoding_stats",
-            "get_time_bucket_stats",
-            "get_playback_history",
-            "get_server_stats",
-            "list_servers",
-            "get_top_artists",
-            "get_top_albums",
+            "list_server_options",
         )
     }
     yield
@@ -140,15 +132,11 @@ async def test_purge_invalidates_only_when_rows_deleted(cache, service):
 
 @pytest.mark.asyncio
 async def test_import_invalidates_on_written_rows(cache, service):
-    stats_module.import_user_data = AsyncMock(
-        return_value={"imported": 3, "attempts_imported": 0}
-    )
+    stats_module.import_user_data = AsyncMock(return_value={"imported": 3, "attempts_imported": 0})
     await service.import_user("u", {}, merge=False)
     assert cache.invalidations == 1
 
-    stats_module.import_user_data = AsyncMock(
-        return_value={"imported": 0, "attempts_imported": 0}
-    )
+    stats_module.import_user_data = AsyncMock(return_value={"imported": 0, "attempts_imported": 0})
     await service.import_user("u", {}, merge=True)
     assert cache.invalidations == 1
 
@@ -226,17 +214,19 @@ async def test_server_mutations_always_invalidate(cache, service):
 
 @pytest.mark.asyncio
 async def test_dashboard_builds_through_cache(cache, service):
-    stats_module.get_summary = AsyncMock(return_value={})
-    stats_module.get_player_stats = AsyncMock(return_value=[])
-    stats_module.get_transcoding_stats = AsyncMock(return_value=[])
-    stats_module.get_time_bucket_stats = AsyncMock(
-        return_value={"hourly": [], "daily": [], "heatmap": []}
+    service._read_repository.dashboard = AsyncMock(
+        return_value={
+            "summary": {},
+            "players": [],
+            "transcoding": [],
+            "time_buckets": {"hourly": [], "daily": [], "heatmap": []},
+            "history": [],
+            "servers": [],
+            "available_servers": [],
+            "top_artists": [],
+            "top_albums": [],
+        }
     )
-    stats_module.get_playback_history = AsyncMock(return_value=[])
-    stats_module.get_server_stats = AsyncMock(return_value=[])
-    stats_module.list_servers = AsyncMock(return_value=[])
-    stats_module.get_top_artists = AsyncMock(return_value=[])
-    stats_module.get_top_albums = AsyncMock(return_value=[])
 
     query = {
         "days": 7,
@@ -264,25 +254,21 @@ async def test_dashboard_builds_through_cache(cache, service):
 
 
 @pytest.mark.asyncio
-async def test_dashboard_keeps_local_stats_when_album_art_lookup_fails(
-    cache, service, monkeypatch
-):
-    stats_module.get_summary = AsyncMock(return_value={"total_plays": 7})
-    stats_module.get_player_stats = AsyncMock(return_value=[])
-    stats_module.get_transcoding_stats = AsyncMock(return_value=[])
-    stats_module.get_time_bucket_stats = AsyncMock(
-        return_value={"hourly": [], "daily": [], "heatmap": []}
-    )
-    stats_module.get_playback_history = AsyncMock(return_value=[])
-    stats_module.get_server_stats = AsyncMock(return_value=[])
-    stats_module.list_servers = AsyncMock(
-        return_value=[{"id": "server-1", "display_name": "Synthetic Server"}]
-    )
-    stats_module.get_top_artists = AsyncMock(return_value=[])
-    stats_module.get_top_albums = AsyncMock(
-        return_value=[
-            {"album": "Local Album", "count": 3, "total_listen_sec": 120, "value": 3}
-        ]
+async def test_dashboard_keeps_local_stats_when_album_art_lookup_fails(cache, service, monkeypatch):
+    service._read_repository.dashboard = AsyncMock(
+        return_value={
+            "summary": {"total_plays": 7},
+            "players": [],
+            "transcoding": [],
+            "time_buckets": {"hourly": [], "daily": [], "heatmap": []},
+            "history": [],
+            "servers": [],
+            "available_servers": [{"id": "server-1", "display_name": "Synthetic Server"}],
+            "top_artists": [],
+            "top_albums": [
+                {"album": "Local Album", "count": 3, "total_listen_sec": 120, "value": 3}
+            ],
+        }
     )
     lookup = AsyncMock(side_effect=ValueError("upstream credentials unavailable"))
     monkeypatch.setattr(stats_module.cover_art_service, "resolve_album_id", lookup)

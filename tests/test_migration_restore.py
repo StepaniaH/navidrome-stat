@@ -19,7 +19,7 @@ from src.database import (
 from src.privacy_ops import export_user_data, import_user_data
 from tests.migration_fixtures import build_legacy_db
 
-CURRENT_SCHEMA_VERSION = 12
+CURRENT_SCHEMA_VERSION = 13
 
 
 @pytest.mark.parametrize("from_version", [0, 2, 4])
@@ -67,9 +67,9 @@ def test_repeated_init_is_idempotent_after_legacy_migration(db_path):
     second = asyncio.run(init_db(db_path))
 
     conn = sqlite3.connect(db_path)
-    version = conn.execute(
-        "SELECT value FROM schema_meta WHERE key = 'schema_version'"
-    ).fetchone()[0]
+    version = conn.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()[
+        0
+    ]
     count = conn.execute("SELECT COUNT(*) FROM play_history").fetchone()[0]
     conn.close()
 
@@ -110,9 +110,7 @@ async def _roundtrip(db_path: str):
 
     restored = f"{db_path}.restored"
     await init_db(restored)
-    result = await import_user_data(
-        "roundtrip_user", payload, merge=False, db_path=restored
-    )
+    result = await import_user_data("roundtrip_user", payload, merge=False, db_path=restored)
     assert result["imported"] == 2
 
     original_summary = await get_summary(days=0, db_path=db_path)

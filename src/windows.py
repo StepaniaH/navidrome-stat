@@ -32,6 +32,12 @@ def utc_instant(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _utc_epoch(instant: str) -> int:
+    """Convert an internally formatted UTC instant to Unix seconds."""
+    parsed = datetime.strptime(instant, "%Y-%m-%d %H:%M:%S")
+    return int(parsed.replace(tzinfo=timezone.utc).timestamp())
+
+
 def _window_bounds(days: int, tz: ZoneInfo) -> tuple[str | None, str | None]:
     """Return UTC bounds for ``[today-(days-1), tomorrow)`` in ``tz``.
 
@@ -94,8 +100,8 @@ def _window_predicate(
     else:
         start, end = _window_bounds(days, resolve_timezone(timezone_name))
     return (
-        "datetime(played_at) >= ? AND datetime(played_at) < ?",
-        [start, end],
+        "played_at_epoch >= ? AND played_at_epoch < ?",
+        [_utc_epoch(start), _utc_epoch(end)],
     )
 
 
@@ -122,8 +128,8 @@ def _previous_window_predicate(
     if start is None or end is None:
         return ("1=0", [])
     return (
-        "datetime(played_at) >= ? AND datetime(played_at) < ?",
-        [start, end],
+        "played_at_epoch >= ? AND played_at_epoch < ?",
+        [_utc_epoch(start), _utc_epoch(end)],
     )
 
 
@@ -136,9 +142,14 @@ def _source_predicate(
 ) -> tuple[str, list]:
     if source_id is None:
         return predicate, params
+    if source_id == LEGACY_SOURCE_ID:
+        return (
+            f"({predicate}) AND ({column} = ? OR {column} IS NULL)",
+            [*params, source_id],
+        )
     return (
-        f"({predicate}) AND COALESCE({column}, ?) = ?",
-        [*params, LEGACY_SOURCE_ID, source_id],
+        f"({predicate}) AND {column} = ?",
+        [*params, source_id],
     )
 
 

@@ -12,7 +12,7 @@ This roadmap describes project direction, not release commitments. Shipped chang
 
 ## Medium term
 
-- Improve large-history query, cache, and retention performance within the existing single-host SQLite architecture, using the multi-scale synthetic baseline and query-plan checks to evaluate changes.
+- Add daily or hourly rollups only when the epoch-indexed, streamed raw-history queries exceed the multi-scale benchmark budget; keep raw SQLite history as the source of truth.
 - Separate viewer and administrator authorization, and apply user scope consistently to the year-in-review experience.
 - Watch upstream for a public Navidrome listening-history read API (the `getSongHistory` proposal) so the existing guarded importer can be enabled against a released endpoint.
 - Offer opt-in ListenBrainz-format scrobble forwarding with per-server deduplication.

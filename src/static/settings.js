@@ -9,6 +9,7 @@ import { createConnectionSettings } from './js/settings/connection-settings.js';
 import { SUPPORTED_LOCALES } from './js/locales.js';
 import { applyAppVersion } from './js/app-info.js';
 import { pageMessages } from './js/i18n/index.js';
+import { createSelectListbox } from './js/listbox.js';
 
     const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
     const preferenceKeys = Object.freeze({
@@ -39,16 +40,6 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         apiFetch,
         confirmDelete: (message) => window.confirm(message),
     });
-
-    function isResponseOk(response) {
-        return response && response.ok;
-    }
-
-    let lastUnauthorizedHandler = null;
-
-    function onUnauthorized() {
-        if (lastUnauthorizedHandler) lastUnauthorizedHandler();
-    }
 
     const login = createLoginController({
         overlayId: 'loginOverlay',
@@ -84,169 +75,37 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         return option.label || String(option.value);
     }
 
-    function createListbox(rootId, {
-        options = [],
-        value = '',
+    function registerSettingsListbox(rootId, {
         placeholderKey = 'common.none',
-        onChange = () => {},
+        ...options
     } = {}) {
         const root = document.getElementById(rootId);
-        const trigger = root.querySelector('[data-listbox-trigger]');
-        const label = root.querySelector('[data-listbox-label]');
-        const menu = root.querySelector('[role="listbox"]');
-        let currentOptions = Array.from(options);
-        let currentValue = value;
         let currentPlaceholderKey = placeholderKey;
-        let disabled = false;
-
-        function optionElements() {
-            return Array.from(menu.querySelectorAll('[role="option"]'));
-        }
-
-        function close({ restoreFocus = false } = {}) {
-            menu.hidden = true;
-            root.dataset.open = 'false';
-            trigger.setAttribute('aria-expanded', 'false');
-            if (restoreFocus) trigger.focus();
-        }
-
-        function open(direction = 1) {
-            if (disabled || currentOptions.length === 0) return;
-            listboxes.forEach((controller) => {
-                if (controller.root !== root) controller.close();
-            });
-            menu.hidden = false;
-            root.dataset.open = 'true';
-            trigger.setAttribute('aria-expanded', 'true');
-            const elements = optionElements();
-            const selectedIndex = currentOptions.findIndex((option) => String(option.value) === String(currentValue));
-            const focusIndex = selectedIndex >= 0 ? selectedIndex : (direction < 0 ? elements.length - 1 : 0);
-            elements[focusIndex]?.focus();
-        }
-
-        function updateTrigger() {
-            const selected = currentOptions.find((option) => String(option.value) === String(currentValue));
-            label.textContent = selected ? getOptionLabel(selected) : t(currentPlaceholderKey);
-            label.dataset.placeholder = selected ? 'false' : 'true';
-            root.dataset.value = selected ? String(selected.value) : '';
-        }
-
-        function renderOptions() {
-            menu.replaceChildren();
-            currentOptions.forEach((option) => {
-                const item = document.createElement('button');
-                item.type = 'button';
-                item.role = 'option';
-                item.className = 'settings-option';
-                item.dataset.value = String(option.value);
-                item.tabIndex = -1;
-                if (option.subtitleKey) {
-                    const lines = document.createElement('span');
-                    lines.className = 'settings-option-lines';
-                    const primary = document.createElement('span');
-                    primary.className = 'settings-option-label';
-                    primary.textContent = getOptionLabel(option);
-                    const subtitle = document.createElement('span');
-                    subtitle.className = 'settings-option-subtitle';
-                    subtitle.textContent = t(option.subtitleKey);
-                    lines.append(primary, subtitle);
-                    item.appendChild(lines);
-                } else {
-                    item.textContent = getOptionLabel(option);
-                }
-                item.setAttribute('aria-selected', String(option.value) === String(currentValue) ? 'true' : 'false');
-                item.addEventListener('click', () => {
-                    setValue(option.value, { emit: true });
-                    close({ restoreFocus: true });
-                });
-                menu.appendChild(item);
-            });
-            updateTrigger();
-        }
-
-        function setValue(nextValue, { emit = false } = {}) {
-            const normalized = nextValue === null || nextValue === undefined ? '' : String(nextValue);
-            const previous = currentValue;
-            currentValue = normalized;
-            optionElements().forEach((item) => {
-                item.setAttribute('aria-selected', item.dataset.value === normalized ? 'true' : 'false');
-            });
-            updateTrigger();
-            if (emit && normalized !== previous) onChange(normalized);
-        }
-
-        function setOptions(nextOptions, {
-            preserveValue = true,
-            selectFirst = false,
-            placeholder = currentPlaceholderKey,
-        } = {}) {
-            currentOptions = Array.from(nextOptions || []);
-            currentPlaceholderKey = placeholder;
-            const exists = currentOptions.some((option) => String(option.value) === String(currentValue));
-            if (!preserveValue || !exists) {
-                currentValue = selectFirst && currentOptions.length > 0 ? String(currentOptions[0].value) : '';
-            }
-            renderOptions();
-        }
-
-        function setDisabled(nextDisabled) {
-            disabled = Boolean(nextDisabled);
-            trigger.disabled = disabled;
-            root.dataset.disabled = disabled ? 'true' : 'false';
-            if (disabled) close();
-        }
-
-        function refreshLabels() {
-            renderOptions();
-        }
-
-        trigger.addEventListener('click', () => {
-            if (menu.hidden) open();
-            else close();
-        });
-        trigger.addEventListener('keydown', (event) => {
-            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                event.preventDefault();
-                open(event.key === 'ArrowUp' ? -1 : 1);
-            } else if (event.key === 'Escape') {
-                close();
-            }
-        });
-        menu.addEventListener('keydown', (event) => {
-            const elements = optionElements();
-            const currentIndex = elements.indexOf(document.activeElement);
-            let nextIndex = -1;
-            if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % elements.length;
-            else if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + elements.length) % elements.length;
-            else if (event.key === 'Home') nextIndex = 0;
-            else if (event.key === 'End') nextIndex = elements.length - 1;
-            else if (event.key === 'Escape') {
-                event.preventDefault();
-                close({ restoreFocus: true });
-                return;
-            } else if (event.key === 'Tab') {
-                close();
-                return;
-            }
-            if (nextIndex >= 0) {
-                event.preventDefault();
-                elements[nextIndex]?.focus();
-            }
-        });
-
-        const controller = {
-            close,
-            getValue: () => currentValue,
-            open,
-            refreshLabels,
+        const controller = createSelectListbox({
             root,
-            setDisabled,
-            setOptions,
-            setValue,
+            placeholder: t(placeholderKey),
+            getOptionLabel,
+            getOptionSubtitle: (option) => (
+                option.subtitleKey ? t(option.subtitleKey) : null
+            ),
+            optionClassName: 'settings-option',
+            ...options,
+        });
+        const managedController = {
+            ...controller,
+            refreshLabels() {
+                controller.refreshLabels({ placeholder: t(currentPlaceholderKey) });
+            },
+            setOptions(nextOptions, listOptions = {}) {
+                currentPlaceholderKey = listOptions.placeholder ?? currentPlaceholderKey;
+                controller.setOptions(nextOptions, {
+                    ...listOptions,
+                    placeholder: t(currentPlaceholderKey),
+                });
+            },
         };
-        listboxes.set(rootId, controller);
-        renderOptions();
-        return controller;
+        listboxes.set(rootId, managedController);
+        return managedController;
     }
 
     function applyLocalPreferences() {
@@ -413,7 +272,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         const response = await apiFetch(endpoint, {
             signal: controller.signal,
         });
-        if (!isResponseOk(response)) throw new Error('preview failed');
+        if (!response.ok) throw new Error('preview failed');
         const payload = await response.json();
         const data = days === null
             ? {
@@ -448,7 +307,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         renderPolicySummary();
         try {
             const response = await apiFetch('/api/privacy/settings');
-            if (!isResponseOk(response)) throw new Error('privacy settings failed');
+            if (!response.ok) throw new Error('privacy settings failed');
             const data = await response.json();
             state.privacySettings = data;
             state.privacyStatus = 'ready';
@@ -476,7 +335,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
         renderUserOptions();
         try {
             const response = await apiFetch('/api/privacy/users');
-            if (!isResponseOk(response)) throw new Error('users failed');
+            if (!response.ok) throw new Error('users failed');
             state.users = await response.json();
             state.usersStatus = 'ready';
             renderUserOptions();
@@ -506,7 +365,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
             `/api/privacy/users/${encodeURIComponent(username)}/delete/preview`,
             { signal: controller.signal },
         );
-        if (!isResponseOk(response)) throw new Error('user preview failed');
+        if (!response.ok) throw new Error('user preview failed');
         const data = await response.json();
         if (
             userPreviewController !== controller
@@ -566,7 +425,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
 
     function bindPreferenceControls() {
         appearanceSettings.mount();
-        createListbox('languageSelect', {
+        registerSettingsListbox('languageSelect', {
             value: i18n.getLocale(),
             options: SUPPORTED_LOCALES.map((locale) => ({
                 value: locale.code,
@@ -578,7 +437,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
                 renderLocalizedState();
             },
         });
-        createListbox('settingsTimezoneSelect', {
+        registerSettingsListbox('settingsTimezoneSelect', {
             value: readPreference(preferenceKeys.timezone, 'browser'),
             options: [
                 { value: 'browser', labelKey: 'preferences.timezoneBrowser' },
@@ -586,17 +445,11 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
             ],
             onChange: (timezone) => writePreference(preferenceKeys.timezone, timezone),
         });
-        createListbox('userSelect', {
+        registerSettingsListbox('userSelect', {
             placeholderKey: 'privacy.userLoading',
             onChange: () => refreshUserPreview().catch((error) => {
                 if (!isAbortError(error)) showBanner('error', t('error.generic'));
             }),
-        });
-
-        document.addEventListener('click', (event) => {
-            listboxes.forEach((controller) => {
-                if (!controller.root.contains(event.target)) controller.close();
-            });
         });
 
         document.getElementById('motionToggle').addEventListener('click', () => {
@@ -663,7 +516,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ retention_days: draftDays }),
                 });
-                if (!isResponseOk(response)) throw new Error('save failed');
+                if (!response.ok) throw new Error('save failed');
                 state.privacySettings = await response.json();
                 state.privacyStatus = 'ready';
                 renderPolicySummary();
@@ -711,7 +564,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
                     showBanner('error', t('privacy.policyChanged'));
                     return;
                 }
-                if (!isResponseOk(response)) throw new Error('cleanup failed');
+                if (!response.ok) throw new Error('cleanup failed');
                 const data = await response.json();
                 showBanner('success', t('privacy.cleanupSuccess', { count: localizedCount(data.deleted) }));
                 await Promise.all([loadUsers(), refreshRetentionPreview(persistedDays)]);
@@ -731,7 +584,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
             }
             try {
                 const response = await apiFetch(`/api/privacy/users/${encodeURIComponent(username)}/export`);
-                if (!isResponseOk(response)) throw new Error('export failed');
+                if (!response.ok) throw new Error('export failed');
                 const blob = await response.blob();
                 const objectUrl = URL.createObjectURL(blob);
                 const link = document.createElement('a');
@@ -773,7 +626,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
                         merge: document.getElementById('mergeImport').checked,
                     }),
                 });
-                if (!isResponseOk(response)) throw new Error('import failed');
+                if (!response.ok) throw new Error('import failed');
                 const data = await response.json();
                 showBanner('success', t('privacy.importSuccess', {
                     records: localizedCount(data.imported),
@@ -804,7 +657,7 @@ const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'e
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ confirm: true }),
                 });
-                if (!isResponseOk(response)) throw new Error('delete failed');
+                if (!response.ok) throw new Error('delete failed');
                 const data = await response.json();
                 showBanner('success', t('privacy.deleteSuccess', { count: localizedCount(data.deleted) }));
                 await Promise.all([loadUsers(), refreshRetentionPreview()]);

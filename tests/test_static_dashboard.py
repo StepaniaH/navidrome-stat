@@ -9,7 +9,10 @@ DASHBOARD_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "dash
 LOCALES_DIR = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "i18n" / "locales"
 DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
 LISTBOX_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "listbox.js"
-THEME_BOOTSTRAP_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "theme-bootstrap.js"
+AUTH_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "auth.js"
+THEME_BOOTSTRAP_JS = (
+    Path(__file__).resolve().parent.parent / "src" / "static" / "theme-bootstrap.js"
+)
 THEMES_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "themes.css"
 TAILWIND_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "vendor" / "tailwind.css"
 
@@ -24,10 +27,7 @@ def source() -> str:
 
 @pytest.fixture(scope="module")
 def catalog_source() -> str:
-    return "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in sorted(LOCALES_DIR.glob("*.js"))
-    )
+    return "\n".join(path.read_text(encoding="utf-8") for path in sorted(LOCALES_DIR.glob("*.js")))
 
 
 def test_dashboard_loads_split_static_resources():
@@ -142,52 +142,55 @@ def test_stats_window_buttons_carry_data_days(source):
         assert f'data-days="{n}"' in source
 
 
-@pytest.mark.parametrize("element_id", [
-    # stats scope / subtitle
-    "statsScopeLabel",
-    "dailyChartSubtitle",
-    # heatmap card markup
-    "weekdayHourChart",
-    "weekdayHourChartSkeleton",
-    "weekdayHourChartEmpty",
-    "weekdayHourChartWrap",
-    # summary change badges
-    "statTotalPlaysChange",
-    "statListenTimeChange",
-    "statActiveDays",
-    # section error overlays
-    "nowPlayingError",
-    "playerChartError",
-    "transcodingChartError",
-    "hourlyChartError",
-    "dailyChartError",
-    "weekdayHourChartError",
-    "topArtistsChartError",
-    "topAlbumsChartError",
-    "serverSourceError",
-    "historyError",
-    "summaryError",
-    # section empty states
-    "playerChartEmpty",
-    "historyEmpty",
-    "nowPlayingEmpty",
-    # visually hidden chart aria summaries
-    "playerChartSummary",
-    "transcodingChartSummary",
-    "hourlyChartSummary",
-    "dailyChartSummary",
-    "weekdayHourChartSummary",
-    "topArtistsChartSummary",
-    "topAlbumsChartSummary",
-    "nowPlayingSummary",
-    "historySummary",
-    "summaryAria",
-    # on-demand playback accounting details
-    "playAccountingButton",
-    "playAccountingPanel",
-    "playAccountingValue",
-    "playAccountingRetry",
-])
+@pytest.mark.parametrize(
+    "element_id",
+    [
+        # stats scope / subtitle
+        "statsScopeLabel",
+        "dailyChartSubtitle",
+        # heatmap card markup
+        "weekdayHourChart",
+        "weekdayHourChartSkeleton",
+        "weekdayHourChartEmpty",
+        "weekdayHourChartWrap",
+        # summary change badges
+        "statTotalPlaysChange",
+        "statListenTimeChange",
+        "statActiveDays",
+        # section error overlays
+        "nowPlayingError",
+        "playerChartError",
+        "transcodingChartError",
+        "hourlyChartError",
+        "dailyChartError",
+        "weekdayHourChartError",
+        "topArtistsChartError",
+        "topAlbumsChartError",
+        "serverSourceError",
+        "historyError",
+        "summaryError",
+        # section empty states
+        "playerChartEmpty",
+        "historyEmpty",
+        "nowPlayingEmpty",
+        # visually hidden chart aria summaries
+        "playerChartSummary",
+        "transcodingChartSummary",
+        "hourlyChartSummary",
+        "dailyChartSummary",
+        "weekdayHourChartSummary",
+        "topArtistsChartSummary",
+        "topAlbumsChartSummary",
+        "nowPlayingSummary",
+        "historySummary",
+        "summaryAria",
+        # on-demand playback accounting details
+        "playAccountingButton",
+        "playAccountingPanel",
+        "playAccountingValue",
+        "playAccountingRetry",
+    ],
+)
 def test_dashboard_element_ids_exist(source, element_id):
     assert f'id="{element_id}"' in source
 
@@ -257,7 +260,10 @@ def test_dashboard_header_has_no_preference_controls(source):
 
 
 def test_dashboard_header_uses_single_row_stable_layout(source):
-    header = source[source.index('<header class="dashboard-header">') : source.index("</header>") + len("</header>")]
+    header = source[
+        source.index('<header class="dashboard-header">') : source.index("</header>")
+        + len("</header>")
+    ]
     for class_name in (
         "dashboard-header-main",
         "dashboard-brand",
@@ -276,12 +282,16 @@ def test_dashboard_header_uses_single_row_stable_layout(source):
 
 
 def test_history_table_has_no_horizontal_scroll_container(source):
-    history = source[source.index('class="history-section') : source.index("</section>", source.index('class="history-section'))]
+    history = source[
+        source.index('class="history-section') : source.index(
+            "</section>", source.index('class="history-section')
+        )
+    ]
     assert "history-table-wrap" in history
     assert 'class="history-table text-sm"' in history
     assert "overflow-x-auto" not in history
     for column in ("user", "track", "artist", "album", "played", "count"):
-        assert f'history-col-{column}' in history
+        assert f"history-col-{column}" in history
     block = _function_block(source, "renderHistoryTable")
     for column in ("user", "title", "artist", "album", "played", "count"):
         assert f"history-cell-{column}" in block
@@ -291,7 +301,9 @@ def test_history_table_has_no_horizontal_scroll_container(source):
 
 
 def test_footer_uses_product_and_public_project_links(source):
-    footer = source[source.index('<footer class="app-footer">') : source.index("</footer>") + len("</footer>")]
+    footer = source[
+        source.index('<footer class="app-footer">') : source.index("</footer>") + len("</footer>")
+    ]
     assert "Navidrome Stat" in footer
     assert 'href="https://github.com/StepaniaH/navidrome-stat"' in footer
     assert 'href="https://github.com/StepaniaH/navidrome-stat/blob/main/LICENSE"' in footer
@@ -344,7 +356,14 @@ def test_dashboard_has_local_i18n_and_theme_palette(source):
     assert "readPreference('navidrome-motion', 'system')" in source
     assert '[data-motion="reduced"] *' in source
     theme_css = THEMES_CSS.read_text(encoding="utf-8")
-    for token in ("--page-bg:", "--text:", "--accent:", "--app-on-accent:", "--chart-1:", "--chart-8:"):
+    for token in (
+        "--page-bg:",
+        "--text:",
+        "--accent:",
+        "--app-on-accent:",
+        "--chart-1:",
+        "--chart-8:",
+    ):
         assert token in theme_css
 
 
@@ -373,7 +392,15 @@ def test_dashboard_dynamic_i18n_covers_summary_tables_tooltips_and_history(sourc
 def test_heatmap_static_axis_labels_exist(source):
     assert "WEEKDAY_MESSAGE_KEYS" in source
     assert "HOUR_LABELS" in source
-    for key in ("weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat", "weekday.sun"):
+    for key in (
+        "weekday.mon",
+        "weekday.tue",
+        "weekday.wed",
+        "weekday.thu",
+        "weekday.fri",
+        "weekday.sat",
+        "weekday.sun",
+    ):
         assert key in source
     assert "WEEKDAY_MESSAGE_KEYS.map(key => dashboardMessage(key))" in source
     # 24 hour categories 0..23 generated as strings.
@@ -406,7 +433,10 @@ def test_heatmap_skeleton_in_set_loading(source):
     loading = _function_block(source, "setLoading")
     assert "STATS_PANEL_NAMES" in loading
     assert "setPanelState" in loading
-    assert 'skeleton: \'weekdayHourChartSkeleton\'' in source or 'skeleton: "weekdayHourChartSkeleton"' in source
+    assert (
+        "skeleton: 'weekdayHourChartSkeleton'" in source
+        or 'skeleton: "weekdayHourChartSkeleton"' in source
+    )
 
 
 def test_heatmap_resize_in_window_resize_handler(source):
@@ -624,16 +654,26 @@ def test_dashboard_request_state_is_immutable_and_complete(source):
 
 
 def test_login_pauses_activity_and_success_restarts_refresh(source):
-    show_login = _function_block(source, "showLogin")
-    submit_login = _function_block(source, "submitLogin")
+    dashboard = DASHBOARD_JS.read_text(encoding="utf-8")
+    auth = AUTH_JS.read_text(encoding="utf-8")
+    login_config = dashboard[
+        dashboard.index("const login = createLoginController") : dashboard.index(
+            "function showLogin"
+        )
+    ]
+    refresh_after_login = _function_block(dashboard, "refreshAfterLogin")
     stop_activity = _function_block(source, "stopDashboardActivity")
-    assert "stopDashboardActivity()" in show_login
-    assert "loginToken').focus()" in show_login
-    assert "scheduleRefresh()" in submit_login
+    assert "stopDashboardActivity()" in login_config
+    assert "inertSelector: '#dashboardApp'" in login_config
+    assert "useHiddenClass: true" in login_config
+    assert "scheduleRefresh()" in refresh_after_login
+    assert "login.bind()" in dashboard
+    assert "shell().inert" in auth
+    assert "requestAnimationFrame" in auth
+    assert "function trapTab" in auth
     assert "stopRefreshTimers()" in stop_activity
     assert "stopNowPlayingTicker()" in stop_activity
     assert "cancelDashboardRequests()" in stop_activity
-    assert 'document.getElementById(\'dashboardApp\').inert = true' in show_login
 
 
 def test_source_options_replace_with_available_and_historical_union(source):

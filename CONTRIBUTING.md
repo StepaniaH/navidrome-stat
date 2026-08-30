@@ -41,7 +41,7 @@ Run the synthetic statistics benchmark after changing aggregate queries, indexes
 python3 scripts/benchmark_stats.py --sizes 100000,1000000
 ```
 
-The report measures all-history time buckets plus source-and-user-filtered summary and history queries, and verifies the filtered history query plan. Use `--json` for machine-readable output and `--max-query-ms <budget>` to enforce a ceiling. The scheduled GitHub Actions run uses a deliberately generous 2500 ms per-query budget at 100,000 and 1,000,000 rows; it is a regression guard for shared runners, not a local performance target. The older `--rows` single-size option remains available for compatibility.
+The report measures all-history time buckets plus source-and-user-filtered finite-window summary and history queries, and verifies that the filtered history plan uses the source/user/epoch index. Use `--json` for machine-readable output and `--max-query-ms <budget>` to enforce a ceiling. The scheduled GitHub Actions run uses a deliberately generous 2500 ms per-query budget at 100,000 and 1,000,000 rows; it is a regression guard for shared runners, not a local performance target. The older `--rows` single-size option remains available for compatibility.
 
 Run the container smoke test after changing the Dockerfile, runtime dependencies, startup behavior, or health endpoints. It requires Docker and uses an ephemeral loopback port by default. Set `SMOKE_HOST_PORT` only when a fixed host port is needed.
 

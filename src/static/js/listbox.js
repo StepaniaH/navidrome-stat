@@ -19,16 +19,20 @@ function focusOption(menu, option) {
     if (option) option.focus();
 }
 
-function createListbox({ trigger, menu, onSelect }) {
+function createListbox({ trigger, menu, onSelect, onOpenChange }) {
     let open = false;
 
-    function setOpen(next, { restoreFocus = false } = {}) {
+    function setOpen(next, { restoreFocus = false, focusLast = false } = {}) {
+        if (next && trigger.disabled) return;
         open = next;
         trigger.setAttribute('aria-expanded', next ? 'true' : 'false');
         menu.classList.toggle('hidden', !next);
+        menu.hidden = !next;
+        if (onOpenChange) onOpenChange(next);
         if (next) {
             const selected = menu.querySelector('[role="option"][aria-selected="true"]');
-            focusOption(menu, selected || menu.querySelector('[role="option"]'));
+            const options = optionButtons(menu);
+            focusOption(menu, selected || options[focusLast ? options.length - 1 : 0]);
         } else if (restoreFocus) {
             trigger.focus();
         }
@@ -39,7 +43,7 @@ function createListbox({ trigger, menu, onSelect }) {
     function onTriggerKeydown(event) {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             event.preventDefault();
-            if (!open) setOpen(true);
+            if (!open) setOpen(true, { focusLast: event.key === 'ArrowUp' });
         }
     }
 
@@ -126,6 +130,137 @@ function createListbox({ trigger, menu, onSelect }) {
     };
 }
 
+/**
+ * Data-driven select listbox built on the shared interaction controller.
+ *
+ * Pages provide labels and optional subtitles; this module owns option DOM,
+ * selection state, keyboard behavior, disabled state, and focus restoration.
+ */
+function createSelectListbox({
+    root,
+    options = [],
+    value = '',
+    placeholder = '',
+    getOptionLabel = (option) => String(option.label ?? option.value),
+    getOptionSubtitle = () => null,
+    onChange = () => {},
+    optionClassName = 'listbox-option',
+}) {
+    const trigger = root.querySelector('[data-listbox-trigger]');
+    const label = root.querySelector('[data-listbox-label]');
+    const menu = root.querySelector('[role="listbox"]');
+    let currentOptions = Array.from(options);
+    let currentValue = value === null || value === undefined ? '' : String(value);
+    let currentPlaceholder = placeholder;
+
+    function optionElements() {
+        return [...menu.querySelectorAll('[role="option"]')];
+    }
+
+    function updateTrigger() {
+        const selected = currentOptions.find(
+            (option) => String(option.value) === currentValue,
+        );
+        label.textContent = selected ? getOptionLabel(selected) : currentPlaceholder;
+        label.dataset.placeholder = selected ? 'false' : 'true';
+        root.dataset.value = selected ? String(selected.value) : '';
+    }
+
+    function renderOptions() {
+        const fragment = document.createDocumentFragment();
+        currentOptions.forEach((option) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.role = 'option';
+            item.className = optionClassName;
+            item.dataset.value = String(option.value);
+            item.tabIndex = -1;
+            item.setAttribute(
+                'aria-selected',
+                String(option.value) === currentValue ? 'true' : 'false',
+            );
+
+            const subtitleText = getOptionSubtitle(option);
+            if (subtitleText) {
+                const lines = document.createElement('span');
+                lines.className = `${optionClassName}-lines`;
+                const primary = document.createElement('span');
+                primary.className = `${optionClassName}-label`;
+                primary.textContent = getOptionLabel(option);
+                const subtitle = document.createElement('span');
+                subtitle.className = `${optionClassName}-subtitle`;
+                subtitle.textContent = subtitleText;
+                lines.append(primary, subtitle);
+                item.appendChild(lines);
+            } else {
+                item.textContent = getOptionLabel(option);
+            }
+            fragment.appendChild(item);
+        });
+        menu.replaceChildren(fragment);
+        updateTrigger();
+    }
+
+    function setValue(nextValue, { emit = false } = {}) {
+        const normalized = nextValue === null || nextValue === undefined
+            ? ''
+            : String(nextValue);
+        const previous = currentValue;
+        currentValue = normalized;
+        interaction.setSelected(normalized);
+        updateTrigger();
+        if (emit && normalized !== previous) onChange(normalized);
+    }
+
+    function setOptions(nextOptions, {
+        preserveValue = true,
+        selectFirst = false,
+        placeholder: nextPlaceholder = currentPlaceholder,
+    } = {}) {
+        currentOptions = Array.from(nextOptions || []);
+        currentPlaceholder = nextPlaceholder;
+        const exists = currentOptions.some(
+            (option) => String(option.value) === currentValue,
+        );
+        if (!preserveValue || !exists) {
+            currentValue = selectFirst && currentOptions.length
+                ? String(currentOptions[0].value)
+                : '';
+        }
+        renderOptions();
+    }
+
+    const interaction = createListbox({
+        trigger,
+        menu,
+        onOpenChange: (isOpen) => { root.dataset.open = isOpen ? 'true' : 'false'; },
+        onSelect: (item) => {
+            setValue(item.dataset.value, { emit: true });
+        },
+    });
+
+    renderOptions();
+    return {
+        close: (options) => interaction.setOpen(false, options),
+        destroy: interaction.destroy,
+        getValue: () => currentValue,
+        open: (options) => interaction.setOpen(true, options),
+        refreshLabels({ placeholder: nextPlaceholder = currentPlaceholder } = {}) {
+            currentPlaceholder = nextPlaceholder;
+            renderOptions();
+        },
+        root,
+        setDisabled(nextDisabled) {
+            const disabled = Boolean(nextDisabled);
+            trigger.disabled = disabled;
+            root.dataset.disabled = disabled ? 'true' : 'false';
+            if (disabled) interaction.setOpen(false);
+        },
+        setOptions,
+        setValue,
+    };
+}
+
 function attachPopover({ trigger, panel }) {
     let open = false;
 
@@ -176,4 +311,4 @@ function attachPopover({ trigger, panel }) {
     };
 }
 
-export { createListbox, attachPopover };
+export { createListbox, createSelectListbox, attachPopover };

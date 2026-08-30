@@ -76,7 +76,7 @@ async def set_retention_days(days: Optional[int], db_path: str | None = None) ->
         await db.commit()
 
 
-_RETENTION_BEFORE_SQL = "datetime(played_at) < datetime(?)"
+_RETENTION_BEFORE_SQL = "played_at_epoch < unixepoch(?)"
 
 
 def _retention_cutoff_sql(days: int) -> str:
@@ -107,8 +107,7 @@ async def _play_history_storage_metrics(
         params = (played_before,)
 
     async with db.execute(
-        f"SELECT COUNT(*), COALESCE(SUM({PAYLOAD_BYTES_SQL}), 0) "
-        f"FROM play_history{where_clause}",
+        f"SELECT COUNT(*), COALESCE(SUM({PAYLOAD_BYTES_SQL}), 0) FROM play_history{where_clause}",
         params,
     ) as cursor:
         row = await cursor.fetchone()
@@ -126,8 +125,7 @@ async def _play_attempt_storage_metrics(
         where_clause = f" WHERE {_RETENTION_BEFORE_SQL}"
         params = (played_before,)
     async with db.execute(
-        f"SELECT COUNT(*), COALESCE(SUM({PAYLOAD_BYTES_SQL}), 0) "
-        f"FROM play_attempts{where_clause}",
+        f"SELECT COUNT(*), COALESCE(SUM({PAYLOAD_BYTES_SQL}), 0) FROM play_attempts{where_clause}",
         params,
     ) as cursor:
         row = await cursor.fetchone()
@@ -322,7 +320,7 @@ async def export_user_data(username: str, db_path: str | None = None) -> dict[st
                    source_name, duration_confidence
             FROM play_history
             WHERE username = ?
-            ORDER BY played_at ASC, id ASC
+            ORDER BY played_at_epoch ASC, id ASC
             """,
             (username,),
         ) as cursor:
@@ -334,7 +332,7 @@ async def export_user_data(username: str, db_path: str | None = None) -> dict[st
                    outcome, source_id, source_name, duration_confidence
             FROM play_attempts
             WHERE username = ?
-            ORDER BY played_at ASC, id ASC
+            ORDER BY played_at_epoch ASC, id ASC
             """,
             (username,),
         ) as cursor:
@@ -389,9 +387,7 @@ def _validate_duration(value: Any, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"Import {field} must be an integer")
     if value < 0 or value > IMPORT_MAX_DURATION_SEC:
-        raise ValueError(
-            f"Import {field} must be between 0 and {IMPORT_MAX_DURATION_SEC}"
-        )
+        raise ValueError(f"Import {field} must be between 0 and {IMPORT_MAX_DURATION_SEC}")
     return value
 
 
@@ -427,9 +423,7 @@ def _validate_import_record(record: dict[str, Any]) -> dict[str, Any]:
         "source_id": _validate_text(record.get("source_id"), "source_id"),
         "source_name": _validate_text(record.get("source_name"), "source_name"),
         "duration_confidence": (
-            "reported"
-            if record.get("duration_confidence") == "reported"
-            else "estimated"
+            "reported" if record.get("duration_confidence") == "reported" else "estimated"
         ),
     }
 
@@ -437,10 +431,12 @@ def _validate_import_record(record: dict[str, Any]) -> dict[str, Any]:
 def _validate_import_attempt(record: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(record, dict):
         raise ValueError("Import attempts must be objects")
-    validated = _validate_import_record({
-        **record,
-        "listen_duration_sec": record.get("duration_sec", 0),
-    })
+    validated = _validate_import_record(
+        {
+            **record,
+            "listen_duration_sec": record.get("duration_sec", 0),
+        }
+    )
     validated["duration_sec"] = validated.pop("listen_duration_sec")
     validated["outcome"] = "short_play"
     return validated
@@ -458,9 +454,7 @@ def _attach_import_identity(
     computed = _record_fingerprint(username, kind, validated)
     if format_version >= 3:
         record_id = _validate_text(raw.get("record_id"), "record_id", required=True)
-        fingerprint = _validate_text(
-            raw.get("fingerprint"), "fingerprint", required=True
-        )
+        fingerprint = _validate_text(raw.get("fingerprint"), "fingerprint", required=True)
         assert record_id is not None and fingerprint is not None
         if len(record_id) > 128:
             raise ValueError("Import record_id is too long")
@@ -544,11 +538,7 @@ async def import_user_data(
     occurrences: dict[tuple[str, str], int] = {}
 
     def identify(raw: dict[str, Any], kind: str) -> dict[str, Any]:
-        base = (
-            _validate_import_record(raw)
-            if kind == "history"
-            else _validate_import_attempt(raw)
-        )
+        base = _validate_import_record(raw) if kind == "history" else _validate_import_attempt(raw)
         fingerprint = _record_fingerprint(username, kind, base)
         occurrence_key = (kind, fingerprint)
         occurrence = occurrences.get(occurrence_key, 0)
@@ -576,8 +566,7 @@ async def import_user_data(
                 seen_identities[identity_key] = record["fingerprint"]
 
     payload_conflicts = sum(
-        int(record["identity_conflict"])
-        for record in [*validated, *validated_attempts]
+        int(record["identity_conflict"]) for record in [*validated, *validated_attempts]
     )
     if not merge and payload_conflicts:
         return {

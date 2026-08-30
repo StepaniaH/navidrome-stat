@@ -49,8 +49,9 @@ async def get_earliest_poller_played_at(
     path = _path(db_path)
     async with connect_db(path) as db:
         async with db.execute(
-            "SELECT MIN(played_at) FROM play_history "
-            "WHERE source = 'poller' AND source_id = ? AND username = ?",
+            "SELECT played_at FROM play_history "
+            "WHERE source = 'poller' AND source_id = ? AND username = ? "
+            "ORDER BY played_at_epoch ASC, id ASC LIMIT 1",
             (source_id, username),
         ) as cursor:
             row = await cursor.fetchone()
@@ -73,14 +74,20 @@ async def get_short_play_stats(
     pred, params = _username_predicate(pred, params, username)
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(f"""
+        async with db.execute(
+            f"""
             SELECT COUNT(*) AS short_count, COALESCE(SUM(duration_sec), 0) AS short_listen_sec
             FROM play_attempts WHERE {pred} AND outcome = 'short_play'
-        """, params) as cursor:
+        """,
+            params,
+        ) as cursor:
             short = await cursor.fetchone()
-        async with db.execute(f"""
+        async with db.execute(
+            f"""
             SELECT COUNT(*) AS counted_count FROM play_history WHERE {pred}
-        """, params) as cursor:
+        """,
+            params,
+        ) as cursor:
             counted = await cursor.fetchone()
     short_count = int(short["short_count"] or 0)
     counted_count = int(counted["counted_count"] or 0)
@@ -90,14 +97,19 @@ async def get_short_play_stats(
         "counted_count": counted_count,
         "attempt_count": attempt_count,
         "short_listen_sec": int(short["short_listen_sec"] or 0),
-        "short_play_rate_pct": round(short_count / attempt_count * 100, 2) if attempt_count else 0.0,
+        "short_play_rate_pct": round(short_count / attempt_count * 100, 2)
+        if attempt_count
+        else 0.0,
     }
 
 
-async def get_source_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
-                           db_path: str | None = None,
-                           source_id: str | None = None,
-                           username: str | None = None):
+async def get_source_stats(
+    days: int = 0,
+    timezone_name: str = TIMEZONE_DEFAULT,
+    db_path: str | None = None,
+    source_id: str | None = None,
+    username: str | None = None,
+):
     """Return play counts grouped by provenance."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name)
@@ -105,22 +117,29 @@ async def get_source_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
     pred, params = _username_predicate(pred, params, username)
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(f"""
+        async with db.execute(
+            f"""
             SELECT COALESCE(source, 'poller') AS source,
                    COUNT(*) AS count,
                    COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec
             FROM play_history WHERE {pred}
             GROUP BY COALESCE(source, 'poller')
             ORDER BY count DESC, source ASC
-        """, params) as cursor:
+        """,
+            params,
+        ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
-async def get_server_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
-                           source_id: str | None = None, db_path: str | None = None,
-                           start_date: date | None = None,
-                           end_date: date | None = None,
-                           username: str | None = None):
+async def get_server_stats(
+    days: int = 0,
+    timezone_name: str = TIMEZONE_DEFAULT,
+    source_id: str | None = None,
+    db_path: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    username: str | None = None,
+):
     """Return play counts grouped by configured server."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
@@ -128,7 +147,8 @@ async def get_server_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
     where, params = _username_predicate(where, params, username, column="ph.username")
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(f"""
+        async with db.execute(
+            f"""
             SELECT COALESCE(ph.source_id, ?) AS source_id,
                    COALESCE(s.display_name, MAX(ph.source_name), ?) AS source_name,
                    COUNT(*) AS count,
@@ -138,8 +158,9 @@ async def get_server_stats(days: int = 0, timezone_name: str = TIMEZONE_DEFAULT,
             WHERE {where}
             GROUP BY COALESCE(ph.source_id, ?)
             ORDER BY count DESC, source_name ASC
-        """, [LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME, *params,
-               LEGACY_SOURCE_ID]) as cursor:
+        """,
+            [LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME, *params, LEGACY_SOURCE_ID],
+        ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
@@ -185,17 +206,17 @@ async def get_player_stats(
         total_listen_sec = int(row["total_listen_sec"] or 0)
         transcoded_count = int(row["transcoded_count"] or 0)
         average_listen_sec = round(total_listen_sec / count, 2) if count > 0 else 0.0
-        transcoding_rate_pct = (
-            round((transcoded_count / count) * 100, 2) if count > 0 else 0.0
+        transcoding_rate_pct = round((transcoded_count / count) * 100, 2) if count > 0 else 0.0
+        out.append(
+            {
+                "client_name": row["client_name"],
+                "count": count,
+                "total_listen_sec": total_listen_sec,
+                "average_listen_sec": average_listen_sec,
+                "transcoded_count": transcoded_count,
+                "transcoding_rate_pct": transcoding_rate_pct,
+            }
         )
-        out.append({
-            "client_name": row["client_name"],
-            "count": count,
-            "total_listen_sec": total_listen_sec,
-            "average_listen_sec": average_listen_sec,
-            "transcoded_count": transcoded_count,
-            "transcoding_rate_pct": transcoding_rate_pct,
-        })
     return out
 
 
@@ -244,13 +265,15 @@ async def get_transcoding_stats(
             if total_listen_sec_all > 0
             else 0.0
         )
-        out.append({
-            "is_transcoding": row["is_transcoding"],
-            "count": count,
-            "total_listen_sec": total_listen_sec,
-            "plays_pct": plays_pct,
-            "listen_sec_pct": listen_sec_pct,
-        })
+        out.append(
+            {
+                "is_transcoding": row["is_transcoding"],
+                "count": count,
+                "total_listen_sec": total_listen_sec,
+                "plays_pct": plays_pct,
+                "listen_sec_pct": listen_sec_pct,
+            }
+        )
     return out
 
 
@@ -279,6 +302,7 @@ async def get_summary(
     )
     cur_pred, cur_params = _source_predicate(cur_pred, cur_params, source_id)
     cur_pred, cur_params = _username_predicate(cur_pred, cur_params, username)
+    local_dates: set[date] = set()
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -306,18 +330,16 @@ async def get_summary(
             """,
             cur_params,
         ) as cursor:
-            cur_rows = await cursor.fetchall()
+            async for current in cursor:
+                local = _played_at_to_local_date(current["played_at"], tz)
+                if local is not None:
+                    local_dates.add(local)
 
         total_plays = int(row["total_plays"] or 0)
         total_listen_sec = int(row["total_listen_sec"] or 0)
         unique_tracks = int(row["unique_tracks"] or 0)
         client_count = int(row["client_count"] or 0)
 
-        local_dates: set[date] = set()
-        for r in cur_rows:
-            local = _played_at_to_local_date(r["played_at"], tz)
-            if local is not None:
-                local_dates.add(local)
         active_days = len(local_dates)
 
         previous_total_plays: int | None = None
@@ -351,12 +373,8 @@ async def get_summary(
                 start_date,
                 end_date,
             )
-            prev_pred, prev_params = _source_predicate(
-                prev_pred, prev_params, source_id
-            )
-            prev_pred, prev_params = _username_predicate(
-                prev_pred, prev_params, username
-            )
+            prev_pred, prev_params = _source_predicate(prev_pred, prev_params, source_id)
+            prev_pred, prev_params = _username_predicate(prev_pred, prev_params, username)
             async with db.execute(
                 f"""
                 SELECT
@@ -440,13 +458,6 @@ async def get_time_bucket_stats(
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
     pred, params = _username_predicate(pred, params, username)
-    async with connect_db(path) as db:
-        async with db.execute(
-            f"SELECT played_at FROM play_history WHERE {pred}",
-            params,
-        ) as cursor:
-            played_at_values = [row[0] for row in await cursor.fetchall()]
-
     hourly_counts: dict[int, int] = {}
     daily_counts: dict[date, int] = {}
     heatmap_counts = {
@@ -454,19 +465,21 @@ async def get_time_bucket_stats(
         for weekday in range(WEEKDAY_HOUR_WEEKDAY_COUNT)
         for hour in range(WEEKDAY_HOUR_HOUR_COUNT)
     }
-    for played_at in played_at_values:
-        local = _played_at_to_local_datetime(played_at, tz)
-        if local is None:
-            continue
-        hourly_counts[local.hour] = hourly_counts.get(local.hour, 0) + 1
-        local_date = local.date()
-        daily_counts[local_date] = daily_counts.get(local_date, 0) + 1
-        heatmap_counts[(local.weekday(), local.hour)] += 1
+    async with connect_db(path) as db:
+        async with db.execute(
+            f"SELECT played_at FROM play_history WHERE {pred}",
+            params,
+        ) as cursor:
+            async for row in cursor:
+                local = _played_at_to_local_datetime(row[0], tz)
+                if local is None:
+                    continue
+                hourly_counts[local.hour] = hourly_counts.get(local.hour, 0) + 1
+                local_date = local.date()
+                daily_counts[local_date] = daily_counts.get(local_date, 0) + 1
+                heatmap_counts[(local.weekday(), local.hour)] += 1
 
-    hourly = [
-        {"hour": hour, "count": hourly_counts[hour]}
-        for hour in sorted(hourly_counts)
-    ]
+    hourly = [{"hour": hour, "count": hourly_counts[hour]} for hour in sorted(hourly_counts)]
     if days <= 0 and (start_date is None or end_date is None):
         if daily_counts:
             start_date, end_date = min(daily_counts), max(daily_counts)
@@ -482,9 +495,7 @@ async def get_time_bucket_stats(
     daily = []
     cursor_date = start_date
     while cursor_date is not None and end_date is not None and cursor_date <= end_date:
-        daily.append(
-            {"date": cursor_date.isoformat(), "count": daily_counts.get(cursor_date, 0)}
-        )
+        daily.append({"date": cursor_date.isoformat(), "count": daily_counts.get(cursor_date, 0)})
         cursor_date += timedelta(days=1)
     heatmap = [
         {"weekday": weekday, "hour": hour, "count": heatmap_counts[(weekday, hour)]}
@@ -606,6 +617,7 @@ async def get_top_albums(
                 SELECT
                     id,
                     played_at,
+                    played_at_epoch,
                     album,
                     artist,
                     NULLIF(album_id, '') AS album_id,
@@ -624,7 +636,7 @@ async def get_top_albums(
                     album_key,
                     COUNT(*) AS play_count,
                     SUM(listen_duration_sec) AS total_listen_sec,
-                    MAX(played_at) AS latest_played_at
+                    MAX(played_at_epoch) AS latest_played_at_epoch
                 FROM album_rows
                 GROUP BY normalized_source_id, album_key
             ), latest AS (
@@ -633,7 +645,7 @@ async def get_top_albums(
                 JOIN album_rows
                   ON album_rows.normalized_source_id = aggregated.normalized_source_id
                  AND album_rows.album_key = aggregated.album_key
-                 AND album_rows.played_at IS aggregated.latest_played_at
+                 AND album_rows.played_at_epoch IS aggregated.latest_played_at_epoch
                 GROUP BY aggregated.normalized_source_id, aggregated.album_key
             )
             SELECT
@@ -691,9 +703,7 @@ async def _get_top_entity(
     # MAX over text picks one deterministic non-empty id per entity name;
     # NULLIF keeps blank identifiers from winning over real ones.
     if entity_id_column:
-        id_expr = (
-            f"MAX(NULLIF({entity_id_column}, '')) AS entity_id, "
-        )
+        id_expr = f"MAX(NULLIF({entity_id_column}, '')) AS entity_id, "
     else:
         id_expr = ""
 
@@ -761,7 +771,7 @@ async def get_playback_history(
                     COALESCE(source_id, ?) AS source_id,
                     COUNT(*) AS play_count,
                     SUM(COALESCE(listen_duration_sec, 0)) AS total_listen_sec,
-                    MAX(played_at) AS latest_played_at
+                    MAX(played_at_epoch) AS latest_played_at_epoch
                 FROM play_history
                 WHERE {pred}
                 GROUP BY COALESCE(source_id, ?), username, track_id
@@ -772,7 +782,7 @@ async def get_playback_history(
                   ON COALESCE(ph.source_id, ?) = aggregated.source_id
                  AND ph.username IS aggregated.username
                  AND ph.track_id IS aggregated.track_id
-                 AND ph.played_at IS aggregated.latest_played_at
+                 AND ph.played_at_epoch IS aggregated.latest_played_at_epoch
                 GROUP BY aggregated.source_id, aggregated.username, aggregated.track_id
             )
             SELECT
@@ -787,7 +797,7 @@ async def get_playback_history(
                 latest.total_listen_sec
             FROM latest
             JOIN play_history ph ON ph.id = latest.latest_id
-            ORDER BY ph.played_at DESC, latest.play_count DESC
+            ORDER BY ph.played_at_epoch DESC, latest.play_count DESC
             LIMIT ?
             """,
             [

@@ -48,6 +48,17 @@ async def list_servers(db_path: str | None = None):
     return rows
 
 
+async def list_server_options(db_path: str | None = None) -> list[dict[str, str]]:
+    """Return the non-sensitive server identity used by statistics views."""
+    path = _path(db_path)
+    async with connect_db(path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, display_name FROM servers ORDER BY created_at, id"
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
 async def get_server(server_id: str, db_path: str | None = None):
     rows = await list_servers(db_path)
     return next((row for row in rows if row["id"] == server_id), None)
@@ -58,16 +69,27 @@ async def save_server(server: dict, db_path: str | None = None) -> None:
     now = datetime.now(timezone.utc).isoformat()
     stored_password = encrypt(server["password"], db_path=path)
     async with connect_db(path) as db:
-        await db.execute("""
+        await db.execute(
+            """
             INSERT INTO servers (id, display_name, url, username, password, enabled, backfill_playlist_id, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,
                 url=excluded.url, username=excluded.username, password=excluded.password,
                 enabled=excluded.enabled, backfill_playlist_id=excluded.backfill_playlist_id,
                 updated_at=excluded.updated_at
-        """, (server["id"], server["display_name"], server["url"], server["username"],
-              stored_password, int(server.get("enabled", True)),
-              server.get("backfill_playlist_id") or None, now, now))
+        """,
+            (
+                server["id"],
+                server["display_name"],
+                server["url"],
+                server["username"],
+                stored_password,
+                int(server.get("enabled", True)),
+                server.get("backfill_playlist_id") or None,
+                now,
+                now,
+            ),
+        )
         await db.commit()
 
 

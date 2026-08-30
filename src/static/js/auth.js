@@ -14,6 +14,8 @@ export function createLoginController({
     inertSelector,
     useHiddenClass = false,
     onAuthenticated,
+    onShow = () => {},
+    onHide = () => {},
 }) {
     let lastFocus = null;
 
@@ -35,8 +37,9 @@ export function createLoginController({
             overlay().hidden = false;
         }
         shell().inert = true;
+        setMessage(message || '');
+        onShow();
         window.requestAnimationFrame(() => tokenInput().focus());
-        if (message !== undefined) setMessage(message);
     }
 
     function hide() {
@@ -46,6 +49,8 @@ export function createLoginController({
             overlay().hidden = true;
         }
         shell().inert = false;
+        setMessage('');
+        onHide();
         if (lastFocus instanceof HTMLElement) lastFocus.focus();
         lastFocus = null;
     }

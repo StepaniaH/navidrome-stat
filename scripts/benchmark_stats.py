@@ -9,7 +9,7 @@ import sqlite3
 import sys
 import tempfile
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -92,12 +92,18 @@ def filtered_history_plan(db_path: str) -> dict[str, object]:
             SELECT COALESCE(source_id, 'legacy'), username, track_id, MAX(id)
             FROM play_history
             WHERE source_id = ? AND username = ?
+              AND played_at_epoch >= ? AND played_at_epoch < ?
             GROUP BY COALESCE(source_id, 'legacy'), username, track_id
             """,
-            ("synthetic-source-0", "synthetic-user-0"),
+            (
+                "synthetic-source-0",
+                "synthetic-user-0",
+                1_704_067_200,
+                1_735_689_600,
+            ),
         ).fetchall()
     details = [str(row[3]) for row in rows]
-    expected = "idx_play_history_source_user_track"
+    expected = "idx_play_history_source_user_epoch"
     return {
         "details": details,
         "expected_index": expected,
@@ -110,6 +116,10 @@ async def benchmark_size(rows: int) -> dict[str, object]:
         db_path = str(Path(tmp) / "synthetic.db")
         await init_db(db_path)
         seed_ms = seed(db_path, rows)
+        window = {
+            "start_date": date(2024, 1, 1),
+            "end_date": date(2024, 12, 31),
+        }
         scenarios = {
             "time_buckets_all": await measure(
                 lambda: get_time_bucket_stats(days=0, db_path=db_path)
@@ -120,6 +130,7 @@ async def benchmark_size(rows: int) -> dict[str, object]:
                     source_id="synthetic-source-0",
                     username="synthetic-user-0",
                     db_path=db_path,
+                    **window,
                 )
             ),
             "history_filtered": await measure(
@@ -129,6 +140,7 @@ async def benchmark_size(rows: int) -> dict[str, object]:
                     source_id="synthetic-source-0",
                     username="synthetic-user-0",
                     db_path=db_path,
+                    **window,
                 )
             ),
         }
@@ -145,10 +157,10 @@ async def run(sizes: list[int], max_query_ms: float | None = None) -> dict[str, 
     failures = []
     for result in results:
         if not result["query_plan"]["uses_expected_index"]:
-            failures.append(f'{result["rows"]} rows: filtered history index not used')
+            failures.append(f"{result['rows']} rows: filtered history index not used")
         if max_query_ms is not None:
             failures.extend(
-                f'{result["rows"]} rows: {name} took {elapsed} ms (budget {max_query_ms} ms)'
+                f"{result['rows']} rows: {name} took {elapsed} ms (budget {max_query_ms} ms)"
                 for name, elapsed in result["queries_ms"].items()
                 if elapsed > max_query_ms
             )
@@ -164,12 +176,11 @@ async def run(sizes: list[int], max_query_ms: float | None = None) -> dict[str, 
 def print_human(report: dict[str, object]) -> None:
     for result in report["results"]:
         timings = " ".join(
-            f"{name}_ms={elapsed:.2f}"
-            for name, elapsed in result["queries_ms"].items()
+            f"{name}_ms={elapsed:.2f}" for name, elapsed in result["queries_ms"].items()
         )
         print(
-            f'rows={result["rows"]} seed_ms={result["seed_ms"]:.2f} '
-            f'{timings} index_ok={str(result["query_plan"]["uses_expected_index"]).lower()}'
+            f"rows={result['rows']} seed_ms={result['seed_ms']:.2f} "
+            f"{timings} index_ok={str(result['query_plan']['uses_expected_index']).lower()}"
         )
     for failure in report["failures"]:
         print(f"FAIL: {failure}", file=sys.stderr)

@@ -12,6 +12,8 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ### Changed
 
+- Dashboard cache misses now read all local sections through one SQLite transaction and connection. IANA-timezone bucket scans stream rows instead of retaining another full timestamp list in memory.
+- Settings page styles now live in a standalone stylesheet. Dashboard and Settings reuse the same authentication, HTTP, duration, preference, and listbox modules without adding a frontend build framework.
 - The product display name is consistently "Navidrome Stat" across the interface, documentation, API metadata, and releases. Existing repository and Docker image names remain unchanged.
 - New local checkouts keep runtime data under `.data/`, while existing root-level databases remain automatically discoverable and Docker deployments continue using `/data`.
 - Tag releases now require strict SemVer, matching source and Docker versions, release notes, the complete test workflow, and a container smoke test. Stable releases publish `latest`; prereleases do not. Successful image builds create a GitHub Release with the image digest and rollback guidance.
@@ -21,6 +23,7 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ### Fixed
 
+- Finite date-window queries now use schema v13 UTC epoch columns and source/user/time indexes instead of wrapping `played_at` in `datetime()`, allowing SQLite to use the time index while preserving local-calendar and DST boundaries.
 - Docker build contexts now exclude local credential keys, databases, cover-art caches, backups, and `.data/` contents.
 - The Settings header distinguishes browser-only display preferences from connections and data controls saved by the service.
 - The roadmap now lists viewer/admin separation, per-user year-in-review scope, and time-limited read-only sharing instead of shipped per-user dashboard filtering.

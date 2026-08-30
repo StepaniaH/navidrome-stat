@@ -15,6 +15,13 @@ import { onPreferenceChange, readPreference, writePreference } from './js/prefs.
 import { attachPopover, createListbox } from './js/listbox.js';
 import { getFilters, setFilters } from './js/filters.js';
 import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
+import { createLoginController } from './js/auth.js';
+import {
+    apiFetch,
+    isAbortError,
+    UnauthorizedError,
+    UNAUTHORIZED_EVENT,
+} from './js/http.js';
 
 
     const REFRESH_MS = 60000;
@@ -173,7 +180,6 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         });
         syncReviewLink();
     }
-    let lastFocusBeforeLogin = null;
 
     // `browser` resolves to an IANA zone before requests; the API does not accept the token.
     const hasSharedTimezone = new URLSearchParams(window.location.search).has('timezone');
@@ -199,8 +205,6 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         link.href = `/review?${params.toString()}`;
     }
     syncReviewLink();
-
-    const fetchOptions = { credentials: 'same-origin' };
 
     function stopRefreshTimers() {
         if (refreshTimer) clearInterval(refreshTimer);
@@ -229,10 +233,6 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         setLoading(false);
     }
 
-    function isAbortError(error) {
-        return error instanceof DOMException && error.name === 'AbortError';
-    }
-
     function captureStatsRequestState() {
         return Object.freeze({
             days: statsDays,
@@ -249,44 +249,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         return Object.freeze({ sourceId: selectedSourceId, username: selectedUsername });
     }
 
-    function showLogin(message) {
-        const overlay = document.getElementById('loginOverlay');
-        const errorEl = document.getElementById('loginError');
-        if (overlay.classList.contains('hidden')) {
-            lastFocusBeforeLogin = document.activeElement;
-        }
-        stopDashboardActivity();
-        overlay.classList.remove('hidden');
-        document.getElementById('dashboardApp').inert = true;
-        if (message) {
-            errorEl.textContent = message;
-            errorEl.classList.remove('hidden');
-        } else {
-            errorEl.classList.add('hidden');
-        }
-        setStatus('error', dashboardMessage('auth.required'));
-        window.requestAnimationFrame(() => document.getElementById('loginToken').focus());
-    }
-
-    function hideLogin() {
-        document.getElementById('loginOverlay').classList.add('hidden');
-        document.getElementById('loginError').classList.add('hidden');
-        document.getElementById('dashboardApp').inert = false;
-        if (lastFocusBeforeLogin instanceof HTMLElement) lastFocusBeforeLogin.focus();
-        lastFocusBeforeLogin = null;
-    }
-
-    async function submitLogin(token) {
-        const response = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ token }),
-        });
-        if (!response.ok) {
-            throw new Error('invalid token');
-        }
-        hideLogin();
+    async function refreshAfterLogin() {
         applyAppVersion();
         await Promise.all([
             Promise.allSettled([fetchUserOptions(), fetchDashboardDiagnostics()]),
@@ -300,6 +263,22 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         if (document.getElementById('loginOverlay').classList.contains('hidden')) {
             scheduleRefresh();
         }
+    }
+
+    const login = createLoginController({
+        overlayId: 'loginOverlay',
+        tokenId: 'loginToken',
+        inertSelector: '#dashboardApp',
+        useHiddenClass: true,
+        onShow: () => {
+            stopDashboardActivity();
+            setStatus('error', dashboardMessage('auth.required'));
+        },
+        onAuthenticated: refreshAfterLogin,
+    });
+
+    function showLogin(message) {
+        login.show(message);
     }
 
     // Theme tokens stay mutable so a preference change can re-color charts live.
@@ -334,13 +313,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         return dashboardMessage('unit.plays', { count: dashboardNumber(value) });
     }
     function dashboardDuration(seconds) {
-        const total = Number(seconds) || 0;
-        const hours = Math.floor(total / 3600);
-        const minutes = Math.floor((total % 3600) / 60);
-        const secs = Math.floor(total % 60);
-        if (hours > 0) return dashboardMessage('duration.hours', { hours, minutes });
-        if (minutes > 0) return dashboardMessage('duration.minutes', { minutes });
-        return dashboardMessage('duration.seconds', { seconds: secs });
+        return formatDuration(seconds, dashboardMessage);
     }
     function refreshDashboardLanguage() {
         translateDashboard();
@@ -352,6 +325,9 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         if (lastPlayAccountingPayload) renderPlayAccounting(lastPlayAccountingPayload);
     }
     translateDashboard();
+    window.addEventListener(UNAUTHORIZED_EVENT, () => {
+        showLogin(hasLoadedOnce ? dashboardMessage('auth.expired') : undefined);
+    });
 
     function setPlayAccountingState(state) {
         const status = document.getElementById('playAccountingStatus');
@@ -397,15 +373,10 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         setPlayAccountingState('loading');
 
         try {
-            const response = await fetch(`/api/stats/short-plays?${query}`, {
-                ...fetchOptions,
+            const response = await apiFetch(`/api/stats/short-plays?${query}`, {
                 signal: controller.signal,
             });
             if (generation !== playAccountingRequestGeneration || controller.signal.aborted) return;
-            if (response.status === 401) {
-                showLogin(dashboardMessage('auth.expired'));
-                return;
-            }
             if (!response.ok) throw new Error('playback accounting request failed');
             const payload = await response.json();
             if (generation !== playAccountingRequestGeneration || controller.signal.aborted) return;
@@ -1506,7 +1477,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
     }
 
     async function fetchUserOptions() {
-        const response = await fetch('/api/stats/users', fetchOptions);
+        const response = await apiFetch('/api/stats/users');
         if (!response.ok) throw new Error('users request failed');
         const payload = await response.json();
         knownUsers = Array.isArray(payload.users) ? payload.users.map(String) : [];
@@ -1514,7 +1485,7 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
     }
 
     async function fetchDashboardDiagnostics() {
-        const response = await fetch('/api/diagnostics', fetchOptions);
+        const response = await apiFetch('/api/diagnostics');
         if (!response.ok) throw new Error('diagnostics request failed');
         const payload = await response.json();
         globalHistoryRecordCount = Number.isFinite(Number(payload.history_record_count))
@@ -1677,15 +1648,10 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
                 startDate: requestState.startDate,
                 endDate: requestState.endDate,
             });
-            const snapshotRes = await fetch(`/api/stats/dashboard?${query}`, {
-                ...fetchOptions,
+            const snapshotRes = await apiFetch(`/api/stats/dashboard?${query}`, {
                 signal: controller.signal,
             });
             if (generation !== statsRequestGeneration || controller.signal.aborted) return;
-            if (snapshotRes.status === 401) {
-                showLogin(dashboardMessage('auth.expired'));
-                return;
-            }
             if (!snapshotRes.ok) {
                 throw new Error('statistics request failed (' + snapshotRes.status + ')');
             }
@@ -1758,15 +1724,10 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
             const sourceParam = requestState.sourceId
                 ? `?source_id=${encodeURIComponent(requestState.sourceId)}`
                 : '';
-            const response = await fetch(`/api/stats/now-playing${sourceParam}`, {
-                ...fetchOptions,
+            const response = await apiFetch(`/api/stats/now-playing${sourceParam}`, {
                 signal: controller.signal,
             });
             if (generation !== nowPlayingRequestGeneration || controller.signal.aborted) return;
-            if (response.status === 401) {
-                showLogin(dashboardMessage('auth.expired'));
-                return;
-            }
             if (!response.ok) throw new Error('now-playing request failed');
             const payload = await response.json();
             if (generation !== nowPlayingRequestGeneration || controller.signal.aborted) return;
@@ -1955,28 +1916,14 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
         event.preventDefault();
         const token = document.getElementById('loginToken').value;
         try {
-            await submitLogin(token);
+            await login.submit(token);
             document.getElementById('loginToken').value = '';
         } catch (error) {
             showLogin(dashboardMessage('auth.invalid'));
         }
     });
 
-    document.getElementById('loginOverlay').addEventListener('keydown', (event) => {
-        if (event.key !== 'Tab') return;
-        const focusable = [...event.currentTarget.querySelectorAll('input, button')]
-            .filter(element => !element.disabled && !element.hidden);
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-        }
-    });
+    login.bind();
 
     document.addEventListener('visibilitychange', () => {
         scheduleRefresh();
@@ -2001,19 +1948,24 @@ import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
     async function bootstrap() {
         try {
             applyAppVersion();
-            const statusRes = await fetch('/api/auth/status', fetchOptions);
+            const statusRes = await apiFetch('/api/auth/status');
             if (statusRes.ok) {
                 const statusData = await statusRes.json();
                 authRequired = Boolean(statusData.auth_required);
             }
         } catch (error) {
+            if (error instanceof UnauthorizedError) return;
             console.warn('Unable to read auth status', error);
         }
 
         if (authRequired) {
-            const probe = await fetch('/api/stats/dashboard?days=30', fetchOptions);
-            if (probe.status === 401) {
-                showLogin();
+            try {
+                await apiFetch('/api/stats/dashboard?days=30');
+            } catch (error) {
+                if (error instanceof UnauthorizedError) return;
+                throw error;
+            }
+            if (!login.isHidden()) {
                 return;
             }
         }

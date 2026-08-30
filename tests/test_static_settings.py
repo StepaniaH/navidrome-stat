@@ -4,7 +4,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS_HTML = ROOT / "src" / "static" / "settings.html"
+SETTINGS_CSS = ROOT / "src" / "static" / "settings.css"
 SETTINGS_JS = ROOT / "src" / "static" / "settings.js"
+LISTBOX_JS = ROOT / "src" / "static" / "js" / "listbox.js"
 APPEARANCE_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "appearance-settings.js"
 CONNECTION_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "connection-settings.js"
 LOCALIZATION_JS = ROOT / "src" / "static" / "localization.js"
@@ -31,21 +33,23 @@ def test_settings_has_four_ordered_top_level_sections():
 
 
 def test_settings_uses_one_aligned_surface_and_flat_sections():
-    source = _read(SETTINGS_HTML)
-    assert "grid-template-columns: 206px minmax(0, 1fr)" in source
-    assert 'class="settings-navigation"' in source
-    assert 'class="settings-panel"' in source
-    assert 'class="settings-section"' in source
-    assert ".settings-section {" in source
-    assert "border-top: 1px solid var(--border-soft)" in source
-    assert "rounded-2xl" not in source
-    assert "bg-ink-900/80" not in source
-    assert "mesh-bg" not in source
+    html = _read(SETTINGS_HTML)
+    css = _read(SETTINGS_CSS)
+    assert "grid-template-columns: 206px minmax(0, 1fr)" in css
+    assert 'class="settings-navigation"' in html
+    assert 'class="settings-panel"' in html
+    assert 'class="settings-section"' in html
+    assert ".settings-section {" in css
+    assert "border-top: 1px solid var(--border-soft)" in css
+    assert "rounded-2xl" not in html
+    assert "bg-ink-900/80" not in html
+    assert "mesh-bg" not in html
 
 
 def test_source_message_stays_in_normal_flow():
-    source = _read(SETTINGS_HTML)
-    message = source[source.index('id="sourceMessage"') - 120 : source.index('id="sourceMessage"') + 190]
+    html = _read(SETTINGS_HTML)
+    source = _read(SETTINGS_CSS)
+    message = html[html.index('id="sourceMessage"') - 120 : html.index('id="sourceMessage"') + 190]
     assert "source-message" in message
     assert 'aria-live="polite"' in message
     css = source[source.index(".source-message {") : source.index(".server-list {")]
@@ -57,6 +61,7 @@ def test_source_message_stays_in_normal_flow():
 def test_all_settings_selectors_use_the_shared_custom_listbox():
     html = _read(SETTINGS_HTML)
     script = _read(SETTINGS_JS)
+    listbox = _read(LISTBOX_JS)
     assert "<select" not in html
     for control_id in (
         "languageSelect",
@@ -64,16 +69,17 @@ def test_all_settings_selectors_use_the_shared_custom_listbox():
         "userSelect",
     ):
         assert f'id="{control_id}"' in html
-        assert f"createListbox('{control_id}'" in script
+        assert f"registerSettingsListbox('{control_id}'" in script
     assert html.count('aria-haspopup="listbox"') == 3
     assert html.count('role="listbox"') == 3
     assert 'id="themeSelect"' not in html
-    assert "createListbox('themeSelect'" not in script
-    assert "function createListbox(" in script
+    assert "registerSettingsListbox('themeSelect'" not in script
+    assert "createSelectListbox" in script
+    assert "function createListbox(" not in script
     for key in ("ArrowDown", "ArrowUp", "Home", "End", "Escape", "Tab"):
-        assert f"event.key === '{key}'" in script
-    assert "aria-selected" in script
-    assert "restoreFocus" in script
+        assert f"event.key === '{key}'" in listbox
+    assert "aria-selected" in listbox
+    assert "restoreFocus" in listbox
 
 
 def test_theme_controls_use_separate_mode_and_palette_pickers():
@@ -87,7 +93,7 @@ def test_theme_controls_use_separate_mode_and_palette_pickers():
     assert "preview.dataset.theme = previewTheme" in script
     assert "querySelector('.theme-swatch-preview').dataset.theme" in script
     assert "for (const concrete of ['builtin-dark', 'builtin-light'])" in script
-    assert ".theme-swatch-half {" in html
+    assert ".theme-swatch-half {" in _read(SETTINGS_CSS)
     assert "data-theme-preview" not in html
     assert "data-theme-preview" not in script
     assert "themeLabelKey" not in script
@@ -119,7 +125,9 @@ def test_theme_catalogs_do_not_keep_obsolete_concrete_variant_labels():
 def test_dynamic_privacy_policy_is_not_a_static_translation_target():
     html = _read(SETTINGS_HTML)
     script = _read(SETTINGS_JS)
-    policy_markup = html[html.index('id="policySummary"') - 80 : html.index('id="policySummary"') + 220]
+    policy_markup = html[
+        html.index('id="policySummary"') - 80 : html.index('id="policySummary"') + 220
+    ]
     assert "data-i18n=" not in policy_markup
     assert 'data-state="loading"' in policy_markup
     assert "function renderPolicySummary()" in script
@@ -141,8 +149,13 @@ def test_shared_localization_runtime_has_fallback_interpolation_and_dom_translat
     assert "localizedMessage ?? fallbackMessage ?? key" in runtime
     assert "element.textContent = t(element.dataset.i18n)" in runtime
     assert "data-i18n-attr" in runtime
-    assert "createI18n({ messages: pageMessages('settings'), fallbackLocale: 'en' })" in settings_script
-    locale_files = {path.stem for path in (ROOT / "src" / "static" / "js" / "i18n" / "locales").glob("*.js")}
+    assert (
+        "createI18n({ messages: pageMessages('settings'), fallbackLocale: 'en' })"
+        in settings_script
+    )
+    locale_files = {
+        path.stem for path in (ROOT / "src" / "static" / "js" / "i18n" / "locales").glob("*.js")
+    }
     assert {"zh-CN", "zh-TW", "en", "ja", "de"} <= locale_files
     assert "'zh-CN': {" not in settings_script
     assert "localized(" not in settings_script
@@ -178,8 +191,9 @@ def test_local_preferences_include_motion_and_reset_without_server_writes():
     assert "removePreference" in script
     assert "document.documentElement.dataset.motion = motion" in script
     preferences_block = script[
-        script.index("function bindPreferenceControls()")
-        : script.index("function bindPrivacyControls()")
+        script.index("function bindPreferenceControls()") : script.index(
+            "function bindPrivacyControls()"
+        )
     ]
     assert "apiFetch(" not in preferences_block
     assert "fetch(" not in preferences_block
@@ -188,7 +202,9 @@ def test_local_preferences_include_motion_and_reset_without_server_writes():
 def test_settings_loads_shared_theme_assets_and_registry():
     html = _read(SETTINGS_HTML)
     script = _read(SETTINGS_JS)
+    assert '<link rel="stylesheet" href="/static/settings.css">' in html
     assert '<link rel="stylesheet" href="/static/themes.css">' in html
+    assert "<style>" not in html
     assert '<script type="module" src="/static/theme-bootstrap.js"></script>' in html
     assert "{ value: 'browser'" in script
     assert "{ value: 'UTC'" in script
@@ -307,8 +323,7 @@ def test_settings_runtime_fills_version_from_about_endpoint():
 def test_server_row_test_result_renders_inline_not_in_form():
     js = _read(CONNECTION_SETTINGS_JS)
     assert "server-test-status" in js
-    html = _read(SETTINGS_HTML)
-    assert ".server-test-status" in html
+    assert ".server-test-status" in _read(SETTINGS_CSS)
 
 
 def test_server_form_has_backfill_playlist_field_with_help():

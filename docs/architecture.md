@@ -19,7 +19,8 @@ The implementation is split along its natural seams:
 | Polling collectors, tracker registry, readiness report | `src/collectors.py`, `src/collector_manager.py` |
 | Redacted connection probes and aggregate diagnosis | `src/connection_diagnostics.py` |
 | Retention background maintenance | `src/retention.py` |
-| Write paths, cache invalidation, cached snapshot builds | `src/stats_service.py` |
+| Write paths, cache invalidation, cached snapshot assembly | `src/stats_service.py` |
+| Transactionally consistent dashboard reads | `src/stats_read_repository.py` |
 | HTTP routes: system/auth, statistics, privacy, connections | `src/routes/*.py` |
 | Playback session tracking | `src/sessions.py` |
 | History importers: event normalization, playlist bridge, `getSongHistory` seam | `src/importers/*.py` |
@@ -31,6 +32,8 @@ The implementation is split along its natural seams:
 | Server registry CRUD with credential encryption | `src/server_registry.py`, `src/secretbox.py` |
 | Retention, export, import, and deletion | `src/privacy_ops.py` |
 | Dashboard and settings UI | `src/static/`, `src/static/js/` |
+
+`src/database.py` remains a compatibility import surface for existing callers. New core paths depend on the narrower schema, persistence, query, and server-registry modules directly; it is not treated as a transaction or repository seam.
 
 ## Playback accounting
 
@@ -53,13 +56,13 @@ To avoid double counting, imports never land on or after live-poller coverage: e
 
 ## Storage
 
-SQLite stores listening records, source information, retention settings, and any Navidrome credentials saved through the server list or compatible fallback API. New local checkouts place the database under `.data/`; when a root-level `navidrome_stats.db` already exists, the resolver keeps using it so an upgrade cannot silently present an empty installation. Docker Compose continues to set the explicit `/data/navidrome_stats.db` volume path. Saved credentials are encrypted at rest with AES-256-GCM using a per-installation key file (`secret.key`, mode 0600) next to the database; startup migrations re-wrap legacy plaintext values once. Schema migrations run during startup; schema v12 adds durable privacy-export record IDs and upstream album IDs. Connections use write-ahead logging, foreign-key checks, and a bounded busy timeout.
+SQLite stores listening records, source information, retention settings, and any Navidrome credentials saved through the server list or compatible fallback API. New local checkouts place the database under `.data/`; when a root-level `navidrome_stats.db` already exists, the resolver keeps using it so an upgrade cannot silently present an empty installation. Docker Compose continues to set the explicit `/data/navidrome_stats.db` volume path. Saved credentials are encrypted at rest with AES-256-GCM using a per-installation key file (`secret.key`, mode 0600) next to the database; startup migrations re-wrap legacy plaintext values once. Schema migrations run during startup; schema v12 adds durable privacy-export record IDs and upstream album IDs, while schema v13 adds automatically maintained UTC epoch columns and finite-window indexes for history and playback attempts. Connections use write-ahead logging, foreign-key checks, and a bounded busy timeout.
 
 Privacy exports use format v3. Every history row and short-play attempt carries a stable record ID plus a canonical SHA-256 fingerprint, so repeated merge imports report inserted, skipped, and conflicting records instead of duplicating them. Import formats v1 and v2 remain readable and derive deterministic identities during import.
 
 Album rankings use `(source, album_id)` when the upstream ID is present. Older rows fall back to `(source, album, artist)`, preventing common names such as “Live” or “Greatest Hits” from merging across artists or servers.
 
-Dashboard history is read through aggregate queries. A short-lived in-process cache reduces repeated work for identical dashboard filters. The cache lives behind the stats service: every playback write, retention purge, user import or deletion, and server mutation invalidates it inside the service, so callers cannot forget. Below-threshold playback-attempt totals remain outside the main snapshot and are requested only when the Recent Plays accounting detail is opened; that request uses the same date, server, user, and timezone scope as the dashboard.
+Dashboard history is read through aggregate queries. `StatsReadRepository` builds the local dashboard data sequentially inside one SQLite read transaction, so a cache miss uses one physical connection and one database snapshot instead of combining results observed at different instants. Timestamp rows that still require Python's IANA timezone and DST rules are streamed from SQLite rather than materialized as a second full list. A short-lived in-process cache reduces repeated work for identical dashboard filters. The cache lives behind the stats service: every playback write, retention purge, user import or deletion, and server mutation invalidates it inside the service, so callers cannot forget. Below-threshold playback-attempt totals remain outside the main snapshot and are requested only when the Recent Plays accounting detail is opened; that request uses the same date, server, user, and timezone scope as the dashboard.
 
 Finite retention policies run during startup and in a periodic background task. Policy updates, background cleanup, and manual **Apply now** requests are serialized on the application's event loop; manual cleanup also verifies that the saved policy still matches the previewed policy.
 
@@ -73,6 +76,7 @@ The dashboard, settings, and API reference pages are plain ES modules served und
 | --- | --- |
 | `js/http.js` | `apiFetch` with same-origin credentials, abort detection, and 401 handling |
 | `js/auth.js` | Login dialog controller: overlay visibility, `inert` background, focus trap |
+| `settings.css` | Settings layout and page-specific styling, kept out of HTML |
 | `themes.css` | Shared semantic theme tokens for the dashboard, year-in-review, settings, and API reference |
 | `js/themes.js` | Theme mode/palette registry, legacy preference compatibility, and pure appearance resolution |
 | `js/theme-customization.js` | Validated browser-local preset overrides, contrast checks, and root custom-property application |
@@ -84,7 +88,7 @@ The dashboard, settings, and API reference pages are plain ES modules served und
 | `js/i18n/` | Locale registry: one module per language under `js/i18n/locales/`, pages derive catalogs via `pageMessages(...)`; tests guard key parity |
 | `js/format.js` | Pure formatting, query-string building, and range validation helpers |
 | `js/filters.js` | Dashboard filter state persisted to shareable URL parameters |
-| `js/listbox.js` | Shared popover listbox and panel controls (review year picker, recent-plays column menu) |
+| `js/listbox.js` | Shared static and data-driven listbox interaction plus popover panel controls |
 | `js/app-info.js` | Application metadata from `/api/about`; fills `[data-app-version]` elements |
 | `js/charts.js` | ECharts theme tokens; charts re-color when the theme preference changes |
 

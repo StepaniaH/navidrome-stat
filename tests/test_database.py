@@ -53,15 +53,22 @@ def test_schema_migration_is_idempotent(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'")
-    assert cursor.fetchone()[0] == "12"
+    assert cursor.fetchone()[0] == "13"
     cursor.execute("SELECT value FROM schema_meta WHERE key = 'retention_days'")
     assert cursor.fetchone()[0] == "permanent"
     cursor.execute("PRAGMA index_list(play_history)")
     index_names = {row[1] for row in cursor.fetchall()}
+    cursor.execute("PRAGMA index_list(play_attempts)")
+    attempt_index_names = {row[1] for row in cursor.fetchall()}
     conn.close()
 
     assert "idx_play_history_user_track" in index_names
     assert "idx_play_history_played_at" in index_names
+    assert "idx_play_history_played_at_epoch" in index_names
+    assert "idx_play_history_source_user_epoch" in index_names
+    assert "idx_play_history_user_epoch" in index_names
+    assert "idx_play_attempts_played_at_epoch" in attempt_index_names
+    assert "idx_play_attempts_source_user_epoch" in attempt_index_names
 
 
 def test_schema_migration_adds_artist_id_columns(db_path):
@@ -77,6 +84,27 @@ def test_schema_migration_adds_artist_id_columns(db_path):
 
     assert "artist_id" in history_columns
     assert "artist_id" in attempt_columns
+
+
+def test_schema_maintains_sortable_played_at_epoch(db_path):
+    asyncio.run(init_db(db_path))
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO play_history (played_at) VALUES (?)",
+        ("2024-03-24T12:00:00+00:00",),
+    )
+    row_id, epoch = conn.execute("SELECT id, played_at_epoch FROM play_history").fetchone()
+    assert epoch == 1711281600
+
+    conn.execute(
+        "UPDATE play_history SET played_at = ? WHERE id = ?",
+        ("2024-03-24T13:00:00+00:00", row_id),
+    )
+    updated = conn.execute(
+        "SELECT played_at_epoch FROM play_history WHERE id = ?", (row_id,)
+    ).fetchone()[0]
+    conn.close()
+    assert updated == 1711285200
 
 
 def test_startup_recovers_incomplete_checkpoint_without_duplicate(db_path):
@@ -225,16 +253,18 @@ def test_session_checkpoint_upserts_final_duration_without_duplicate(db_path):
         "finalized": False,
     }
     asyncio.run(save_play_session(checkpoint, db_path=db_path))
-    asyncio.run(save_play_session(
-        {
-            **checkpoint,
-            "last_seen_at": "2024-03-24T12:02:00+00:00",
-            "duration_sec": 120,
-            "finalized": True,
-            "finalized_at": "2024-03-24T12:02:00+00:00",
-        },
-        db_path=db_path,
-    ))
+    asyncio.run(
+        save_play_session(
+            {
+                **checkpoint,
+                "last_seen_at": "2024-03-24T12:02:00+00:00",
+                "duration_sec": 120,
+                "finalized": True,
+                "finalized_at": "2024-03-24T12:02:00+00:00",
+            },
+            db_path=db_path,
+        )
+    )
 
     conn = sqlite3.connect(db_path)
     row = conn.execute(

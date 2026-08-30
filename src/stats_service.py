@@ -16,37 +16,21 @@ from weakref import WeakKeyDictionary
 from src.config import env_int
 from src.coverart import cover_art_service
 from src.dashboard_cache import DashboardSnapshotCache, dashboard_snapshot_cache
-from src.database import (
-    LEGACY_SOURCE_ID,
-    delete_server,
-    get_playback_history,
-    get_player_stats,
-    get_review_summary,
-    get_server_stats,
-    get_summary,
-    get_time_bucket_stats,
-    get_top_albums,
-    get_top_artists,
-    get_transcoding_stats,
-    list_servers,
-    save_imported_events,
-    save_play_attempt,
-    save_play_session,
-    save_server,
-)
+from src.persistence import save_imported_events, save_play_attempt, save_play_session
 from src.privacy_ops import (
     apply_retention_purge,
     delete_user_data,
     import_user_data,
 )
+from src.review_queries import get_review_summary
 from src.runtime_state import runtime_state
-from src.schemas import HISTORY_LIMIT_DEFAULT, TOP_LIMIT_DEFAULT
+from src.schema import LEGACY_SOURCE_ID
+from src.server_registry import delete_server, list_server_options, save_server
+from src.stats_read_repository import StatsReadRepository, stats_read_repository
 
 logger = logging.getLogger(__name__)
 
-SAVE_RETRY_ATTEMPTS = env_int(
-    "SAVE_RETRY_ATTEMPTS", default=3, min_value=1, max_value=10
-)
+SAVE_RETRY_ATTEMPTS = env_int("SAVE_RETRY_ATTEMPTS", default=3, min_value=1, max_value=10)
 
 
 def exception_kind(exc: Exception) -> str:
@@ -108,9 +92,11 @@ class StatsService:
         self,
         cache: DashboardSnapshotCache | None = None,
         retry_attempts: int | None = None,
+        read_repository: StatsReadRepository | None = None,
     ):
         self._cache = cache or dashboard_snapshot_cache
         self._retry_attempts = retry_attempts or SAVE_RETRY_ATTEMPTS
+        self._read_repository = read_repository or stats_read_repository
         self._discard_user_sessions: Callable[[str], set[str]] = lambda _username: set()
         self._suppressed_session_ids: OrderedDict[str, None] = OrderedDict()
 
@@ -150,9 +136,7 @@ class StatsService:
                 raise
             runtime_state.record_save_success(source_id)
             await self._cache.invalidate()
-            logger.debug(
-                "Recorded play session (duration=%ss)", session["duration_sec"]
-            )
+            logger.debug("Recorded play session (duration=%ss)", session["duration_sec"])
 
     async def record_attempt(self, attempt: dict) -> None:
         source_id = str(attempt.get("source_id") or "legacy")
@@ -257,10 +241,8 @@ class StatsService:
         key = ("review", year, timezone_name, source_id)
 
         async def build() -> dict:
-            summary = await get_review_summary(
-                year, timezone_name, source_id=source_id
-            )
-            servers = await list_servers()
+            summary = await get_review_summary(year, timezone_name, source_id=source_id)
+            servers = await list_server_options()
             summary["top_albums"] = await self._attach_album_ids(
                 source_id, summary["top_albums"], servers
             )
@@ -323,96 +305,34 @@ class StatsService:
         end_date: date | None,
         username: str | None = None,
     ) -> dict:
-        window_kwargs = {"start_date": start_date, "end_date": end_date}
-        (
-            summary,
-            players,
-            transcoding,
-            time_buckets,
-            history,
-            servers,
-            available_servers,
-            top_artists,
-            top_albums,
-        ) = await asyncio.gather(
-            get_summary(
-                days=days,
-                timezone_name=timezone_name,
-                **({"source_id": source_id} if source_id else {}),
-                **({"username": username} if username else {}),
-                **window_kwargs,
-            ),
-            get_player_stats(
-                days=days,
-                timezone_name=timezone_name,
-                **({"source_id": source_id} if source_id else {}),
-                **({"username": username} if username else {}),
-                **window_kwargs,
-            ),
-            get_transcoding_stats(
-                days=days,
-                timezone_name=timezone_name,
-                **({"source_id": source_id} if source_id else {}),
-                **({"username": username} if username else {}),
-                **window_kwargs,
-            ),
-            get_time_bucket_stats(
-                days=days,
-                timezone_name=timezone_name,
-                **({"source_id": source_id} if source_id else {}),
-                **({"username": username} if username else {}),
-                **window_kwargs,
-            ),
-            get_playback_history(
-                limit=HISTORY_LIMIT_DEFAULT,
-                days=days,
-                timezone_name=timezone_name,
-                **({"source_id": source_id} if source_id else {}),
-                **({"username": username} if username else {}),
-                **window_kwargs,
-            ),
-            get_server_stats(
-                days=days,
-                timezone_name=timezone_name,
-                source_id=source_id,
-                username=username,
-                **window_kwargs,
-            ),
-            list_servers(),
-            get_top_artists(
-                limit=TOP_LIMIT_DEFAULT,
-                days=days,
-                timezone_name=timezone_name,
-                metric=metric,
-                **({"source_id": source_id} if source_id else {}),
-                **({"username": username} if username else {}),
-                **window_kwargs,
-            ),
-            get_top_albums(
-                limit=TOP_LIMIT_DEFAULT,
-                days=days,
-                timezone_name=timezone_name,
-                metric=metric,
-                **({"source_id": source_id} if source_id else {}),
-                **({"username": username} if username else {}),
-                **window_kwargs,
-            ),
+        snapshot = await self._read_repository.dashboard(
+            days=days,
+            timezone_name=timezone_name,
+            metric=metric,
+            source_id=source_id,
+            username=username,
+            start_date=start_date,
+            end_date=end_date,
         )
+        summary = snapshot["summary"]
+        time_buckets = snapshot["time_buckets"]
+        available_servers = snapshot["available_servers"]
+        top_albums = snapshot["top_albums"]
         top_albums = await self._attach_album_ids(source_id, top_albums, available_servers)
         return {
             "summary": summary,
-            "players": players,
-            "transcoding": transcoding,
+            "players": snapshot["players"],
+            "transcoding": snapshot["transcoding"],
             "hourly": time_buckets["hourly"],
             "daily": time_buckets["daily"],
             "heatmap": time_buckets["heatmap"],
-            "history": history,
-            "servers": servers,
+            "history": snapshot["history"],
+            "servers": snapshot["servers"],
             "available_servers": [
                 {"id": server["id"], "display_name": server["display_name"]}
                 for server in available_servers
             ],
-            "top_artists": top_artists,
+            "top_artists": snapshot["top_artists"],
             "top_albums": top_albums,
         }
 

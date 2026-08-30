@@ -67,27 +67,25 @@ async def get_review_summary(
             """,
             params,
         ) as cursor:
-            rows = await cursor.fetchall()
-
-    for played_at, listen_sec, track_key in rows:
-        local = _played_at_to_local_datetime(played_at, tz)
-        if local is None:
-            continue
-        seconds = int(listen_sec or 0)
-        total_plays += 1
-        total_listen_sec += seconds
-        unique_tracks.add(track_key)
-        hourly_counts[local.hour] += 1
-        hourly_listen_sec[local.hour] += seconds
-        weekday_counts[local.weekday()] += 1
-        weekday_listen_sec[local.weekday()] += seconds
-        monthly_counts[local.month - 1] += 1
-        monthly_listen_sec[local.month - 1] += seconds
-        active_dates.add(local.date())
-        if first_local is None or local < first_local:
-            first_local = local
-        if last_local is None or local > last_local:
-            last_local = local
+            async for played_at, listen_sec, track_key in cursor:
+                local = _played_at_to_local_datetime(played_at, tz)
+                if local is None:
+                    continue
+                seconds = int(listen_sec or 0)
+                total_plays += 1
+                total_listen_sec += seconds
+                unique_tracks.add(track_key)
+                hourly_counts[local.hour] += 1
+                hourly_listen_sec[local.hour] += seconds
+                weekday_counts[local.weekday()] += 1
+                weekday_listen_sec[local.weekday()] += seconds
+                monthly_counts[local.month - 1] += 1
+                monthly_listen_sec[local.month - 1] += seconds
+                active_dates.add(local.date())
+                if first_local is None or local < first_local:
+                    first_local = local
+                if last_local is None or local > last_local:
+                    last_local = local
 
     longest_streak = 0
     current_streak = 0
@@ -101,15 +99,25 @@ async def get_review_summary(
         previous_date = active_date
 
     raw_artists = await get_top_artists(
-        limit=10, days=0, timezone_name=timezone_name,
-        metric="plays", db_path=db_path, source_id=source_id,
-        start_date=start, end_date=end,
+        limit=10,
+        days=0,
+        timezone_name=timezone_name,
+        metric="plays",
+        db_path=db_path,
+        source_id=source_id,
+        start_date=start,
+        end_date=end,
     )
     top_artists = [{**entry, "name": entry.get("artist")} for entry in raw_artists]
     raw_albums = await get_top_albums(
-        limit=10, days=0, timezone_name=timezone_name,
-        metric="listen_time", db_path=db_path, source_id=source_id,
-        start_date=start, end_date=end,
+        limit=10,
+        days=0,
+        timezone_name=timezone_name,
+        metric="listen_time",
+        db_path=db_path,
+        source_id=source_id,
+        start_date=start,
+        end_date=end,
     )
     top_albums = [{**entry, "name": entry.get("album")} for entry in raw_albums]
 

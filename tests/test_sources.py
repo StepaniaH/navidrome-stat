@@ -50,7 +50,7 @@ def test_schema_v4_adds_source_column_to_existing_database(db_path):
     version = conn.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()[0]
     conn.close()
     assert "source" in columns
-    assert version == "12"
+    assert version == "13"
 
 
 def test_same_track_id_on_two_servers_remains_distinct(db_path):
@@ -65,24 +65,32 @@ def test_same_track_id_on_two_servers_remains_distinct(db_path):
         "is_transcoding": 0,
         "duration_sec": 40,
     }
-    asyncio.run(save_play_session({
-        **base,
-        "title": "Server A Song",
-        "source_id": "server-a",
-        "source_name": "Server A",
-    }, db_path=db_path))
-    asyncio.run(save_play_session({
-        **base,
-        "title": "Server B Song",
-        "source_id": "server-b",
-        "source_name": "Server B",
-    }, db_path=db_path))
+    asyncio.run(
+        save_play_session(
+            {
+                **base,
+                "title": "Server A Song",
+                "source_id": "server-a",
+                "source_name": "Server A",
+            },
+            db_path=db_path,
+        )
+    )
+    asyncio.run(
+        save_play_session(
+            {
+                **base,
+                "title": "Server B Song",
+                "source_id": "server-b",
+                "source_name": "Server B",
+            },
+            db_path=db_path,
+        )
+    )
 
     history = asyncio.run(get_playback_history(db_path=db_path))
     assert len(history) == 2
     assert {item["source_id"] for item in history} == {"server-a", "server-b"}
     assert asyncio.run(get_summary(db_path=db_path))["unique_tracks"] == 2
-    filtered = asyncio.run(
-        get_playback_history(db_path=db_path, source_id="server-a")
-    )
+    filtered = asyncio.run(get_playback_history(db_path=db_path, source_id="server-a"))
     assert [item["title"] for item in filtered] == ["Server A Song"]

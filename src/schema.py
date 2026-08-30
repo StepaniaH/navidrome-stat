@@ -7,7 +7,7 @@ import aiosqlite
 from src import config
 from src.sqlite import connect_db
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 LEGACY_SOURCE_ID = "legacy"
 LEGACY_SOURCE_NAME = "Legacy environment source"
 
@@ -25,9 +25,9 @@ TEXT_COLUMNS = (
     "album_id",
     "record_id",
 )
-PAYLOAD_BYTES_SQL = " + ".join(
-    f"COALESCE(LENGTH({column}), 0)" for column in TEXT_COLUMNS
-) + " + 16"
+PAYLOAD_BYTES_SQL = (
+    " + ".join(f"COALESCE(LENGTH({column}), 0)" for column in TEXT_COLUMNS) + " + 16"
+)
 
 
 def _path(db_path: str | None = None) -> str:
@@ -41,9 +41,7 @@ async def get_meta_value(db: aiosqlite.Connection, key: str) -> str | None:
             value TEXT NOT NULL
         )
     """)
-    async with db.execute(
-        "SELECT value FROM schema_meta WHERE key = ?", (key,)
-    ) as cursor:
+    async with db.execute("SELECT value FROM schema_meta WHERE key = ?", (key,)) as cursor:
         row = await cursor.fetchone()
     return row[0] if row else None
 
@@ -116,8 +114,12 @@ async def _apply_migrations(db: aiosqlite.Connection, db_path: str) -> None:
         await _set_schema_version(db, 3)
 
     if version < 4:
-        await db.execute("ALTER TABLE play_history ADD COLUMN source TEXT NOT NULL DEFAULT 'poller'")
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_play_history_source ON play_history(source)")
+        await db.execute(
+            "ALTER TABLE play_history ADD COLUMN source TEXT NOT NULL DEFAULT 'poller'"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_play_history_source ON play_history(source)"
+        )
         await _set_schema_version(db, 4)
 
     if version < 5:
@@ -158,7 +160,9 @@ async def _apply_migrations(db: aiosqlite.Connection, db_path: str) -> None:
             "WHERE source_id IS NULL OR source_id = ''",
             (LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME),
         )
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_play_history_source_id ON play_history(source_id)")
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_play_history_source_id ON play_history(source_id)"
+        )
         await _set_schema_version(db, 5)
 
     if version < 6:
@@ -240,15 +244,11 @@ async def _apply_migrations(db: aiosqlite.Connection, db_path: str) -> None:
             async with db.execute(f"PRAGMA table_info({table})") as cursor:
                 columns = {row[1] for row in await cursor.fetchall()}
             if "external_event_key" not in columns:
-                await db.execute(
-                    "ALTER TABLE play_history ADD COLUMN external_event_key TEXT"
-                )
+                await db.execute("ALTER TABLE play_history ADD COLUMN external_event_key TEXT")
         async with db.execute("PRAGMA table_info(servers)") as cursor:
             server_columns = {row[1] for row in await cursor.fetchall()}
         if "backfill_playlist_id" not in server_columns:
-            await db.execute(
-                "ALTER TABLE servers ADD COLUMN backfill_playlist_id TEXT"
-            )
+            await db.execute("ALTER TABLE servers ADD COLUMN backfill_playlist_id TEXT")
         await db.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_play_history_external_event_key
             ON play_history(external_event_key)
@@ -279,6 +279,70 @@ async def _apply_migrations(db: aiosqlite.Connection, db_path: str) -> None:
             WHERE record_id IS NOT NULL
         """)
         await _set_schema_version(db, 12)
+
+    if version < 13:
+        for table in ("play_history", "play_attempts"):
+            async with db.execute(f"PRAGMA table_info({table})") as cursor:
+                columns = {row[1] for row in await cursor.fetchall()}
+            if "played_at_epoch" not in columns:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN played_at_epoch INTEGER")
+            await db.execute(f"UPDATE {table} SET played_at_epoch = unixepoch(played_at)")
+            await db.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS trg_{table}_played_at_epoch_insert
+                AFTER INSERT ON {table}
+                FOR EACH ROW
+                WHEN NEW.played_at_epoch IS NOT unixepoch(NEW.played_at)
+                BEGIN
+                    UPDATE {table}
+                    SET played_at_epoch = unixepoch(NEW.played_at)
+                    WHERE id = NEW.id;
+                END
+            """)
+            await db.execute(f"""
+                CREATE TRIGGER IF NOT EXISTS trg_{table}_played_at_epoch_update
+                AFTER UPDATE OF played_at ON {table}
+                FOR EACH ROW
+                WHEN NEW.played_at_epoch IS NOT unixepoch(NEW.played_at)
+                BEGIN
+                    UPDATE {table}
+                    SET played_at_epoch = unixepoch(NEW.played_at)
+                    WHERE id = NEW.id;
+                END
+            """)
+
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_history_played_at_epoch
+            ON play_history(played_at_epoch DESC)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_history_source_epoch
+            ON play_history(source_id, played_at_epoch DESC)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_history_source_user_epoch
+            ON play_history(source_id, username, played_at_epoch DESC)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_history_user_epoch
+            ON play_history(username, played_at_epoch DESC)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_attempts_played_at_epoch
+            ON play_attempts(played_at_epoch DESC)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_attempts_source_epoch
+            ON play_attempts(source_id, played_at_epoch DESC)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_attempts_source_user_epoch
+            ON play_attempts(source_id, username, played_at_epoch DESC)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_play_attempts_user_epoch
+            ON play_attempts(username, played_at_epoch DESC)
+        """)
+        await _set_schema_version(db, 13)
 
 
 async def _encrypt_saved_credentials(db: aiosqlite.Connection, db_path: str) -> None:
