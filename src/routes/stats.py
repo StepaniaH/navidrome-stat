@@ -2,6 +2,7 @@
 
 import logging
 from datetime import date, datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
@@ -44,6 +45,7 @@ from src.schemas import (
     TOP_LIMIT_MIN,
     DailyStat,
     DashboardSnapshot,
+    EntityDetailResponse,
     HistoryItem,
     HourlyStat,
     NowPlayingItem,
@@ -59,6 +61,7 @@ from src.schemas import (
     UsersResponse,
     WeekdayHourStat,
 )
+from src.stats_query_entities import EntityIdentity
 from src.stats_scope import StatsScope
 from src.stats_service import stats_service
 
@@ -428,6 +431,48 @@ async def api_top_albums(
             **_user_kwargs(username),
         )
     )
+
+
+@router.get("/api/stats/entity-detail", response_model=EntityDetailResponse)
+async def api_entity_detail(
+    entity_type: Literal["artist", "album"] = Query(),
+    name: str = Query(min_length=1, max_length=512),
+    entity_id: str | None = Query(default=None, min_length=1, max_length=128),
+    entity_source_id: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=128,
+    ),
+    artist: str | None = Query(default=None, min_length=1, max_length=512),
+    days: int = Query(default=STATS_DAYS_DEFAULT, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+    metric: str = Query(default=RANKING_METRIC_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
+):
+    """Return a scoped artist or album drill-down payload."""
+    try:
+        scope = StatsScope.create(
+            days=days,
+            timezone_name=timezone,
+            metric=metric,
+            source_id=source_id,
+            start_date=start_date,
+            end_date=end_date,
+            username=username,
+        )
+        identity = EntityIdentity.create(
+            entity_type=entity_type,
+            name=name,
+            entity_id=entity_id,
+            source_id=entity_source_id,
+            artist=artist,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await _query_stats(lambda: stats_service.entity_detail(scope, identity))
 
 
 @router.get("/api/stats/now-playing", response_model=list[NowPlayingItem])

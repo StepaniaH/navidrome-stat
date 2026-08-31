@@ -82,3 +82,16 @@ export function formatDuration(seconds, t) {
     if (minutes > 0) return t('duration.minutes', { minutes });
     return t('duration.seconds', { seconds: secs });
 }
+
+/** Localized listening duration rounded to the nearest second. */
+export function formatPreciseDuration(seconds, t) {
+    const total = Math.max(0, Math.round(Number(seconds) || 0));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    if (hours > 0) {
+        return t('duration.hoursMinutesSeconds', { hours, minutes, seconds: secs });
+    }
+    if (minutes > 0) return t('duration.minutesSeconds', { minutes, seconds: secs });
+    return t('duration.seconds', { seconds: secs });
+}

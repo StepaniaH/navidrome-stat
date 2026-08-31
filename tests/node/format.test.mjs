@@ -6,6 +6,7 @@ import {
   buildStatsScopeQuery,
   escapeHtml,
   formatChangeText,
+  formatPreciseDuration,
   validateCustomRange,
 } from "../../src/static/js/format.js";
 
@@ -26,6 +27,22 @@ test("formatChangeText renders sign, one decimal and the compare label", () => {
 test("formatChangeText is empty for non-finite input", () => {
   assert.equal(formatChangeText(null, { compareLabel: "x" }), "");
   assert.equal(formatChangeText(Number.NaN, { compareLabel: "x" }), "");
+});
+
+test("formatPreciseDuration keeps seconds and rounds once", () => {
+  const messages = {
+    "duration.hoursMinutesSeconds": "{hours}h {minutes}m {seconds}s",
+    "duration.minutesSeconds": "{minutes}m {seconds}s",
+    "duration.seconds": "{seconds}s",
+  };
+  const t = (key, values) => Object.entries(values).reduce(
+    (text, [name, value]) => text.replace(`{${name}}`, value),
+    messages[key],
+  );
+
+  assert.equal(formatPreciseDuration(219.2, t), "3m 39s");
+  assert.equal(formatPreciseDuration(3599.6, t), "1h 0m 0s");
+  assert.equal(formatPreciseDuration(-5, t), "0s");
 });
 
 test("buildStatsQuery omits empty source and custom ranges", () => {

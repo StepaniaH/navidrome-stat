@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 import src.stats_service as stats_module
+from src.stats_query_entities import EntityIdentity
 from src.stats_scope import StatsScope
 from src.stats_service import StatsService
 
@@ -15,12 +16,14 @@ class FakeCache:
     def __init__(self):
         self.invalidations = 0
         self.builds = 0
+        self.keys = []
 
     async def invalidate(self):
         self.invalidations += 1
 
     async def get_or_create(self, key, factory):
         self.builds += 1
+        self.keys.append(key)
         return await factory()
 
 
@@ -278,6 +281,20 @@ async def test_dashboard_builds_through_cache(cache, service):
         "top_artists",
         "top_albums",
     }
+
+
+@pytest.mark.asyncio
+async def test_entity_detail_uses_scope_and_identity_in_cache_key(cache, service):
+    payload = {"entity_type": "artist", "name": "Artist A"}
+    service._read_repository.entity_detail = AsyncMock(return_value=payload)
+    scope = StatsScope.create(days=7, timezone_name="UTC", metric="plays")
+    identity = EntityIdentity.create(entity_type="artist", name="Artist A")
+
+    result = await service.entity_detail(scope, identity)
+
+    assert result == payload
+    assert cache.keys == [("entity_detail", scope, identity)]
+    service._read_repository.entity_detail.assert_awaited_once_with(scope, identity)
 
 
 @pytest.mark.asyncio

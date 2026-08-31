@@ -5,7 +5,18 @@ import assert from "node:assert/strict";
 const store = new Map();
 globalThis.window = {
   location: { search: "", pathname: "/", hash: "" },
-  history: { replaceState(_s, _t, url) { globalThis.__lastUrl = url; } },
+  history: {
+    state: null,
+    replaceState(state, _t, url) {
+      this.state = state;
+      globalThis.__lastUrl = url;
+    },
+    pushState(state, _t, url) {
+      this.state = state;
+      globalThis.__lastUrl = url;
+      globalThis.__pushedUrl = url;
+    },
+  },
   localStorage: {
     getItem: (k) => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => store.set(k, v),
@@ -15,7 +26,12 @@ globalThis.window = {
 };
 delete globalThis.window.location.search;
 
-const { getFilters, setFilters, subscribe } = await import("../../src/static/js/filters.js");
+const {
+  getFilters,
+  pushFilters,
+  setFilters,
+  subscribe,
+} = await import("../../src/static/js/filters.js");
 const { validateCustomRange } = await import("../../src/static/js/format.js");
 
 test("defaults when URL has no filter params", () => {
@@ -27,7 +43,42 @@ test("defaults when URL has no filter params", () => {
     username: "",
     startDate: "",
     endDate: "",
+    entityType: "",
+    entityName: "",
+    entityId: "",
+    entitySourceId: "",
+    entityArtist: "",
   });
+});
+
+test("entity identity is pushed into a shareable URL", () => {
+  const next = pushFilters({
+    entityType: "album",
+    entityName: "Live & Loud",
+    entityId: "album-1",
+    entitySourceId: "source-1",
+    entityArtist: "Artist A",
+  });
+  assert.equal(next.entityType, "album");
+  const url = new URL(globalThis.__pushedUrl, "https://example.test");
+  assert.equal(url.searchParams.get("entity_type"), "album");
+  assert.equal(url.searchParams.get("entity_name"), "Live & Loud");
+  assert.equal(url.searchParams.get("entity_id"), "album-1");
+  assert.equal(url.searchParams.get("entity_source_id"), "source-1");
+  assert.equal(url.searchParams.get("entity_artist"), "Artist A");
+  assert.equal(globalThis.window.history.state.navidromeEntityDetail, true);
+});
+
+test("album detail URLs require a stable source identity", () => {
+  const next = setFilters({
+    entityType: "album",
+    entityName: "Live",
+    entityId: "album-1",
+    entitySourceId: "",
+    entityArtist: "Artist A",
+  });
+  assert.equal(next.entityType, "");
+  assert.equal(next.entityName, "");
 });
 
 test("setFilters sanitizes unknown metric and broken ranges", () => {

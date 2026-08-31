@@ -801,7 +801,8 @@ def test_ranking_uses_list_semantics(source):
     assert 'class="chart-container ranking-table" role="list"' in source
     block = _function_block(source, "renderRankingList")
     assert "container.setAttribute('role', 'list')" in block
-    assert "row.setAttribute('role', 'listitem')" in block
+    assert "listItem.setAttribute('role', 'listitem')" in block
+    assert "row.type = 'button'" in block
     # The list carries an accessible label derived from the ranking metric.
     assert "'aria-label', ariaLabel" in block
     assert "role', 'cell'" not in block

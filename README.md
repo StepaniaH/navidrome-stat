@@ -27,10 +27,11 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 
 - Aggregates current and historical playback across clients, devices, users, and Navidrome servers.
 - Shows listening time, play history, hourly and daily trends, a weekday × hour heatmap, client usage, transcoding, and artist, album, or track rankings.
+- Artist and album rankings open shareable detail views with scoped trends, first and latest play times, top tracks, recent plays, and prior-period rank changes.
 - A year-in-review page with totals, listening streaks, monthly and time-of-day charts, top lists, and URL-persisted year, server, user, and timezone scope.
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.
 - System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview, grouped contrast validation, HEX copy, unsaved-change protection, and strict per-preset JSON import or export. Appearance choices stay in the browser and apply across the dashboard, year-in-review, settings, and API reference; seven interface languages are available.
-- Dashboard filters and year-in-review scope persist in the URL, so views survive reloads and can be shared as links.
+- Dashboard filters, artist and album details, and year-in-review scope persist in the URL, so views survive reloads and can be shared as links.
 - The recent-plays table has configurable column visibility on desktop and mobile, saved per browser, plus on-demand details about sessions that ended before they counted as plays.
 - Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
 - Supports per-server filtering, connection management with first-use guidance and redacted failure diagnosis, retention settings, and per-user JSON export, import, and deletion.
@@ -153,11 +154,11 @@ Open `http://localhost:39421`. When `STATS_API_TOKEN` is configured, enter it in
 | `DATABASE_URL` | `.data/navidrome_stats.db` | SQLite file path for new local checkouts; an existing root-level `navidrome_stats.db` is still detected. Docker Compose sets `/data/navidrome_stats.db`. Despite the name, this is not a general database URL. |
 | `STATS_API_TOKEN` | Empty | Protects dashboard data, application APIs, and OpenAPI routes when set. |
 | `STATS_METRICS_AUTH` | `false` | Requires authentication for `/metrics` when both this option and `STATS_API_TOKEN` are set. |
-| `STATS_QUERY_BUDGET_MS` | `250` | Per-section Dashboard query budget used by `/metrics`, limited to 10–60000 ms. It observes regressions; it does not enable rollups. |
+| `STATS_QUERY_BUDGET_MS` | `250` | Per-section Dashboard query budget used by `/metrics`, limited to 10–60000 ms. It tracks performance regressions; it does not enable rollups. |
 | `COVER_ART_RESPONSE_MAX_BYTES` | `10485760` | Maximum upstream cover-art response accepted by the proxy, limited to 65536–67108864 bytes. |
 | `OPENAPI_ENABLED` | `true` | Set to `false` to remove `/docs`, `/redoc`, and `/openapi.json`. |
 | `POLL_INTERVAL` | `10` | Poll interval in seconds, limited to 5–300. |
-| `PLAY_THRESHOLD_SEC` | `30` | Active observed seconds required to count a play, limited to 1–3600. |
+| `PLAY_THRESHOLD_SEC` | `30` | Active playback seconds required to count a play, limited to 1–3600. |
 | `PAUSE_GRACE_SEC` | `30` | Seconds to retain a paused or missing session, limited to 0–3600. |
 | `CHECKPOINT_INTERVAL_SEC` | `60` | Refresh interval for durable active-session checkpoints, limited to 10–3600 seconds. |
 | `SAVE_RETRY_ATTEMPTS` | `3` | Database save attempts for a session, limited to 1–10. |
@@ -171,11 +172,11 @@ Environment variables are parsed when the application starts. Restart the contai
 
 ## How plays are counted
 
-A track counts once its accumulated active observation time reaches `PLAY_THRESHOLD_SEC`. Paused and missing intervals are excluded. Reaching the threshold creates a checkpoint; later checkpoints and session finalization update the same database row instead of adding another play.
+A track counts once its accumulated active playback time reaches `PLAY_THRESHOLD_SEC`. Paused and missing intervals are excluded. Reaching the threshold creates a checkpoint; later checkpoints and session finalization update the same database row instead of adding another play.
 
 When a server advertises the OpenSubsonic `playbackReport` extension, position and playback-state fields improve duration accounting. Other servers continue to work through regular polling. Sessions that end below the play threshold are stored separately as playback attempts.
 
-The Recent Plays information control reports these below-threshold sessions as a share of observed playback attempts. Pre-install backfill and native-history imports are excluded from that rate because the application did not observe them as live sessions; records restored from a Navidrome Stat privacy archive retain their original accounting role.
+The Recent Plays information control reports these below-threshold sessions as a share of tracked playback attempts. Pre-install backfill and native-history imports are excluded because they do not represent live sessions collected by the application; records restored from a Navidrome Stat privacy archive retain their original accounting role.
 
 ## Recovering pre-install history
 
@@ -191,7 +192,7 @@ More detail is available in [Architecture](docs/architecture.md).
 docker compose logs -f --tail=100 navidrome-stat
 ```
 
-The published container disables request access logs so dashboard filters, usernames, and source identifiers in application URLs are not written to container logs. Application logs also avoid playback metadata and upstream request URLs. Custom application servers, reverse proxies, and Navidrome may have their own access logs, so review their logging configuration before sharing logs.
+The published container disables request access logs so dashboard filters, usernames, source identifiers, and shareable artist or album detail names in application URLs are not written to container logs. Application logs also avoid playback metadata and upstream request URLs. Custom application servers, reverse proxies, and Navidrome may have their own access logs, so review their logging configuration before sharing logs.
 
 ### Troubleshooting
 

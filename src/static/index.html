@@ -375,7 +375,7 @@
                                     <p id="playAccountingLoading" class="play-accounting-state" data-i18n="insight.shortPlaysLoading">正在加载播放尝试…</p>
                                     <div id="playAccountingContent" class="hidden">
                                         <p id="playAccountingValue" class="play-accounting-value"></p>
-                                        <p class="play-accounting-description" data-i18n="insight.shortPlaysDescription">这些已观测会话在满足计入条件前结束，因此没有计入播放次数。</p>
+                                        <p class="play-accounting-description" data-i18n="insight.shortPlaysDescription">这些会话在达到计入阈值前结束，因此未计入播放次数。</p>
                                     </div>
                                     <p id="playAccountingEmpty" class="play-accounting-state hidden" data-i18n="insight.shortPlaysEmpty">当前筛选范围内暂无播放尝试。</p>
                                     <div id="playAccountingError" class="play-accounting-state hidden" role="status">
@@ -437,6 +437,108 @@
                 <a href="https://github.com/StepaniaH/navidrome-stat/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a>
             </nav>
         </footer>
+    </div>
+
+    <div id="entityDetailLayer" class="entity-detail-layer hidden" aria-hidden="true">
+        <button id="entityDetailBackdrop" type="button" class="entity-detail-backdrop" tabindex="-1"
+            aria-label="关闭详情" data-i18n-attr="aria-label:entity.close"></button>
+        <aside id="entityDetailPanel" class="entity-detail-panel" role="dialog" aria-modal="true"
+            aria-labelledby="entityDetailName" tabindex="-1">
+            <header class="entity-detail-header">
+                <div id="entityDetailCover" class="entity-detail-cover" aria-hidden="true">
+                    <span id="entityDetailCoverFallback">?</span>
+                </div>
+                <div class="entity-detail-heading">
+                    <p id="entityDetailType" class="entity-detail-eyebrow">艺人详情</p>
+                    <h2 id="entityDetailName" class="entity-detail-name">—</h2>
+                    <p id="entityDetailArtist" class="entity-detail-artist hidden"></p>
+                    <div id="entityDetailScope" class="entity-detail-scope" aria-label="当前统计范围"
+                        data-i18n-attr="aria-label:entity.scope"></div>
+                </div>
+                <div class="entity-detail-actions">
+                    <button id="entityDetailCopy" type="button" class="entity-detail-action">
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M8 8h10a2 2 0 012 2v8a2 2 0 01-2 2H8a2 2 0 01-2-2V10a2 2 0 012-2zM16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2"/></svg>
+                        <span data-i18n="entity.copyLink">复制链接</span>
+                    </button>
+                    <button id="entityDetailClose" type="button" class="entity-detail-icon-action"
+                        aria-label="关闭详情" title="关闭详情"
+                        data-i18n-attr="aria-label:entity.close,title:entity.close">
+                        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6 6l12 12M18 6L6 18"/></svg>
+                    </button>
+                </div>
+            </header>
+
+            <div id="entityDetailLoading" class="entity-detail-state" role="status">
+                <div class="entity-detail-loading-mark skeleton" aria-hidden="true"></div>
+                <p data-i18n="entity.loading">正在加载详情…</p>
+            </div>
+            <div id="entityDetailError" class="entity-detail-state hidden" role="alert">
+                <p id="entityDetailErrorText" data-i18n="entity.loadError">无法加载详情。</p>
+                <button id="entityDetailRetry" type="button" class="entity-detail-retry" data-i18n="entity.retry">重试</button>
+            </div>
+
+            <div id="entityDetailContent" class="entity-detail-content hidden">
+                <section class="entity-detail-summary" aria-label="详情概览" data-i18n-attr="aria-label:entity.overview">
+                    <article class="entity-detail-stat">
+                        <span data-i18n="entity.totalPlays">播放次数</span>
+                        <strong id="entityDetailPlays" class="stat-value">—</strong>
+                    </article>
+                    <article class="entity-detail-stat">
+                        <span data-i18n="entity.listenTime">收听时长</span>
+                        <strong id="entityDetailListen" class="stat-value">—</strong>
+                    </article>
+                    <article class="entity-detail-stat">
+                        <span data-i18n="entity.firstPlayed">首次播放</span>
+                        <strong id="entityDetailFirst">—</strong>
+                    </article>
+                    <article class="entity-detail-stat">
+                        <span data-i18n="entity.lastPlayed">最近播放</span>
+                        <strong id="entityDetailLast">—</strong>
+                    </article>
+                </section>
+
+                <section class="entity-rank-card" aria-label="排名变化" data-i18n-attr="aria-label:entity.rankChange">
+                    <div>
+                        <span class="entity-rank-label" data-i18n="entity.currentRank">当前排名</span>
+                        <strong id="entityDetailCurrentRank" class="entity-rank-value stat-value">—</strong>
+                    </div>
+                    <div class="entity-rank-copy">
+                        <strong id="entityDetailRankChange">—</strong>
+                        <span id="entityDetailPreviousRank"></span>
+                    </div>
+                </section>
+
+                <section class="entity-detail-section">
+                    <div class="entity-detail-section-heading">
+                        <div>
+                            <h3 data-i18n="entity.trend">播放与收听趋势</h3>
+                            <p data-i18n="entity.trendSubtitle">按当前统计范围的本地日期</p>
+                        </div>
+                    </div>
+                    <div id="entityTrendChart" class="entity-trend-chart" role="img"
+                        aria-label="播放与收听趋势" data-i18n-attr="aria-label:entity.trend"></div>
+                    <p id="entityTrendEmpty" class="entity-detail-empty hidden" data-i18n="entity.trendEmpty">当前范围内暂无趋势数据。</p>
+                    <p id="entityTrendSummary" class="visually-hidden"></p>
+                </section>
+
+                <div class="entity-detail-columns">
+                    <section class="entity-detail-section">
+                        <div class="entity-detail-section-heading">
+                            <h3 data-i18n="entity.topTracks">热门曲目</h3>
+                        </div>
+                        <ol id="entityTopTracks" class="entity-detail-list"></ol>
+                        <p id="entityTopTracksEmpty" class="entity-detail-empty hidden" data-i18n="entity.topTracksEmpty">当前范围内暂无曲目。</p>
+                    </section>
+                    <section class="entity-detail-section">
+                        <div class="entity-detail-section-heading">
+                            <h3 data-i18n="entity.recentPlays">最近播放</h3>
+                        </div>
+                        <ol id="entityRecentPlays" class="entity-detail-list"></ol>
+                        <p id="entityRecentPlaysEmpty" class="entity-detail-empty hidden" data-i18n="entity.recentEmpty">当前范围内暂无最近播放。</p>
+                    </section>
+                </div>
+            </div>
+        </aside>
     </div>
 
     <div id="loginOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-ink-950/90 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="loginTitle">

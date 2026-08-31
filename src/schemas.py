@@ -139,6 +139,57 @@ class TopAlbumItem(BaseModel):
     source_id: Optional[str] = None
 
 
+class EntityTrendPoint(BaseModel):
+    date: str
+    play_count: int
+    total_listen_sec: int
+
+
+class EntityTrackItem(BaseModel):
+    track_id: Optional[str] = None
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    play_count: int
+    total_listen_sec: int
+    last_played_at: Optional[str] = None
+    source_id: Optional[str] = None
+    source_name: Optional[str] = None
+
+
+class EntityRecentPlayItem(BaseModel):
+    played_at: Optional[str] = None
+    username: Optional[str] = None
+    client_name: Optional[str] = None
+    track_id: Optional[str] = None
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    listen_duration_sec: int
+    source_id: Optional[str] = None
+    source_name: Optional[str] = None
+
+
+class EntityDetailResponse(BaseModel):
+    entity_type: Literal["artist", "album"]
+    name: str
+    artist: Optional[str] = None
+    entity_id: Optional[str] = None
+    entity_source_id: Optional[str] = None
+    metric: Literal["plays", "listen_time"]
+    total_plays: int
+    total_listen_sec: int
+    first_played_at: Optional[str] = None
+    last_played_at: Optional[str] = None
+    current_rank: Optional[int] = None
+    previous_rank: Optional[int] = None
+    rank_change: Optional[int] = None
+    comparison_available: bool
+    trend: list[EntityTrendPoint]
+    top_tracks: list[EntityTrackItem]
+    recent_plays: list[EntityRecentPlayItem]
+
+
 class HistoryItem(BaseModel):
     username: Optional[str] = None
     title: Optional[str] = None

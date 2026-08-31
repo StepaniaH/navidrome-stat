@@ -4,6 +4,18 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Added
+
+- Artist and album rankings now open a scoped detail drawer with playback and listening-time trends, first and latest play times, top tracks, recent plays, prior-period rank changes, and a stable shareable URL.
+
+### Changed
+
+- Client averages now include seconds, making similar minute-level values easier to compare.
+
+### Fixed
+
+- OpenSubsonic sessions no longer lose the playing intervals between sparse position reports, which could pin multi-minute client averages near the 30-second counting threshold.
+
 ## [0.8.8] - 2026-08-31
 
 ### Added
@@ -38,7 +50,7 @@ All notable user-facing changes are documented in this file. The format follows 
 - Year-in-review links, requests, responses, cache entries, aggregates, and visible labels preserve year, server, user, and timezone scope; the page reports loading and retry states, prevents outdated responses from replacing the selected year, and provides text summaries for charts.
 - The review login dialog keeps keyboard focus within the dialog, the dashboard localizes its review link, and recent-play column preferences apply on mobile.
 - The recent-play column menu remains visible outside short empty-state cards and stays open while multiple columns are changed.
-- Playback-attempt rates now exclude backfill and native-history imports because those records were not observed as live playback sessions. Privacy-archive restores remain included.
+- Playback-attempt rates now exclude backfill and native-history imports because those records do not represent live sessions collected by the application. Privacy-archive restores remain included.
 - A cache invalidation error after a successful playback write is logged separately and no longer marks durable playback persistence as unhealthy.
 
 ### Security
