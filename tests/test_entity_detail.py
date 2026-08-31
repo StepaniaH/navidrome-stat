@@ -127,6 +127,8 @@ def test_artist_detail_preserves_scope_and_builds_drilldown(db_path):
     assert detail["entity_id"] == "artist-a"
     assert detail["total_plays"] == 3
     assert detail["total_listen_sec"] == 360
+    assert detail["unique_tracks"] == 2
+    assert detail["average_listen_sec"] == 120.0
     assert detail["current_rank"] == 2
     assert detail["previous_rank"] == 1
     assert detail["rank_change"] == -1
@@ -236,6 +238,21 @@ def test_legacy_album_detail_does_not_merge_identified_album_rows(db_path):
     assert [row["title"] for row in detail["recent_plays"]] == ["Legacy row"]
 
 
+def test_empty_entity_detail_returns_zero_derived_metrics(db_path):
+    asyncio.run(init_db(db_path))
+
+    detail = asyncio.run(get_entity_detail(
+        StatsScope.create(days=0, timezone_name="UTC", metric="plays"),
+        EntityIdentity.create(entity_type="artist", name="Missing Artist"),
+        db_path=db_path,
+    ))
+
+    assert detail["total_plays"] == 0
+    assert detail["unique_tracks"] == 0
+    assert detail["average_listen_sec"] == 0
+    assert detail["trend"] == []
+
+
 @pytest.mark.asyncio
 @patch("src.routes.stats.stats_service.entity_detail", new_callable=AsyncMock)
 async def test_entity_detail_api_builds_stats_scope(mock_detail):
@@ -248,6 +265,8 @@ async def test_entity_detail_api_builds_stats_scope(mock_detail):
         "metric": "listen_time",
         "total_plays": 0,
         "total_listen_sec": 0,
+        "unique_tracks": 0,
+        "average_listen_sec": 0,
         "first_played_at": None,
         "last_played_at": None,
         "current_rank": None,

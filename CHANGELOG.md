@@ -11,6 +11,7 @@ All notable user-facing changes are documented in this file. The format follows 
 ### Changed
 
 - Client averages now include seconds, making similar minute-level values easier to compare.
+- Detail summaries now include unique-track count and average time per play. Track rows show album, server, playback time, user, and client metadata on separate lines.
 
 ### Fixed
 

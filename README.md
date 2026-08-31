@@ -27,7 +27,7 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 
 - Aggregates current and historical playback across clients, devices, users, and Navidrome servers.
 - Shows listening time, play history, hourly and daily trends, a weekday × hour heatmap, client usage, transcoding, and artist, album, or track rankings.
-- Artist and album rankings open shareable detail views with scoped trends, first and latest play times, top tracks, recent plays, and prior-period rank changes.
+- Artist and album rankings open shareable detail views with scoped totals, average time per play, unique-track count, trends, first and latest play times, top tracks, recent plays, and prior-period rank changes.
 - A year-in-review page with totals, listening streaks, monthly and time-of-day charts, top lists, and URL-persisted year, server, user, and timezone scope.
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.
 - System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview, grouped contrast validation, HEX copy, unsaved-change protection, and strict per-preset JSON import or export. Appearance choices stay in the browser and apply across the dashboard, year-in-review, settings, and API reference; seven interface languages are available.
