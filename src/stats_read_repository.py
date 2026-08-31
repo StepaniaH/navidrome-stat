@@ -18,6 +18,7 @@ from src.stats_queries import (
     get_top_artists,
     get_transcoding_stats,
 )
+from src.stats_query_entities import EntityIdentity, get_entity_detail
 from src.stats_scope import StatsScope
 
 QUERY_BUDGET_SECONDS = env_int(
@@ -111,6 +112,19 @@ class StatsReadRepository:
             "top_artists": top_artists,
             "top_albums": top_albums,
         }
+
+    async def entity_detail(
+        self,
+        scope: StatsScope,
+        identity: EntityIdentity,
+    ) -> dict:
+        """Return one entity drill-down from a consistent SQLite snapshot."""
+        path = self._path()
+        async with read_snapshot(path):
+            return await self._timed(
+                "entity_detail",
+                get_entity_detail(scope, identity, db_path=path),
+            )
 
 
 stats_read_repository = StatsReadRepository()

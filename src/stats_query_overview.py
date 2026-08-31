@@ -57,7 +57,7 @@ async def get_short_play_stats(
     start_date: date | None = None,
     end_date: date | None = None,
 ):
-    """Return short-play counts among observed attempts; this is not skip rate."""
+    """Return short-play counts among recorded attempts; this is not skip rate."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)

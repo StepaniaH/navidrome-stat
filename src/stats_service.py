@@ -27,6 +27,7 @@ from src.review_queries import get_review_summary
 from src.runtime_state import runtime_state
 from src.schema import LEGACY_SOURCE_ID
 from src.server_registry import delete_server, list_server_options, save_server
+from src.stats_query_entities import EntityIdentity
 from src.stats_read_repository import StatsReadRepository, stats_read_repository
 from src.stats_scope import StatsScope
 
@@ -248,6 +249,17 @@ class StatsService:
                 runtime_state.record_dashboard_build(time.perf_counter() - started)
 
         return await self._cache.get_or_create(("dashboard", scope), build)
+
+    async def entity_detail(
+        self,
+        scope: StatsScope,
+        identity: EntityIdentity,
+    ) -> dict:
+        """Return a cached artist or album drill-down for one stats scope."""
+        return await self._cache.get_or_create(
+            ("entity_detail", scope, identity),
+            lambda: self._read_repository.entity_detail(scope, identity),
+        )
 
     async def review(
         self,

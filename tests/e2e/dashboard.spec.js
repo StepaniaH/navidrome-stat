@@ -86,6 +86,50 @@ const playAccountingSnapshot = {
   short_play_rate_pct: 25,
 };
 
+const entityDetailSnapshot = {
+  entity_type: "artist",
+  name: "Synthetic Artist",
+  artist: null,
+  entity_id: null,
+  entity_source_id: null,
+  metric: "plays",
+  total_plays: 3,
+  total_listen_sec: 185,
+  first_played_at: "2026-07-27T12:00:00+00:00",
+  last_played_at: "2026-07-28T12:00:00+00:00",
+  current_rank: 2,
+  previous_rank: 4,
+  rank_change: 2,
+  comparison_available: true,
+  trend: [
+    { date: "2026-07-27", play_count: 1, total_listen_sec: 60 },
+    { date: "2026-07-28", play_count: 2, total_listen_sec: 125 },
+  ],
+  top_tracks: [{
+    track_id: "tr-1",
+    title: "Synthetic Track",
+    artist: "Synthetic Artist",
+    album: "Synthetic Album",
+    play_count: 2,
+    total_listen_sec: 120,
+    last_played_at: "2026-07-28T12:00:00+00:00",
+    source_id: "server-1",
+    source_name: "Synthetic Server",
+  }],
+  recent_plays: [{
+    played_at: "2026-07-28T12:00:00+00:00",
+    username: "synthetic-user",
+    client_name: "Synthetic Player",
+    track_id: "tr-1",
+    title: "Synthetic Track",
+    artist: "Synthetic Artist",
+    album: "Synthetic Album",
+    listen_duration_sec: 60,
+    source_id: "server-1",
+    source_name: "Synthetic Server",
+  }],
+};
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({ json: { auth_required: false } }),
@@ -107,6 +151,9 @@ test.beforeEach(async ({ page }) => {
   );
   await page.route("**/api/stats/short-plays?*", (route) =>
     route.fulfill({ json: playAccountingSnapshot }),
+  );
+  await page.route("**/api/stats/entity-detail?*", (route) =>
+    route.fulfill({ json: entityDetailSnapshot }),
   );
   await page.route("**/api/diagnostics", (route) =>
     route.fulfill({
@@ -143,9 +190,95 @@ test("renders synthetic statistics without executing metadata", async ({ page })
   await expect(page.locator("#topArtistsChart")).toHaveAttribute("role", "list");
   await expect(page.locator("#topArtistsChart [role=listitem]")).toHaveCount(1);
   await expect(page.locator("#topArtistsChart .ranking-cover-fallback").first()).toHaveText("S");
+  await expect(page.locator(".player-legend-table tbody td").nth(3)).toHaveText("1m 2s");
   expect(await page.evaluate(() => window.__injected)).toBeUndefined();
   await page.locator("#statsSourceButton").click();
   await expect(page.locator(".stats-source-option")).toHaveCount(2);
+});
+
+test("artist ranking opens a scoped, URL-addressable detail panel", async ({ page }) => {
+  const detailRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/stats/entity-detail")) {
+      detailRequests.push(request.url());
+    }
+  });
+
+  await page.goto("/?days=7&timezone=UTC&username=synthetic-user");
+  await page.locator("#topArtistsChart .ranking-row").click();
+
+  await expect(page.locator("#entityDetailLayer")).toBeVisible();
+  await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Artist");
+  await expect(page.locator("#entityDetailPlays")).toHaveText("3");
+  await expect(page.locator("#entityDetailCurrentRank")).toHaveText("#2");
+  await expect(page.locator("#entityDetailScope")).toContainText("Plays");
+  await expect(page.locator("#entityDetailScope")).toContainText("UTC");
+  await expect(page.locator("#entityTopTracks")).toContainText("Synthetic Track");
+  await expect(page.locator("#entityRecentPlays")).toContainText("Synthetic Player");
+  await expect(page.locator("#entityDetailLoading")).toBeHidden();
+  await expect(page.locator("#entityDetailError")).toBeHidden();
+  await expect(page.locator("#entityDetailContent")).toBeVisible();
+  const detailLayout = await page.evaluate(() => {
+    const rect = (element) => element.getBoundingClientRect();
+    const sections = [...document.querySelectorAll(
+      ".entity-detail-columns > .entity-detail-section",
+    )].map(rect);
+    const rows = [...document.querySelectorAll(".entity-detail-list-item")].map((row) => {
+      const rank = rect(row.querySelector(".entity-list-rank"));
+      const copy = rect(row.querySelector(".entity-list-copy"));
+      const title = rect(row.querySelector(".entity-list-title"));
+      const meta = rect(row.querySelector(".entity-list-meta"));
+      const value = rect(row.querySelector(".entity-list-value"));
+      return {
+        rankBeforeCopy: rank.right <= copy.left,
+        copyBeforeValue: copy.right <= value.left,
+        titleBeforeMeta: title.bottom <= meta.top,
+      };
+    });
+    return {
+      sectionsStacked: sections[0].bottom <= sections[1].top,
+      rows,
+    };
+  });
+  expect(detailLayout.sectionsStacked).toBe(true);
+  expect(detailLayout.rows.every((row) => Object.values(row).every(Boolean))).toBe(true);
+  const location = new URL(page.url());
+  expect(location.searchParams.get("entity_type")).toBe("artist");
+  expect(location.searchParams.get("entity_name")).toBe("Synthetic Artist");
+  expect(location.searchParams.get("days")).toBe("7");
+  expect(location.searchParams.get("username")).toBe("synthetic-user");
+  await expect.poll(() => detailRequests.some((url) => {
+    const params = new URL(url).searchParams;
+    return params.get("days") === "7"
+      && params.get("timezone") === "UTC"
+      && params.get("username") === "synthetic-user";
+  })).toBe(true);
+
+  await page.locator("#entityDetailClose").click();
+  await expect(page.locator("#entityDetailLayer")).toBeHidden();
+  expect(new URL(page.url()).searchParams.has("entity_type")).toBe(false);
+
+  await page.locator("#topAlbumsChart .ranking-row").click();
+  await expect(page.locator("#entityDetailLayer")).toBeVisible();
+  await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Album");
+  const albumLocation = new URL(page.url());
+  expect(albumLocation.searchParams.get("entity_type")).toBe("album");
+  expect(albumLocation.searchParams.get("entity_name")).toBe("Synthetic Album");
+  expect(albumLocation.searchParams.get("entity_id")).toBe("al-1");
+  expect(albumLocation.searchParams.get("entity_source_id")).toBe("server-1");
+  await expect.poll(() => detailRequests.some((url) => {
+    const params = new URL(url).searchParams;
+    return params.get("entity_type") === "album"
+      && params.get("name") === "Synthetic Album"
+      && params.get("entity_id") === "al-1"
+      && params.get("entity_source_id") === "server-1";
+  })).toBe(true);
+
+  await page.reload();
+  await expect(page.locator("#entityDetailLayer")).toBeVisible();
+  await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Album");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#entityDetailLayer")).toBeHidden();
 });
 
 test("desktop header stays on one compact row", async ({
@@ -285,9 +418,9 @@ test("playback accounting details load only when opened", async ({ page }) => {
     "Playback attempts below the counting threshold",
   );
   await expect(panel.locator("#playAccountingValue")).toHaveText(
-    "2 attempts · 25% of observed playback attempts",
+    "2 attempts · 25% of playback attempts",
   );
-  await expect(panel).toContainText("were not recorded as plays");
+  await expect(panel).toContainText("were not counted as plays");
   await expect.poll(() => requests.length).toBe(1);
   const query = new URL(requests[0]).searchParams;
   expect(query.get("days")).toBe("30");

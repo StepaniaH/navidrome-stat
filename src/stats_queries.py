@@ -4,6 +4,7 @@ New code may import the focused modules directly. Existing imports remain
 supported through this module.
 """
 
+from src.stats_query_entities import EntityIdentity, get_entity_detail
 from src.stats_query_history import get_playback_history
 from src.stats_query_overview import (
     get_earliest_poller_played_at,
@@ -31,6 +32,7 @@ __all__ = [
     "WEEKDAY_HOUR_HOUR_COUNT",
     "WEEKDAY_HOUR_WEEKDAY_COUNT",
     "get_daily_stats",
+    "get_entity_detail",
     "get_earliest_poller_played_at",
     "get_hourly_stats",
     "get_playback_history",
@@ -45,4 +47,5 @@ __all__ = [
     "get_transcoding_stats",
     "get_weekday_hour_stats",
     "list_usernames",
+    "EntityIdentity",
 ]

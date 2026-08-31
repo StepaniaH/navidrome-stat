@@ -4,6 +4,7 @@ import { applyAppVersion } from './js/app-info.js';
 import {
     buildStatsQuery,
     formatDuration,
+    formatPreciseDuration,
     validateCustomRange,
 } from './js/format.js';
 import { readPreference } from './js/prefs.js';
@@ -15,6 +16,7 @@ import { createNowPlaying } from './js/dashboard/now-playing.js';
 import { createHistory } from './js/dashboard/history.js';
 import { createPlayAccounting } from './js/dashboard/play-accounting.js';
 import { createHistoricalDashboard } from './js/dashboard/historical-dashboard.js';
+import { createEntityDetail } from './js/dashboard/entity-detail.js';
 import {
     apiFetch,
     isAbortError,
@@ -41,6 +43,8 @@ import {
     const knownSources = new Map();
     let knownUsers = [];
     let globalHistoryRecordCount = null;
+    let entityDetail = null;
+    let historicalDashboard = null;
     // Shared by the artist and album rankings; changing it refreshes both.
     let rankingMetric = initialFilters.metric;
 
@@ -48,7 +52,7 @@ import {
     function persistFilters() {
         setFilters({
             days: statsDays,
-            timezone: statsTimezone,
+            timezone: getFilters().entityType ? resolveStatsTimezone() : statsTimezone,
             metric: rankingMetric,
             sourceId: selectedSourceId,
             username: selectedUsername,
@@ -97,6 +101,7 @@ import {
         statsRequestController = null;
         nowPlaying.cancel();
         playAccounting.cancel();
+        entityDetail?.cancel();
     }
 
     function stopDashboardActivity() {
@@ -129,6 +134,7 @@ import {
             history.render(lastStatsSnapshot.history, { showSources: !selectedSourceId });
             history.updateFirstUse(lastStatsSnapshot);
         }
+        entityDetail?.restore();
         if (document.getElementById('loginOverlay').classList.contains('hidden')) {
             scheduleRefresh();
         }
@@ -151,7 +157,8 @@ import {
     }
 
     function applyChartTheme() {
-        historicalDashboard.updateTheme();
+        historicalDashboard?.updateTheme();
+        entityDetail?.updateTheme();
     }
 
     window.addEventListener(THEME_CHANGE_EVENT, applyChartTheme);
@@ -176,6 +183,9 @@ import {
     function dashboardDuration(seconds) {
         return formatDuration(seconds, dashboardMessage);
     }
+    function dashboardPreciseDuration(seconds) {
+        return formatPreciseDuration(seconds, dashboardMessage);
+    }
     const playAccounting = createPlayAccounting({
         apiFetch,
         isAbortError,
@@ -192,6 +202,7 @@ import {
         renderUserOptions();
         history.localize();
         playAccounting.localize();
+        entityDetail?.localize();
     }
     translateDashboard();
     window.addEventListener(UNAUTHORIZED_EVENT, () => {
@@ -411,10 +422,33 @@ import {
         beginArrayPanel,
         setPanelSummary,
     });
-    const historicalDashboard = createHistoricalDashboard({
+    entityDetail = createEntityDetail({
+        apiFetch,
+        isAbortError,
         t: dashboardMessage,
         formatNumber: dashboardNumber,
         formatDuration: dashboardDuration,
+        formatPlays: dashboardPlays,
+        getLocale: () => dashboardI18n.getLocale(),
+        getScope: captureStatsRequestState,
+        getScopeContext: () => ({
+            windowLabel: statsWindowLabel(),
+            metricLabel: dashboardMessage(
+                rankingMetric === 'listen_time' ? 'metric.listenTime' : 'metric.plays',
+            ),
+            sourceLabel: selectedSourceId
+                ? (knownSources.get(selectedSourceId) || selectedSourceId)
+                : dashboardMessage('source.all'),
+            userLabel: selectedUsername || dashboardMessage('user.all'),
+            timezoneLabel: resolveStatsTimezone(),
+        }),
+        getFallbackSourceId: firstKnownSourceId,
+    });
+    historicalDashboard = createHistoricalDashboard({
+        t: dashboardMessage,
+        formatNumber: dashboardNumber,
+        formatDuration: dashboardDuration,
+        formatPreciseDuration: dashboardPreciseDuration,
         formatPlays: dashboardPlays,
         beginArrayPanel,
         setPanelState,
@@ -422,6 +456,7 @@ import {
         renderSafely: renderPanelSafely,
         getSourceId: () => selectedSourceId,
         getFirstSourceId: firstKnownSourceId,
+        onEntitySelect: (identity, trigger) => entityDetail.open(identity, trigger),
     });
 
     function firstKnownSourceId() {
@@ -775,6 +810,7 @@ import {
     setActiveStatsWindowButton(statsDays);
     playAccounting.mount();
     history.mount();
+    entityDetail.mount();
     updateSourceOptions([]);
     renderUserOptions();
 
@@ -794,6 +830,7 @@ import {
     document.getElementById('refreshBtn').addEventListener('click', () => {
         fetchStats();
         nowPlaying.refresh();
+        entityDetail.refresh();
     });
 
     document.getElementById('loginForm').addEventListener('submit', async (event) => {
@@ -817,6 +854,7 @@ import {
             nowPlaying.startTicker();
             fetchStats();
             nowPlaying.refresh();
+            entityDetail.refresh();
         }
     });
 
@@ -863,6 +901,7 @@ import {
             history.render(lastStatsSnapshot.history, { showSources: !selectedSourceId });
             history.updateFirstUse(lastStatsSnapshot);
         }
+        entityDetail.restore();
         scheduleRefresh();
     }
 

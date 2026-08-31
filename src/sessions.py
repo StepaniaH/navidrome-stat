@@ -289,7 +289,12 @@ class PlaybackSessionTracker:
             session["duration_confidence"] = "reported"
             progress_ms = current_position - previous_position
             if progress_ms == 0:
-                return 0.0
+                # Position snapshots can stay unchanged between infrequent
+                # client reports (Navidrome UI defaults to one per minute).
+                # The explicit playing state still observes this wall-clock
+                # interval as active; treating it as paused severely undercounts
+                # a collector that polls more often than the client reports.
+                return wall_delta
             if progress_ms < 0:
                 # A backwards seek still consumed wall-clock listening time;
                 # do not count media position twice.

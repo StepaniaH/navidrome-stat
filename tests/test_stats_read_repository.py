@@ -7,6 +7,7 @@ import pytest
 import src.sqlite as sqlite_module
 import src.stats_read_repository as repository_module
 from src.schema import init_db
+from src.stats_query_entities import EntityIdentity
 from src.stats_read_repository import StatsReadRepository
 from src.stats_scope import StatsScope
 
@@ -101,3 +102,33 @@ async def test_dashboard_records_each_fixed_query_timing(tmp_path, monkeypatch):
         "top_albums",
     }
     assert all(timing.count == 1 for timing in state.stats_query_timings.values())
+
+
+@pytest.mark.asyncio
+async def test_entity_detail_uses_one_snapshot_and_fixed_query_timing(tmp_path, monkeypatch):
+    from src.runtime_state import RuntimeState
+
+    db_path = str(tmp_path / "stats.db")
+    await init_db(db_path)
+    _insert_history(db_path, "entity-track")
+    state = RuntimeState()
+    monkeypatch.setattr(repository_module, "runtime_state", state)
+
+    connect_calls = 0
+    original_connect = sqlite_module.aiosqlite.connect
+
+    def counting_connect(*args, **kwargs):
+        nonlocal connect_calls
+        connect_calls += 1
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite_module.aiosqlite, "connect", counting_connect)
+    detail = await StatsReadRepository(db_path).entity_detail(
+        StatsScope.create(days=0, timezone_name="UTC", metric="plays"),
+        EntityIdentity.create(entity_type="artist", name="Synthetic Artist"),
+    )
+
+    assert connect_calls == 1
+    assert detail["total_plays"] == 1
+    assert set(state.stats_query_timings) == {"entity_detail"}
+    assert state.stats_query_timings["entity_detail"].count == 1

@@ -12,6 +12,7 @@ export function createHistoricalDashboard({
     t,
     formatNumber,
     formatDuration,
+    formatPreciseDuration,
     formatPlays,
     beginArrayPanel,
     setPanelState,
@@ -19,6 +20,7 @@ export function createHistoricalDashboard({
     renderSafely,
     getSourceId,
     getFirstSourceId,
+    onEntitySelect,
 }) {
     const playerChart = echarts.init(
         document.getElementById('playerChart'),
@@ -172,7 +174,7 @@ export function createHistoricalDashboard({
             total.textContent = formatDuration(item.total_listen_sec);
             const average = document.createElement('td');
             average.className = 'hide-mobile';
-            average.textContent = formatDuration(item.average_listen_sec);
+            average.textContent = formatPreciseDuration(item.average_listen_sec);
             const transcode = document.createElement('td');
             transcode.className = 'hide-mobile';
             const rate = Number(item.transcoding_rate_pct);
@@ -537,9 +539,12 @@ export function createHistoricalDashboard({
             const totalListenSec = Number(item.total_listen_sec) || 0;
             const percentage = Math.max(0, Math.min(100, Math.round((value / maxValue) * 100)));
             const labelValue = item[labelKey] != null ? String(item[labelKey]) : '';
-            const row = document.createElement('div');
+            const listItem = document.createElement('div');
+            listItem.className = 'ranking-list-item';
+            listItem.setAttribute('role', 'listitem');
+            const row = document.createElement('button');
+            row.type = 'button';
             row.className = 'ranking-row';
-            row.setAttribute('role', 'listitem');
             const rank = document.createElement('div');
             rank.className = 'ranking-rank stat-value';
             rank.setAttribute('aria-hidden', 'true');
@@ -581,8 +586,20 @@ export function createHistoricalDashboard({
                 ? formatPlays(count)
                 : formatDuration(totalListenSec);
             countCell.append(primary, secondary);
+            row.setAttribute('aria-label', t('entity.openLabel', {
+                name: labelValue || '-',
+                summary: ariaSummary,
+            }));
+            row.addEventListener('click', () => onEntitySelect({
+                type: panel === 'artists' ? 'artist' : 'album',
+                name: labelValue,
+                id: panel === 'artists' ? item.artist_id : item.album_id,
+                sourceId: panel === 'albums' ? (item.source_id || sourceId) : '',
+                artist: panel === 'albums' && !item.album_id ? (item.artist || '') : '',
+            }, row));
             row.append(rank, cover || createRankingFallback(labelValue), label, barCell, countCell);
-            container.appendChild(row);
+            listItem.appendChild(row);
+            container.appendChild(listItem);
         });
         setPanelSummary(panel, t('aria.rankingSummary', {
             count: formatNumber(rows.length),

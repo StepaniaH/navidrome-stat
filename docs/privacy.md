@@ -9,7 +9,7 @@ The SQLite database can contain:
 - Navidrome usernames;
 - track, artist, and album IDs, together with titles, artist names, and album names;
 - client names and transcoding status;
-- playback timestamps and observed listening duration;
+- playback timestamps and recorded listening duration;
 - Navidrome server identifiers and display names;
 - counted plays and below-threshold playback attempts;
 - retention settings, internal session checkpoints, and stable record identifiers used to make imports idempotent.
@@ -34,7 +34,7 @@ Retention cleanup deletes rows but does not run SQLite `VACUUM`. Deleted pages r
 
 Per-user controls support JSON export, import, and deletion. Format v3 exports include each row's stable record ID and a SHA-256 fingerprint of its normalized contents. These values let repeated imports distinguish duplicates from conflicting rows; they are not credentials, but they remain part of the sensitive listening-history export and can link copies of the same exported record. Formats v1 and v2 remain importable and receive deterministic identities during import.
 
-Deleting a user discards that user's active in-memory sessions and suppresses writes already queued for those sessions. Playback observed after deletion starts a new session and is collected normally. Deletion from the application database does not remove exports or copies already present in backups or external storage.
+Deleting a user discards that user's active in-memory sessions and suppresses writes already queued for those sessions. Playback activity collected after deletion starts a new session normally. Deletion from the application database does not remove exports or copies already present in backups or external storage.
 
 The database retains a history-import checkpoint and a deletion cutoff after deletion so history and playlist imports cannot restore older records. Their keys use SHA-256 digests of the source ID and username. The history checkpoint records the next offset, completion status, failure count, and next retry time; the deletion cutoff records the UTC deletion time. Neither value contains the cleartext username or listening metadata. Removing the application database also removes these markers.
 
@@ -44,7 +44,7 @@ SQLite uses write-ahead logging. The database file, `-wal` and `-shm` files, vol
 
 Language, theme, timezone, and reduced-motion preferences are stored in browser `localStorage`. The theme runtime recognizes four keys: `navidrome-theme-mode` and `navidrome-theme-palette` hold the current choices, `navidrome-theme` is read and maintained as a compatibility value for earlier releases, and `navidrome-theme-customizations` contains versioned color overrides keyed by built-in theme ID. These values contain only appearance identifiers and hexadecimal colors, not listening history or Navidrome credentials. Theme JSON import is read locally by the browser and is not uploaded; export creates a local download containing the selected preset ID and six colors. System theme mode reads the browser's `prefers-color-scheme` media query and cannot read or change operating-system settings. Theme preferences are not sent to the server. The selected timezone is sent with statistics requests to calculate local date and hour buckets.
 
-Frontend assets are served by the application. Normal dashboard use does not load JavaScript or CSS from a public CDN, and the project does not include usage analytics or telemetry. The published container disables Uvicorn request access logs because application URLs can contain usernames, source identifiers, and dashboard filters. Operators using another application server or reverse proxy should apply an equivalent logging policy.
+Frontend assets are served by the application. Normal dashboard use does not load JavaScript or CSS from a public CDN, and the project does not include usage analytics or telemetry. The published container disables Uvicorn request access logs because application URLs can contain usernames, source identifiers, dashboard filters, and shareable artist or album detail names. Operators using another application server or reverse proxy should apply an equivalent logging policy.
 
 Navidrome Stat has one shared authorization level. Anyone with `STATS_API_TOKEN` can view all stored listening data and configured connection identities, change settings and connections, and use export, import, retention, and deletion controls. There are no separate viewer and administrator roles. Do not distribute the token as a read-only credential; use an access-controlled reverse proxy if deployments need that separation.
 

@@ -7,7 +7,10 @@
 
 import { validateCustomRange } from './format.js';
 
-const KEYS = ['days', 'timezone', 'metric', 'sourceId', 'username', 'startDate', 'endDate'];
+const KEYS = [
+    'days', 'timezone', 'metric', 'sourceId', 'username', 'startDate', 'endDate',
+    'entityType', 'entityName', 'entityId', 'entitySourceId', 'entityArtist',
+];
 const PARAM_ALIASES = {
     days: 'days',
     timezone: 'timezone',
@@ -16,6 +19,11 @@ const PARAM_ALIASES = {
     username: 'username',
     startDate: 'start_date',
     endDate: 'end_date',
+    entityType: 'entity_type',
+    entityName: 'entity_name',
+    entityId: 'entity_id',
+    entitySourceId: 'entity_source_id',
+    entityArtist: 'entity_artist',
 };
 
 const DEFAULTS = Object.freeze({
@@ -26,6 +34,11 @@ const DEFAULTS = Object.freeze({
     username: '',
     startDate: '',
     endDate: '',
+    entityType: '',
+    entityName: '',
+    entityId: '',
+    entitySourceId: '',
+    entityArtist: '',
 });
 
 const listeners = new Set();
@@ -58,6 +71,33 @@ function sanitize(candidate) {
         if (range.ok) {
             filters.startDate = candidate.startDate;
             filters.endDate = candidate.endDate;
+        }
+    }
+    const hasValidEntitySource = (
+        typeof candidate.entitySourceId === 'string'
+        && candidate.entitySourceId.length > 0
+        && candidate.entitySourceId.length <= 128
+    );
+    if (
+        (candidate.entityType === 'artist' || candidate.entityType === 'album')
+        && typeof candidate.entityName === 'string'
+        && candidate.entityName.length > 0
+        && candidate.entityName.length <= 512
+        && (candidate.entityType !== 'album' || hasValidEntitySource)
+    ) {
+        filters.entityType = candidate.entityType;
+        filters.entityName = candidate.entityName;
+        if (typeof candidate.entityId === 'string' && candidate.entityId.length <= 128) {
+            filters.entityId = candidate.entityId;
+        }
+        if (hasValidEntitySource) {
+            filters.entitySourceId = candidate.entitySourceId;
+        }
+        if (
+            typeof candidate.entityArtist === 'string'
+            && candidate.entityArtist.length <= 512
+        ) {
+            filters.entityArtist = candidate.entityArtist;
         }
     }
     return filters;
@@ -94,7 +134,18 @@ export function getFilters() {
 
 export function setFilters(patch) {
     current = sanitize({ ...current, ...patch });
-    window.history.replaceState(null, '', toUrl(current));
+    window.history.replaceState(window.history.state ?? null, '', toUrl(current));
+    listeners.forEach((listener) => listener(getFilters()));
+    return getFilters();
+}
+
+export function pushFilters(patch) {
+    current = sanitize({ ...current, ...patch });
+    window.history.pushState(
+        { ...(window.history.state || {}), navidromeEntityDetail: true },
+        '',
+        toUrl(current),
+    );
     listeners.forEach((listener) => listener(getFilters()));
     return getFilters();
 }
@@ -103,3 +154,8 @@ export function subscribe(listener) {
     listeners.add(listener);
     return () => listeners.delete(listener);
 }
+
+window.addEventListener('popstate', () => {
+    current = fromUrl();
+    listeners.forEach((listener) => listener(getFilters()));
+});

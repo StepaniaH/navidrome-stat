@@ -527,6 +527,33 @@ async def test_playback_report_state_and_position_exclude_pause():
 
 
 @pytest.mark.asyncio
+async def test_playback_report_sparse_positions_count_playing_intervals():
+    """A playing snapshot stays active between infrequent client reports."""
+    save = AsyncMock()
+    tracker = PlaybackSessionTracker(
+        save,
+        play_threshold_sec=30,
+        supports_playback_report=True,
+    )
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    # The collector polls every 10 seconds while position updates arrive once
+    # per minute.
+    for second in range(0, 121, 10):
+        reported_position = (second // 60) * 60_000
+        await tracker.process_poll(
+            [{**_entry(), "state": "playing", "positionMs": reported_position}],
+            t0 + timedelta(seconds=second),
+        )
+    await tracker.process_poll(
+        [{**_entry(), "state": "stopped", "positionMs": 120_000}],
+        t0 + timedelta(seconds=121),
+    )
+
+    assert save.await_args.args[0]["duration_sec"] == 120
+
+
+@pytest.mark.asyncio
 async def test_legacy_mode_ignores_unadvertised_playback_report_fields():
     save = AsyncMock()
     tracker = PlaybackSessionTracker(save, play_threshold_sec=10)
