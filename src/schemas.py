@@ -171,7 +171,7 @@ class EntityRecentPlayItem(BaseModel):
 
 
 class EntityDetailResponse(BaseModel):
-    entity_type: Literal["artist", "album"]
+    entity_type: Literal["artist", "album", "client"]
     name: str
     artist: Optional[str] = None
     entity_id: Optional[str] = None
@@ -190,6 +190,54 @@ class EntityDetailResponse(BaseModel):
     trend: list[EntityTrendPoint]
     top_tracks: list[EntityTrackItem]
     recent_plays: list[EntityRecentPlayItem]
+
+
+class RelationEntityBase(BaseModel):
+    key: str
+    label: str
+    artist: Optional[str] = None
+    entity_id: Optional[str] = None
+    source_id: Optional[str] = None
+    source_name: Optional[str] = None
+
+
+class RelationTrendPoint(BaseModel):
+    bucket: str
+    play_count: int
+    total_listen_sec: int
+
+
+class RelationTrendSeries(RelationEntityBase):
+    points: list[RelationTrendPoint]
+
+
+class RelationDaypartPoint(BaseModel):
+    daypart: Literal["night", "morning", "afternoon", "evening"]
+    play_count: int
+    total_listen_sec: int
+
+
+class RelationMatrixRow(RelationEntityBase):
+    points: list[RelationDaypartPoint]
+
+
+class RelationComparisonItem(RelationEntityBase):
+    current_play_count: int
+    previous_play_count: int
+    current_total_listen_sec: int
+    previous_total_listen_sec: int
+
+
+class DataRelationsResponse(BaseModel):
+    dimension: Literal["artist", "album", "client"]
+    metric: Literal["plays", "listen_time"]
+    grain: Literal["day", "week", "month"]
+    comparison_available: bool
+    duration_coverage_pct: float
+    reported_duration_pct: float
+    trend: list[RelationTrendSeries]
+    matrix: list[RelationMatrixRow]
+    comparison: list[RelationComparisonItem]
 
 
 class HistoryItem(BaseModel):

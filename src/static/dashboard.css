@@ -32,6 +32,8 @@
                 radial-gradient(ellipse 60% 40% at 100% 0%, color-mix(in srgb, var(--app-success) 8%, transparent), transparent),
                 radial-gradient(ellipse 50% 30% at 0% 100%, color-mix(in srgb, var(--chart-2) 10%, transparent), transparent);
         }
+        /* Grid children must be allowed to shrink below their intrinsic content width. */
+        #dashboardApp .grid > * { min-width: 0; }
         .chart-container { height: 280px; width: 100%; }
         @media (min-width: 768px) { .chart-container { height: 320px; } }
         [data-panel-state="empty"] > .chart-container,
@@ -213,28 +215,54 @@
         .player-legend-table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
         }
         .player-legend-table th, .player-legend-table td {
             padding: 0.375rem 0.5rem;
             text-align: right;
             font-variant-numeric: tabular-nums;
-            white-space: nowrap;
         }
         .player-legend-table th {
             color: var(--app-dim);
             font-weight: 500;
             font-size: 0.6875rem;
+            line-height: 1.25;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             border-bottom: 1px solid var(--app-border-soft);
+            overflow-wrap: anywhere;
+            hyphens: auto;
+            white-space: normal;
+            vertical-align: bottom;
         }
+        .player-legend-table td { overflow: hidden; white-space: nowrap; }
+        .player-legend-table th:nth-child(1) { width: 25%; }
+        .player-legend-table th:nth-child(2) { width: 12%; }
+        .player-legend-table th:nth-child(3) { width: 19%; }
+        .player-legend-table th:nth-child(4) { width: 25%; }
+        .player-legend-table th:nth-child(5) { width: 19%; }
         .player-legend-table td.client-cell {
             text-align: left;
-            max-width: 12rem;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             color: var(--app-text);
+        }
+        .client-detail-button {
+            display: block;
+            width: 100%;
+            min-width: 0;
+            overflow: hidden;
+            border-radius: 0.25rem;
+            color: inherit;
+            text-align: left;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .client-detail-button:hover { color: var(--app-accent); }
+        .client-detail-button:focus-visible {
+            outline: 2px solid var(--focus);
+            outline-offset: 2px;
         }
         .player-legend-table th:first-child,
         .player-legend-table td:first-child { text-align: left; }
@@ -267,12 +295,14 @@
             white-space: nowrap;
         }
         .history-cell-title .source-badge { margin-top: 0.3rem; }
-        @media (min-width: 768px) {
-            .player-legend-table td.client-cell { max-width: 16rem; }
-        }
         .player-legend-table tr + tr td { border-top: 1px solid var(--app-border-soft); }
-        @media (max-width: 480px) {
+        @media (max-width: 520px) {
             .player-legend-table th.hide-mobile, .player-legend-table td.hide-mobile { display: none; }
+            .player-legend-table th:nth-child(1) { width: 46%; }
+            .player-legend-table th:nth-child(2) { width: 20%; }
+            .player-legend-table th:nth-child(3) { width: 34%; }
+            .player-legend-table th,
+            .player-legend-table td { padding-inline: 0.3rem; }
         }
 
         body.entity-detail-open { overflow: hidden; }

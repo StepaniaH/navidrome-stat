@@ -11,6 +11,7 @@ NOW_PLAYING_JS = DASHBOARD_MODULE_DIR / "now-playing.js"
 HISTORY_JS = DASHBOARD_MODULE_DIR / "history.js"
 PLAY_ACCOUNTING_JS = DASHBOARD_MODULE_DIR / "play-accounting.js"
 HISTORICAL_DASHBOARD_JS = DASHBOARD_MODULE_DIR / "historical-dashboard.js"
+DATA_RELATIONS_JS = DASHBOARD_MODULE_DIR / "data-relations.js"
 LOCALES_DIR = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "i18n" / "locales"
 DASHBOARD_CSS = Path(__file__).resolve().parent.parent / "src" / "static" / "dashboard.css"
 LISTBOX_JS = Path(__file__).resolve().parent.parent / "src" / "static" / "js" / "listbox.js"
@@ -33,6 +34,7 @@ def source() -> str:
             HISTORY_JS,
             PLAY_ACCOUNTING_JS,
             HISTORICAL_DASHBOARD_JS,
+            DATA_RELATIONS_JS,
             DASHBOARD_CSS,
             THEMES_CSS,
             THEME_BOOTSTRAP_JS,
@@ -113,12 +115,14 @@ def test_dashboard_behaviors_are_composed_through_small_module_interfaces():
         "createHistory",
         "createPlayAccounting",
         "createHistoricalDashboard",
+        "createDataRelations",
     ):
         assert f"import {{ {factory} }}" in source
     assert "nowPlaying.refresh()" in source
     assert "history.render(" in source
     assert "playAccounting.mount()" in source
     assert "historicalDashboard.render(" in source
+    assert "dataRelations.refresh(" in source
 
 
 def test_now_playing_ticker_state_exists(now_playing_source):
@@ -198,6 +202,25 @@ def test_stats_window_buttons_carry_data_days(source):
         "weekdayHourChartSkeleton",
         "weekdayHourChartEmpty",
         "weekdayHourChartWrap",
+        # cross-dimensional relation charts
+        "dataRelationsSection",
+        "relationsDimensionControl",
+        "relationsMetricControl",
+        "relationTrendChart",
+        "relationTrendChartSkeleton",
+        "relationTrendChartEmpty",
+        "relationTrendChartError",
+        "relationTrendChartSummary",
+        "relationMatrixChart",
+        "relationMatrixChartSkeleton",
+        "relationMatrixChartEmpty",
+        "relationMatrixChartError",
+        "relationMatrixChartSummary",
+        "relationComparisonChart",
+        "relationComparisonChartSkeleton",
+        "relationComparisonChartEmpty",
+        "relationComparisonChartError",
+        "relationComparisonChartSummary",
         # summary change badges
         "statTotalPlaysChange",
         "statListenTimeChange",
@@ -485,7 +508,10 @@ def test_heatmap_skeleton_in_set_loading(source):
 
 
 def test_heatmap_resize_in_window_resize_handler(source):
-    assert "window.addEventListener('resize', historicalDashboard.resize)" in source
+    resize_handler = source[source.index("window.addEventListener('resize', () => {") :]
+    resize_handler = resize_handler[:resize_handler.index("});") + 3]
+    assert "historicalDashboard.resize()" in resize_handler
+    assert "dataRelations.resize()" in resize_handler
     block = _function_block(source, "resizeDashboardCharts")
     assert "weekdayHourChart," in source[source.index("const charts = [") :]
     # Resize is skipped when the size already matches so update animations

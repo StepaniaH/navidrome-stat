@@ -44,7 +44,7 @@ function appendText(parent, className, text) {
     return element;
 }
 
-/** Own the URL-addressable artist/album detail dialog. */
+/** Own the URL-addressable artist, album, and client detail dialog. */
 export function createEntityDetail({
     apiFetch,
     isAbortError,
@@ -146,7 +146,12 @@ export function createEntityDetail({
     }
 
     function renderIdentity(identity, payload = null) {
-        const type = identity.type === 'album' ? t('entity.album') : t('entity.artist');
+        const typeKey = identity.type === 'album'
+            ? 'entity.album'
+            : identity.type === 'client'
+                ? 'entity.client'
+                : 'entity.artist';
+        const type = t(typeKey);
         document.getElementById('entityDetailType').textContent = t('entity.detailType', { type });
         document.getElementById('entityDetailName').textContent = identity.name;
         const artist = document.getElementById('entityDetailArtist');
@@ -287,7 +292,10 @@ export function createEntityDetail({
                 item.title || t('entity.unknownTrack'),
             );
             title.title = title.textContent;
-            const context = [item.album, item.source_name].filter(Boolean).join(' · ');
+            const contextFields = currentIdentity?.type === 'client'
+                ? [item.artist, item.album, item.source_name]
+                : [item.album, item.source_name];
+            const context = contextFields.filter(Boolean).join(' · ');
             if (context) appendText(copy, 'entity-list-context', context);
             if (item.last_played_at) {
                 appendText(copy, 'entity-list-meta', t('entity.lastPlayedAt', {
@@ -320,12 +328,15 @@ export function createEntityDetail({
                 item.title || t('entity.unknownTrack'),
             );
             title.title = title.textContent;
-            const context = [item.album, item.source_name].filter(Boolean).join(' · ');
+            const contextFields = currentIdentity?.type === 'client'
+                ? [item.artist, item.album, item.source_name]
+                : [item.album, item.source_name];
+            const context = contextFields.filter(Boolean).join(' · ');
             if (context) appendText(copy, 'entity-list-context', context);
             const meta = [
                 formatDateTime(item.played_at),
                 item.username,
-                item.client_name,
+                currentIdentity?.type === 'client' ? '' : item.client_name,
             ].filter(Boolean).join(' · ');
             appendText(copy, 'entity-list-meta', meta);
             const value = document.createElement('span');

@@ -43,12 +43,25 @@ test("defaults when URL has no filter params", () => {
     username: "",
     startDate: "",
     endDate: "",
+    relationDimension: "artist",
     entityType: "",
     entityName: "",
     entityId: "",
     entitySourceId: "",
     entityArtist: "",
   });
+});
+
+test("relation dimension is sanitized and persisted when non-default", () => {
+  const next = setFilters({ relationDimension: "client" });
+  assert.equal(next.relationDimension, "client");
+  let url = new URL(globalThis.__lastUrl, "https://example.test");
+  assert.equal(url.searchParams.get("relation"), "client");
+
+  const fallback = setFilters({ relationDimension: "track" });
+  assert.equal(fallback.relationDimension, "artist");
+  url = new URL(globalThis.__lastUrl, "https://example.test");
+  assert.equal(url.searchParams.has("relation"), false);
 });
 
 test("entity identity is pushed into a shareable URL", () => {
@@ -79,6 +92,24 @@ test("album detail URLs require a stable source identity", () => {
   });
   assert.equal(next.entityType, "");
   assert.equal(next.entityName, "");
+});
+
+test("client detail identity is URL-addressable without a source identity", () => {
+  const next = pushFilters({
+    entityType: "client",
+    entityName: "Symfonium",
+    entityId: "ignored-id",
+    entitySourceId: "ignored-source",
+    entityArtist: "ignored-artist",
+  });
+  assert.equal(next.entityType, "client");
+  assert.equal(next.entityName, "Symfonium");
+  const url = new URL(globalThis.__pushedUrl, "https://example.test");
+  assert.equal(url.searchParams.get("entity_type"), "client");
+  assert.equal(url.searchParams.get("entity_name"), "Symfonium");
+  assert.equal(url.searchParams.has("entity_id"), false);
+  assert.equal(url.searchParams.has("entity_source_id"), false);
+  assert.equal(url.searchParams.has("entity_artist"), false);
 });
 
 test("setFilters sanitizes unknown metric and broken ranges", () => {

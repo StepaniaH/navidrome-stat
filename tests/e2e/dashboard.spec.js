@@ -4,6 +4,61 @@ const delay = (milliseconds) => new Promise((resolve) => {
   setTimeout(resolve, milliseconds);
 });
 
+const dashboardLocales = ["de", "en", "es", "fr", "ja", "zh-CN", "zh-TW"];
+
+async function dashboardOverflowReport(page) {
+  return page.evaluate(() => {
+    const root = document.documentElement;
+    const viewportWidth = root.clientWidth;
+    const pageWidth = Math.max(root.scrollWidth, document.body.scrollWidth);
+    const isVisible = (element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 1
+        && rect.height > 1;
+    };
+    const issues = [];
+    document.querySelectorAll("#dashboardApp .rounded-2xl").forEach((card, index) => {
+      if (!isVisible(card)) return;
+      const rect = card.getBoundingClientRect();
+      if (rect.left < -1 || rect.right > viewportWidth + 1) {
+        issues.push(`card-${index}-outside-viewport`);
+      }
+      if (card.scrollWidth > card.clientWidth + 1) {
+        issues.push(`card-${index}-content-${card.scrollWidth}-${card.clientWidth}`);
+      }
+    });
+    [
+      "playerChartLegend",
+      "relationsDimensionControl",
+      "relationsMetricControl",
+      "rankingMetricControl",
+    ].forEach((id) => {
+      const element = document.getElementById(id);
+      if (!element || !isVisible(element)) return;
+      if (element.scrollWidth > element.clientWidth + 1) {
+        issues.push(`${id}-${element.scrollWidth}-${element.clientWidth}`);
+      }
+    });
+    const detail = document.getElementById("entityDetailPanel");
+    if (detail && isVisible(detail) && detail.scrollWidth > detail.clientWidth + 1) {
+      issues.push(`entityDetailPanel-${detail.scrollWidth}-${detail.clientWidth}`);
+    }
+    return {
+      pageOverflow: Math.max(0, pageWidth - viewportWidth),
+      issues,
+    };
+  });
+}
+
+async function settleResponsiveLayout(page) {
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+}
+
 const snapshot = {
   summary: {
     total_plays: 3,
@@ -132,6 +187,69 @@ const entityDetailSnapshot = {
   }],
 };
 
+function relationSnapshot(url) {
+  const parsed = new URL(url);
+  const dimension = parsed.searchParams.get("dimension") || "artist";
+  const metric = parsed.searchParams.get("metric") || "plays";
+  const meta = dimension === "album"
+    ? {
+      key: "album:server-1:id:al-1",
+      label: "Synthetic Album",
+      artist: "Synthetic Artist",
+      entity_id: "al-1",
+      source_id: "server-1",
+      source_name: "Synthetic Server",
+    }
+    : dimension === "client"
+      ? {
+        key: "client:Synthetic Player",
+        label: "Synthetic Player",
+        artist: null,
+        entity_id: null,
+        source_id: null,
+        source_name: null,
+      }
+      : {
+        key: "artist:Synthetic Artist",
+        label: "Synthetic Artist",
+        artist: null,
+        entity_id: null,
+        source_id: null,
+        source_name: null,
+      };
+  return {
+    dimension,
+    metric,
+    grain: "day",
+    comparison_available: true,
+    duration_coverage_pct: 100,
+    reported_duration_pct: 75,
+    trend: [{
+      ...meta,
+      points: [
+        { bucket: "2026-07-27", play_count: 1, total_listen_sec: 60 },
+        { bucket: "2026-07-28", play_count: 2, total_listen_sec: 125 },
+      ],
+    }],
+    matrix: [{
+      ...meta,
+      points: [
+        { daypart: "night", play_count: 0, total_listen_sec: 0 },
+        { daypart: "morning", play_count: 1, total_listen_sec: 60 },
+        { daypart: "afternoon", play_count: 2, total_listen_sec: 125 },
+        { daypart: "evening", play_count: 0, total_listen_sec: 0 },
+      ],
+    }],
+    comparison: [{
+      ...meta,
+      current_play_count: 3,
+      previous_play_count: 2,
+      current_total_listen_sec: 185,
+      previous_total_listen_sec: 120,
+    }],
+  };
+}
+
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({ json: { auth_required: false } }),
@@ -156,6 +274,9 @@ test.beforeEach(async ({ page }) => {
   );
   await page.route("**/api/stats/entity-detail?*", (route) =>
     route.fulfill({ json: entityDetailSnapshot }),
+  );
+  await page.route("**/api/stats/relations?*", (route) =>
+    route.fulfill({ json: relationSnapshot(route.request().url()) }),
   );
   await page.route("**/api/diagnostics", (route) =>
     route.fulfill({
@@ -196,6 +317,130 @@ test("renders synthetic statistics without executing metadata", async ({ page })
   expect(await page.evaluate(() => window.__injected)).toBeUndefined();
   await page.locator("#statsSourceButton").click();
   await expect(page.locator(".stats-source-option")).toHaveCount(2);
+});
+
+test("cross analysis charts share dimension, metric, and URL state", async ({ page }) => {
+  const relationRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/stats/relations")) {
+      relationRequests.push(new URL(request.url()));
+    }
+  });
+
+  await page.goto("/?timezone=UTC");
+  await expect(page.locator("#relationTrendChartWrap")).toHaveAttribute(
+    "data-panel-state",
+    "ready",
+  );
+  await expect(page.locator("#relationMatrixChartWrap")).toHaveAttribute(
+    "data-panel-state",
+    "ready",
+  );
+  await expect(page.locator("#relationComparisonChartWrap")).toHaveAttribute(
+    "data-panel-state",
+    "ready",
+  );
+  await expect(page.locator("#relationTrendChart canvas")).toHaveCount(1);
+  await expect(page.locator("#relationsScope")).toContainText("Plays");
+
+  await page.locator('[data-relations-dimension="client"]').click();
+  await expect(page).toHaveURL(/relation=client/);
+  await expect(page.locator('[data-relations-dimension="client"]')).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect.poll(() => relationRequests.at(-1)?.searchParams.get("dimension"))
+    .toBe("client");
+
+  await page.locator('#relationsMetricControl [data-ranking-metric="listen_time"]').click();
+  await expect(page.locator("#relationsScope")).toContainText("Listening time");
+  await expect(page.locator("#relationsScope")).toContainText("100%");
+  await expect.poll(() => relationRequests.at(-1)?.searchParams.get("metric"))
+    .toBe("listen_time");
+});
+
+test("client rows and relationship cells open the same scoped detail", async ({ page }) => {
+  await page.goto("/?timezone=UTC&relation=client");
+  await page.locator("#playerChartLegend .client-detail-button").click();
+  await expect(page.locator("#entityDetailLayer")).toBeVisible();
+  await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Player");
+  await expect(page).toHaveURL(/entity_type=client/);
+  await expect(page).toHaveURL(/entity_name=Synthetic(?:\+|%20)Player/);
+  await expect(page.locator("#entityTopTracks")).toContainText("Synthetic Artist");
+  await page.locator("#entityDetailClose").click();
+  await expect(page.locator("#entityDetailLayer")).toBeHidden();
+
+  await page.locator("#relationMatrixChart").scrollIntoViewIfNeeded();
+  const matrixPoint = await page.evaluate(() => {
+    const chart = echarts.getInstanceByDom(document.getElementById("relationMatrixChart"));
+    const point = chart.convertToPixel({ seriesIndex: 0 }, [1, 0]);
+    const rect = chart.getDom().getBoundingClientRect();
+    return { x: rect.left + point[0], y: rect.top + point[1] };
+  });
+  await page.mouse.click(matrixPoint.x, matrixPoint.y);
+  await expect(page.locator("#entityDetailLayer")).toBeVisible();
+  await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Player");
+  await expect(page).toHaveURL(/entity_type=client/);
+});
+
+test("all dashboard locales stay contained at desktop and mobile widths", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto("/?timezone=UTC");
+  await expect(page.locator("#relationTrendChartWrap")).toHaveAttribute(
+    "data-panel-state",
+    "ready",
+  );
+
+  for (const locale of dashboardLocales) {
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.evaluate((nextLocale) => {
+      localStorage.setItem("navidrome-language", nextLocale);
+      window.dispatchEvent(new StorageEvent("storage", {
+        key: "navidrome-language",
+        newValue: nextLocale,
+      }));
+    }, locale);
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    await settleResponsiveLayout(page);
+    expect(
+      await dashboardOverflowReport(page),
+      `${locale} desktop dashboard overflow`,
+    ).toEqual({ pageOverflow: 0, issues: [] });
+
+    await page.setViewportSize({ width: 768, height: 900 });
+    await settleResponsiveLayout(page);
+    expect(
+      await dashboardOverflowReport(page),
+      `${locale} tablet dashboard overflow`,
+    ).toEqual({ pageOverflow: 0, issues: [] });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await settleResponsiveLayout(page);
+    expect(
+      await dashboardOverflowReport(page),
+      `${locale} mobile dashboard overflow`,
+    ).toEqual({ pageOverflow: 0, issues: [] });
+
+    await page.setViewportSize({ width: 320, height: 844 });
+    await settleResponsiveLayout(page);
+    expect(
+      await dashboardOverflowReport(page),
+      `${locale} narrow dashboard overflow`,
+    ).toEqual({ pageOverflow: 0, issues: [] });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await settleResponsiveLayout(page);
+
+    await page.locator("#playerChartLegend .client-detail-button").click();
+    await expect(page.locator("#entityDetailLayer")).toBeVisible();
+    await settleResponsiveLayout(page);
+    expect(
+      await dashboardOverflowReport(page),
+      `${locale} mobile client detail overflow`,
+    ).toEqual({ pageOverflow: 0, issues: [] });
+    await page.locator("#entityDetailClose").click();
+    await expect(page.locator("#entityDetailLayer")).toBeHidden();
+  }
 });
 
 test("artist ranking opens a scoped, URL-addressable detail panel", async ({ page }) => {
@@ -663,7 +908,7 @@ test("newer filter state aborts stale dashboard responses", async ({ page }) => 
   await page.locator("#statsWindowButton").click();
   await page.locator('[data-days="7"]').click();
   await expect.poll(() => requests.includes("7:plays")).toBe(true);
-  await page.locator('[data-ranking-metric="listen_time"]').click();
+  await page.locator('#rankingMetricControl [data-ranking-metric="listen_time"]').click();
   await expect(page.locator("#topArtistsChart")).toContainText("Latest Artist");
   await delay(450);
   await expect(page.locator("#topArtistsChart")).not.toContainText("Stale Artist");

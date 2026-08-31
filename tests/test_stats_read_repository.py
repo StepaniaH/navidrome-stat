@@ -132,3 +132,33 @@ async def test_entity_detail_uses_one_snapshot_and_fixed_query_timing(tmp_path, 
     assert detail["total_plays"] == 1
     assert set(state.stats_query_timings) == {"entity_detail"}
     assert state.stats_query_timings["entity_detail"].count == 1
+
+
+@pytest.mark.asyncio
+async def test_data_relations_uses_one_snapshot_and_fixed_query_timing(tmp_path, monkeypatch):
+    from src.runtime_state import RuntimeState
+
+    db_path = str(tmp_path / "stats.db")
+    await init_db(db_path)
+    _insert_history(db_path, "relation-track")
+    state = RuntimeState()
+    monkeypatch.setattr(repository_module, "runtime_state", state)
+
+    connect_calls = 0
+    original_connect = sqlite_module.aiosqlite.connect
+
+    def counting_connect(*args, **kwargs):
+        nonlocal connect_calls
+        connect_calls += 1
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite_module.aiosqlite, "connect", counting_connect)
+    result = await StatsReadRepository(db_path).data_relations(
+        StatsScope.create(days=0, timezone_name="UTC", metric="plays"),
+        "artist",
+    )
+
+    assert connect_calls == 1
+    assert result["trend"][0]["label"] == "Synthetic Artist"
+    assert set(state.stats_query_timings) == {"data_relations"}
+    assert state.stats_query_timings["data_relations"].count == 1

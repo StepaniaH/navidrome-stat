@@ -45,6 +45,7 @@ from src.schemas import (
     TOP_LIMIT_MIN,
     DailyStat,
     DashboardSnapshot,
+    DataRelationsResponse,
     EntityDetailResponse,
     HistoryItem,
     HourlyStat,
@@ -62,6 +63,7 @@ from src.schemas import (
     WeekdayHourStat,
 )
 from src.stats_query_entities import EntityIdentity
+from src.stats_query_relations import RelationDimension
 from src.stats_scope import StatsScope
 from src.stats_service import stats_service
 
@@ -435,7 +437,7 @@ async def api_top_albums(
 
 @router.get("/api/stats/entity-detail", response_model=EntityDetailResponse)
 async def api_entity_detail(
-    entity_type: Literal["artist", "album"] = Query(),
+    entity_type: Literal["artist", "album", "client"] = Query(),
     name: str = Query(min_length=1, max_length=512),
     entity_id: str | None = Query(default=None, min_length=1, max_length=128),
     entity_source_id: str | None = Query(
@@ -452,7 +454,7 @@ async def api_entity_detail(
     end_date: date | None = Query(default=None),
     username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
-    """Return a scoped artist or album drill-down payload."""
+    """Return a scoped artist, album, or client drill-down payload."""
     try:
         scope = StatsScope.create(
             days=days,
@@ -473,6 +475,33 @@ async def api_entity_detail(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return await _query_stats(lambda: stats_service.entity_detail(scope, identity))
+
+
+@router.get("/api/stats/relations", response_model=DataRelationsResponse)
+async def api_data_relations(
+    dimension: RelationDimension = Query(),
+    days: int = Query(default=STATS_DAYS_DEFAULT, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+    metric: str = Query(default=RANKING_METRIC_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
+):
+    """Return time, daypart, and prior-period values for one dimension."""
+    try:
+        scope = StatsScope.create(
+            days=days,
+            timezone_name=timezone,
+            metric=metric,
+            source_id=source_id,
+            start_date=start_date,
+            end_date=end_date,
+            username=username,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await _query_stats(lambda: stats_service.data_relations(scope, dimension))
 
 
 @router.get("/api/stats/now-playing", response_model=list[NowPlayingItem])

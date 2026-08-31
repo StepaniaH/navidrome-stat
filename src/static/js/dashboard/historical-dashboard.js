@@ -60,6 +60,10 @@ export function createHistoricalDashboard({
     let lastSnapshot = null;
     let lastMetric = 'plays';
 
+    playerChart.on('click', (params) => {
+        openClientDetail(params.data?.clientName, playerChart.getDom());
+    });
+
     function resizeDashboardCharts() {
         // resize() interrupts animations, so skip steady-state calls.
         charts.forEach((chart) => {
@@ -129,6 +133,18 @@ export function createHistoricalDashboard({
         return t('compare.previous');
     }
 
+    function openClientDetail(clientName, trigger) {
+        const name = String(clientName || '').trim();
+        if (!name) return;
+        onEntitySelect({
+            type: 'client',
+            name,
+            id: '',
+            sourceId: '',
+            artist: '',
+        }, trigger);
+    }
+
     function renderPlayerChart(data) {
         const legend = document.getElementById('playerChartLegend');
         legend.replaceChildren();
@@ -166,8 +182,23 @@ export function createHistoricalDashboard({
             const row = document.createElement('tr');
             const name = document.createElement('td');
             name.className = 'client-cell';
-            name.textContent = item.client_name || t('label.unknownClient');
-            name.title = name.textContent;
+            const clientName = String(item.client_name || '').trim();
+            const displayName = clientName || t('label.unknownClient');
+            name.title = displayName;
+            if (clientName) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'client-detail-button';
+                button.textContent = displayName;
+                button.setAttribute('aria-label', t('entity.openLabel', {
+                    name: displayName,
+                    summary: `${t('label.play')} ${formatPlays(item.count)} · ${t('label.listening')} ${formatDuration(item.total_listen_sec)}`,
+                }));
+                button.addEventListener('click', () => openClientDetail(clientName, button));
+                name.appendChild(button);
+            } else {
+                name.textContent = displayName;
+            }
             const count = document.createElement('td');
             count.textContent = formatNumber(item.count);
             const total = document.createElement('td');
@@ -191,10 +222,14 @@ export function createHistoricalDashboard({
             animationDurationUpdate: 450,
             color: colorPalette,
             legend: {
+                type: 'scroll',
                 bottom: 0,
+                left: 8,
+                right: 8,
                 textStyle: { color: chartTheme.axisText, fontSize: 11 },
                 itemWidth: 10,
                 itemHeight: 10,
+                pageTextStyle: { color: chartTheme.axisText },
             },
             tooltip: {
                 ...chartBase.tooltip,
@@ -211,11 +246,25 @@ export function createHistoricalDashboard({
                     borderColor: chartTheme.pieSeparator,
                     borderWidth: 2,
                 },
-                label: { color: chartTheme.axisText, fontSize: 11 },
+                label: {
+                    color: chartTheme.axisText,
+                    fontSize: 11,
+                    width: 88,
+                    overflow: 'truncate',
+                },
+                labelLine: { length: 10, length2: 8 },
                 data: rows.map((item) => ({
                     name: item.client_name || t('label.unknownClient'),
                     value: item.count,
+                    clientName: item.client_name || '',
+                    cursor: item.client_name ? 'pointer' : 'default',
                 })),
+            }],
+            media: [{
+                query: { maxWidth: 420 },
+                option: {
+                    series: [{ label: { show: false } }],
+                },
             }],
         });
         setPanelSummary('players', t('aria.clientsSummary', {
@@ -244,7 +293,14 @@ export function createHistoricalDashboard({
             ...chartBase,
             animationDurationUpdate: 450,
             color: [colorPalette[2], colorPalette[5]],
-            legend: { bottom: 0, textStyle: { color: chartTheme.axisText, fontSize: 11 } },
+            legend: {
+                type: 'scroll',
+                bottom: 0,
+                left: 8,
+                right: 8,
+                textStyle: { color: chartTheme.axisText, fontSize: 11 },
+                pageTextStyle: { color: chartTheme.axisText },
+            },
             tooltip: {
                 ...chartBase.tooltip,
                 formatter: (params) => {
@@ -255,6 +311,7 @@ export function createHistoricalDashboard({
             series: [{
                 name: t('label.play'),
                 type: 'pie',
+                cursor: 'default',
                 radius: '62%',
                 center: ['50%', '45%'],
                 universalTransition: true,
@@ -263,8 +320,19 @@ export function createHistoricalDashboard({
                     borderColor: chartTheme.pieSeparator,
                     borderWidth: 2,
                 },
-                label: { color: chartTheme.axisText, fontSize: 11 },
+                label: {
+                    color: chartTheme.axisText,
+                    fontSize: 11,
+                    width: 96,
+                    overflow: 'truncate',
+                },
                 data: transformed,
+            }],
+            media: [{
+                query: { maxWidth: 420 },
+                option: {
+                    series: [{ label: { show: false } }],
+                },
             }],
         });
         setPanelSummary('transcoding', t('aria.transcodingSummary', {
@@ -314,6 +382,7 @@ export function createHistoricalDashboard({
             series: [{
                 name: t('metric.plays'),
                 type: 'bar',
+                cursor: 'default',
                 data: buckets.map((bucket) => bucket.count),
                 itemStyle: {
                     borderRadius: [4, 4, 0, 0],
@@ -381,6 +450,7 @@ export function createHistoricalDashboard({
             series: [{
                 name: t('metric.plays'),
                 type: 'line',
+                cursor: 'default',
                 smooth: true,
                 symbol: 'circle',
                 symbolSize: 6,
@@ -468,6 +538,7 @@ export function createHistoricalDashboard({
             series: [{
                 name: t('metric.plays'),
                 type: 'heatmap',
+                cursor: 'default',
                 data: points,
                 label: { show: false },
                 itemStyle: { borderRadius: 3, borderWidth: 2, borderColor: 'transparent' },

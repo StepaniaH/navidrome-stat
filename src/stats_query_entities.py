@@ -1,4 +1,4 @@
-"""Artist and album drill-down statistics."""
+"""Artist, album, and client drill-down statistics."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from src.windows import (
     resolve_timezone,
 )
 
-EntityType = Literal["artist", "album"]
+EntityType = Literal["artist", "album", "client"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,12 +45,16 @@ class EntityIdentity:
         source_id: str | None = None,
         artist: str | None = None,
     ) -> EntityIdentity:
-        if entity_type not in ("artist", "album"):
-            raise ValueError("entity_type must be one of: artist, album")
+        if entity_type not in ("artist", "album", "client"):
+            raise ValueError("entity_type must be one of: artist, album, client")
         if not isinstance(name, str) or not name.strip():
             raise ValueError("name must not be empty")
         if entity_type == "album" and not source_id:
             raise ValueError("source_id is required for album details")
+        if entity_type == "client":
+            entity_id = None
+            source_id = None
+            artist = None
         return cls(
             entity_type=entity_type,
             name=name,
@@ -76,6 +80,8 @@ def _scope_predicate(scope: StatsScope, *, previous: bool = False) -> tuple[str,
 def _entity_predicate(identity: EntityIdentity) -> tuple[str, list]:
     if identity.entity_type == "artist":
         return "artist = ?", [identity.name]
+    if identity.entity_type == "client":
+        return "client_name = ?", [identity.name]
 
     predicates = ["album = ?"]
     params: list = [identity.name]
@@ -228,6 +234,41 @@ async def _album_rank(
     return int(row[0]) if row else None
 
 
+async def _client_rank(
+    db: aiosqlite.Connection,
+    scope: StatsScope,
+    identity: EntityIdentity,
+    *,
+    previous: bool,
+) -> int | None:
+    pred, params = _scope_predicate(scope, previous=previous)
+    value_column = "play_count" if scope.metric == "plays" else "total_listen_sec"
+    async with db.execute(
+        f"""
+        WITH aggregated AS (
+            SELECT
+                COALESCE(client_name, '') AS name,
+                COUNT(*) AS play_count,
+                COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec
+            FROM play_history
+            WHERE {pred}
+            GROUP BY COALESCE(client_name, '')
+        ), ranked AS (
+            SELECT
+                name,
+                ROW_NUMBER() OVER (
+                    ORDER BY {value_column} DESC, name ASC
+                ) AS entity_rank
+            FROM aggregated
+        )
+        SELECT entity_rank FROM ranked WHERE name = ?
+        """,
+        [*params, identity.name],
+    ) as cursor:
+        row = await cursor.fetchone()
+    return int(row[0]) if row else None
+
+
 async def _entity_rank(
     db: aiosqlite.Connection,
     scope: StatsScope,
@@ -237,6 +278,8 @@ async def _entity_rank(
 ) -> int | None:
     if identity.entity_type == "artist":
         return await _artist_rank(db, scope, identity, previous=previous)
+    if identity.entity_type == "client":
+        return await _client_rank(db, scope, identity, previous=previous)
     return await _album_rank(db, scope, identity, previous=previous)
 
 
@@ -246,7 +289,7 @@ async def get_entity_detail(
     *,
     db_path: str | None = None,
 ) -> dict:
-    """Return one artist or album drill-down inside ``scope``.
+    """Return one artist, album, or client drill-down inside ``scope``.
 
     One ordered history scan builds the summary, local-date trend, popular
     tracks, and recent plays. Rank queries use the same ordering rules as the
@@ -303,7 +346,7 @@ async def get_entity_detail(
                     if last_played_at is None:
                         last_played_at = played_at
                     first_played_at = played_at
-                if resolved_entity_id is None:
+                if resolved_entity_id is None and identity.entity_type in ("artist", "album"):
                     candidate = row[
                         "artist_id" if identity.entity_type == "artist" else "album_id"
                     ]
