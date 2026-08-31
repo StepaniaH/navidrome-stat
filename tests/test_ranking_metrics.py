@@ -16,6 +16,7 @@ from src.database import (
     save_play_session,
 )
 from src.main import app
+from src.sessions import PlaybackSessionTracker
 
 
 def _iso(dt: datetime) -> str:
@@ -271,6 +272,52 @@ def test_player_stats_extended_fields_and_ordering(db_path):
         _player_row("Web", 3, 60, round(60 / 3, 2), 1, round(1 / 3 * 100, 2)),
         _player_row("Mobile", 2, 50, round(50 / 2, 2), 2, 100.0),
     ]
+
+
+def test_player_stats_preserves_duration_between_sparse_reports(db_path):
+    """Sparse progress reports must not pin a completed play near 30 seconds."""
+    asyncio.run(init_db(db_path))
+    start = _now()
+
+    async def save(payload):
+        await save_play_session(payload, db_path=db_path)
+
+    tracker = PlaybackSessionTracker(
+        save,
+        play_threshold_sec=30,
+        pause_grace_sec=30,
+        checkpoint_interval_sec=60,
+        supports_playback_report=True,
+    )
+    entry = {
+        "playerId": "player-1",
+        "id": "track-1",
+        "username": "testuser",
+        "playerName": "Web",
+        "title": "Long song",
+        "artist": "Artist",
+        "album": "Album",
+        "state": "playing",
+        "positionMs": 0,
+    }
+
+    async def observe_full_play():
+        for second in range(0, 181, 10):
+            reported_position = (second // 60) * 60_000
+            await tracker.process_poll(
+                [{**entry, "positionMs": reported_position}],
+                start + timedelta(seconds=second),
+            )
+        await tracker.process_poll(
+            [{**entry, "state": "stopped", "positionMs": 180_000}],
+            start + timedelta(seconds=181),
+        )
+
+    asyncio.run(observe_full_play())
+
+    rows = asyncio.run(get_player_stats(days=0, db_path=db_path))
+
+    assert rows == [_player_row("Web", 1, 180, 180.0, 0, 0.0)]
 
 
 def test_player_stats_tie_breaks_by_client_name_asc(db_path):
