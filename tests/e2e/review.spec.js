@@ -96,6 +96,7 @@ test("review restores and visibly labels its shared scope", async ({ page }) => 
   await expect(page.locator("#reviewTotalPlays")).toHaveText("486");
   await expect(page.locator("#reviewScope")).toContainText("User: alice");
   await expect(page.locator("#reviewScope")).toContainText("Server: server-1");
+  await expect(page.locator("#reviewScope")).toContainText("Timezone: UTC");
   await expect.poll(() => reviewRequests.some((url) => {
     const params = new URL(url).searchParams;
     return params.get("year") === "1970"

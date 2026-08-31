@@ -1,4 +1,4 @@
-"""Probe-to-import wiring for the getSongHistory seam in the polling loop."""
+"""Probe-to-import wiring for getSongHistory in the polling loop."""
 
 import asyncio
 from unittest.mock import AsyncMock
@@ -85,7 +85,7 @@ async def test_initial_import_runs_once_per_process_per_source(monkeypatch, isol
 
 
 @pytest.mark.asyncio
-async def test_probe_false_keeps_seam_inert(monkeypatch, isolated_db):
+async def test_probe_false_does_not_start_import(monkeypatch, isolated_db):
     await init_db(isolated_db)
     _reset_song_history_import_guard()
     state = RuntimeState()

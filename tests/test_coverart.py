@@ -64,6 +64,7 @@ async def test_load_preserves_webp_mime_across_disk_cache(client_factory, servic
     assert first == (webp, "image/webp")
     assert second == first
     assert client_factory.client.get_cover_art.await_count == 1
+    assert not list(service.cache_dir().glob("*.mime"))
 
 
 @pytest.mark.asyncio

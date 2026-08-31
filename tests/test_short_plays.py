@@ -45,6 +45,40 @@ def test_short_play_stats_are_separate_from_counted_plays(db_path):
     }
 
 
+def test_short_play_stats_exclude_backfill_history_from_observed_attempts(db_path):
+    asyncio.run(init_db(db_path))
+    asyncio.run(save_play_attempt(attempt("2024-03-24T12:00:00Z"), db_path=db_path))
+    asyncio.run(save_play_session(session("2024-03-24T13:00:00Z"), db_path=db_path))
+    imported = session("2024-03-24T14:00:00Z")
+    imported["source"] = "backfill"
+    asyncio.run(save_play_session(imported, db_path=db_path))
+
+    stats = asyncio.run(get_short_play_stats(db_path=db_path))
+
+    assert stats == {
+        "short_count": 1,
+        "counted_count": 1,
+        "attempt_count": 2,
+        "short_listen_sec": 12,
+        "short_play_rate_pct": 50.0,
+    }
+
+
+def test_short_play_stats_include_privacy_archive_restores(db_path):
+    asyncio.run(init_db(db_path))
+    asyncio.run(save_play_attempt(attempt("2024-03-24T12:00:00Z"), db_path=db_path))
+    restored = session("2024-03-24T13:00:00Z")
+    restored["source"] = "import"
+    asyncio.run(save_play_session(restored, db_path=db_path))
+
+    stats = asyncio.run(get_short_play_stats(db_path=db_path))
+
+    assert stats["short_count"] == 1
+    assert stats["counted_count"] == 1
+    assert stats["attempt_count"] == 2
+    assert stats["short_play_rate_pct"] == 50.0
+
+
 def test_short_play_stats_honor_custom_date_range(db_path):
     asyncio.run(init_db(db_path))
     asyncio.run(save_play_attempt(attempt("2024-03-23T12:00:00Z"), db_path=db_path))

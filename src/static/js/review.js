@@ -289,11 +289,12 @@ function requestedScope() {
     };
 }
 
-function renderReviewScope(username, sourceId) {
+function renderReviewScope(username, sourceId, timezoneName) {
     const userLabel = username || t('user.all');
     const sourceLabel = sourceId || t('dashboard.allServers');
     document.getElementById('reviewScope').textContent =
-        `${t('history.user')}: ${userLabel} · ${t('dashboard.serverFilter')}: ${sourceLabel}`;
+        `${t('history.user')}: ${userLabel} · ${t('dashboard.serverFilter')}: ${sourceLabel}`
+        + ` · ${t('review.timezone')}: ${timezoneName}`;
 }
 
 function showReviewState(state) {
@@ -316,7 +317,7 @@ async function loadReview() {
     if (sourceId) params.set('source_id', sourceId);
     if (username) params.set('username', username);
     document.getElementById('reviewSubtitle').textContent = t('review.subtitle', { year: String(currentYear) });
-    renderReviewScope(username, sourceId);
+    renderReviewScope(username, sourceId, resolveTimezone());
     showReviewState('loading');
     try {
         const response = await apiFetch(`/api/stats/review?${params.toString()}`, { signal: controller.signal });
@@ -325,7 +326,11 @@ async function loadReview() {
         if (generation !== reviewRequestGeneration) return;
         document.getElementById('reviewSubtitle').textContent =
             t('review.subtitle', { year: String(review.year) });
-        renderReviewScope(review.username ?? username, review.source_id ?? sourceId);
+        renderReviewScope(
+            review.username ?? username,
+            review.source_id ?? sourceId,
+            review.timezone ?? resolveTimezone(),
+        );
         renderReview(review, sourceId);
         showReviewState(review.total_plays > 0 ? 'content' : 'empty');
     } catch (error) {

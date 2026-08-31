@@ -10,7 +10,7 @@ DEFAULT_COVER_ART_MAX_BYTES = 10 * 1024 * 1024
 
 
 class CoverArtTooLargeError(ValueError):
-    """The upstream cover exceeded the bounded proxy response size."""
+    """The upstream cover exceeded the configured proxy response limit."""
 
 
 # Support local .env configuration.

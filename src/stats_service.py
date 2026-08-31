@@ -130,6 +130,16 @@ class StatsService:
     async def invalidate(self) -> None:
         await self._cache.invalidate()
 
+    async def _invalidate_after_playback_write(self) -> None:
+        try:
+            await self._cache.invalidate()
+        except Exception as exc:
+            logger.error(
+                "Dashboard cache invalidation failed after a successful playback write "
+                "(type=%s)",
+                exception_kind(exc),
+            )
+
     async def record_session(self, session: dict) -> None:
         source_id = str(session.get("source_id") or "legacy")
         async with playback_mutation_lock():
@@ -145,7 +155,7 @@ class StatsService:
                 runtime_state.record_save_failure(source_id)
                 raise
             runtime_state.record_save_success(source_id)
-            await self._cache.invalidate()
+            await self._invalidate_after_playback_write()
             logger.debug("Recorded play session (duration=%ss)", session["duration_sec"])
 
     async def record_attempt(self, attempt: dict) -> None:
@@ -163,7 +173,7 @@ class StatsService:
                 runtime_state.record_save_failure(source_id)
                 raise
             runtime_state.record_save_success(source_id)
-            await self._cache.invalidate()
+            await self._invalidate_after_playback_write()
 
     async def record_imported_events(self, events: list[dict]) -> int:
         """Write importer events through the idempotent dedup path."""

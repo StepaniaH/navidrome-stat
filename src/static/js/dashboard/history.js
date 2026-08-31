@@ -225,6 +225,9 @@ export function createHistory({
         document.querySelectorAll('[data-history-analysis]').forEach((section) => {
             section.classList.toggle('hidden', firstUse);
         });
+        document.querySelectorAll('[data-history-content]').forEach((element) => {
+            element.classList.toggle('hidden', firstUse);
+        });
     }
 
     function localize() {

@@ -1,4 +1,4 @@
-"""Parse bounded runtime values from environment variables."""
+"""Validate runtime values read from environment variables."""
 
 from __future__ import annotations
 

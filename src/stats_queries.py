@@ -1,7 +1,7 @@
-"""Compatibility facade for category-owned statistics queries.
+"""Compatibility imports for the statistics query modules.
 
-New code may import the focused modules directly. The stable facade keeps
-``src.database`` and existing integrations source-compatible.
+New code may import the focused modules directly. Existing imports remain
+supported through this module.
 """
 
 from src.stats_query_history import get_playback_history

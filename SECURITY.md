@@ -22,3 +22,5 @@ Include the following in a private report when possible:
 Navidrome Stat stores listening history and server configuration in SQLite. Protect the application, its Docker volume, exported data, and backups as sensitive resources.
 
 The application does not terminate TLS. Use a trusted network or a TLS-enabled reverse proxy, and configure `STATS_API_TOKEN` before exposing the dashboard outside a private network. Review the deployment guidance in [`README.md`](README.md) and the data-handling details in [`docs/privacy.md`](docs/privacy.md).
+
+`STATS_API_TOKEN` is a shared full-access credential. It protects viewing and administrative APIs at the same level; Navidrome Stat does not provide separate viewer and administrator roles. Use a separate access-control layer when a deployment requires read-only access.

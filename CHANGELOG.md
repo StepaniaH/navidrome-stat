@@ -4,47 +4,47 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-08-31
+
 ### Added
 
-- Prometheus metrics now cover dashboard build duration and cache outcomes, SQLite busy retries, import duration, and cover-art cache hits, misses, usage, and limit.
-- Fixed-section Dashboard query metrics now expose count, total/max duration, and configured-budget violations without high-cardinality scope labels.
-- Recent Plays now offers on-demand details for attempts below the configured counting threshold. The details follow the current date, server, user, and timezone filters and describe counting semantics without inferring listener intent.
+- Prometheus metrics now cover dashboard builds and cache outcomes, SQLite busy retries, imports, cover-art caching, and fixed-section query budgets.
+- Recent Plays now offers on-demand details for attempts below the configured counting threshold. The details follow the current date, server, user, and timezone filters without labeling short sessions as intentional skips.
 - Privacy export format v3 adds stable record IDs and fingerprints. Merge imports now report inserted, skipped, and conflicting rows; formats v1 and v2 remain importable and gain deterministic repeat-import deduplication.
 - Readiness reports durable playback-write health separately from upstream polling health.
 
 ### Changed
 
-- First-use dashboards keep connection guidance and current collection status visible while collapsing empty historical analysis sections. Filtered empty results still show section-specific guidance.
-- Dashboard reads now use one immutable `StatsScope` for validation, cache identity, and repository query conditions.
-- Dashboard cache misses now read all local sections through one SQLite transaction and connection. IANA-timezone bucket scans stream rows instead of retaining another full timestamp list in memory.
-- Dashboard, Settings privacy, statistics queries, and privacy operations now compose focused behavior-owning modules while retaining the existing plain-JavaScript runtime and Python compatibility import surfaces.
-- Server configuration and playback observations now cross core boundaries as immutable values; playback-session dictionaries have an explicit structural type.
-- Settings page styles now live in a standalone stylesheet. Dashboard and Settings reuse the same authentication, HTTP, duration, preference, and listbox modules without adding a frontend build framework.
+- First-use dashboards keep connection guidance, current collection status, and playback-accounting details available while collapsing empty historical charts and tables. Filtered empty results still show section-specific guidance.
+- Dashboard cache misses now read all local sections from one consistent SQLite snapshot. IANA-timezone bucket scans stream rows to reduce peak memory use.
 - The product display name is consistently "Navidrome Stat" across the interface, documentation, API metadata, and releases. Existing repository and Docker image names remain unchanged.
 - New local checkouts keep runtime data under `.data/`, while existing root-level databases remain automatically discoverable and Docker deployments continue using `/data`.
 - Tag releases now require strict SemVer, matching source and Docker versions, release notes, the complete test workflow, and a container smoke test. Stable releases publish `latest`; prereleases do not. Successful image builds create a GitHub Release with the image digest and rollback guidance.
-- The scheduled million-row statistics benchmark now enforces a 2500 ms per-query regression ceiling and retains its report when the budget fails.
 - Backup guidance archives the complete data volume and includes a restore integrity check before production recovery.
 - Advanced theme settings summarize contrast by text role without exposing raw ratios, while retaining validation across every editable background.
 
 ### Fixed
 
-- Cover-art caching preserves validated WebP and AVIF content types instead of defaulting unrecognized images to JPEG.
-- Cover-art proxy responses are size-bounded while streaming, checked against their real image signature, read and written off the event loop, and no longer retain unused per-key locks.
+- Cover-art caching preserves validated WebP and AVIF content types instead of defaulting unrecognized images to JPEG. The cache no longer writes unused MIME sidecar files.
+- Cover-art proxy responses enforce a streaming size limit, verify the image signature, perform file operations off the event loop, and release per-key request locks after use.
 - Retention previews no longer claim that `DELETE` shrinks the SQLite database file; they report deleted record payload while explaining that SQLite reuses freed pages internally.
 - Older application versions now refuse databases with a newer schema before creating or changing schema objects and provide upgrade-or-restore guidance.
-- Review album-cover tests now patch the current server-option seam after its registry refactor, restoring the complete Python test suite.
 - Finite date-window queries now use schema v13 UTC epoch columns and source/user/time indexes instead of wrapping `played_at` in `datetime()`, allowing SQLite to use the time index while preserving local-calendar and DST boundaries.
-- Docker build contexts now exclude local credential keys, databases, cover-art caches, backups, and `.data/` contents.
 - The Settings header distinguishes browser-only display preferences from connections and data controls saved by the service.
-- The roadmap now lists viewer/admin separation and time-limited read-only sharing instead of shipped per-user dashboard and year-in-review filtering.
 - Recent playback metadata is selected by playback time rather than insertion order, so importing older history cannot replace the latest title or timestamp.
 - Album rankings persist upstream album IDs and keep same-named albums separate by source and artist; multi-server cover art uses each ranking row's source.
-- Native `getSongHistory` imports commit and checkpoint each page, resume after bounded runs or restarts, and retry failures with persisted exponential backoff.
+- Native `getSongHistory` imports commit and checkpoint each page, resume after limited batches or restarts, and retry failures with persisted exponential backoff.
 - Deleting a user's data discards active in-memory sessions and suppresses their already queued writes while allowing future plays to start fresh sessions.
 - Year-in-review links, requests, responses, cache entries, aggregates, and visible labels preserve year, server, user, and timezone scope; the page reports loading and retry states, prevents outdated responses from replacing the selected year, and provides text summaries for charts.
 - The review login dialog keeps keyboard focus within the dialog, the dashboard localizes its review link, and recent-play column preferences apply on mobile.
 - The recent-play column menu remains visible outside short empty-state cards and stays open while multiple columns are changed.
+- Playback-attempt rates now exclude backfill and native-history imports because those records were not observed as live playback sessions. Privacy-archive restores remain included.
+- A cache invalidation error after a successful playback write is logged separately and no longer marks durable playback persistence as unhealthy.
+
+### Security
+
+- Docker build contexts exclude local credential keys, databases, cover-art caches, backups, and `.data/` contents.
+- Metrics use fixed section labels and do not include users, servers, tracks, or other high-cardinality identifiers.
 
 ## [0.8.7] - 2026-08-29
 
@@ -88,7 +88,7 @@ All notable user-facing changes are documented in this file. The format follows 
 ### Added
 
 - Optional backfill bridge: point any saved server at a Navidrome smart playlist and its watched contents are imported as estimated pre-install listens through the public `getPlaylist` API only. One estimated event per track derives from the exact last-played timestamp; re-runs never double count, and events inside live-poller coverage are excluded. Configure per connection on the settings page, watch continuously, or trigger a one-off sync from the API.
-- A `getSongHistory` importer seam is wired end to end: once upstream Navidrome ships the proposed endpoint (PR #5650), an initial native-history import runs automatically when the server advertises it.
+- A `getSongHistory` importer is wired end to end: once upstream Navidrome ships the proposed endpoint (PR #5650), an initial native-history import runs automatically when the server advertises it.
 - Top-artist lists now show cover art when Navidrome provides an artist image: collected sessions persist the upstream artist ID, and the dashboard and year-in-review rankings resolve artwork through the authenticated cover-art proxy with the usual letter-tile fallback.
 - Spanish and French interface localization across the dashboard, review, and settings pages; all languages now label one another in the settings picker.
 
@@ -258,7 +258,8 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.7...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.8...HEAD
+[0.8.8]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.4...v0.8.5

@@ -31,7 +31,7 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.
 - System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview, grouped contrast validation, HEX copy, unsaved-change protection, and strict per-preset JSON import or export. Appearance choices stay in the browser and apply across the dashboard, year-in-review, settings, and API reference; seven interface languages are available.
 - Dashboard filters and year-in-review scope persist in the URL, so views survive reloads and can be shared as links.
-- The recent-plays table has configurable column visibility on desktop and mobile, saved per browser.
+- The recent-plays table has configurable column visibility on desktop and mobile, saved per browser, plus on-demand details about sessions that ended before they counted as plays.
 - Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
 - Supports per-server filtering, connection management with first-use guidance and redacted failure diagnosis, retention settings, and per-user JSON export, import, and deletion.
 - Filter the dashboard and year-in-review by user as well as server; the review charts switch between play counts and listening time.
@@ -175,6 +175,8 @@ A track counts once its accumulated active observation time reaches `PLAY_THRESH
 
 When a server advertises the OpenSubsonic `playbackReport` extension, position and playback-state fields improve duration accounting. Other servers continue to work through regular polling. Sessions that end below the play threshold are stored separately as playback attempts.
 
+The Recent Plays information control reports these below-threshold sessions as a share of observed playback attempts. Pre-install backfill and native-history imports are excluded from that rate because the application did not observe them as live sessions; records restored from a Navidrome Stat privacy archive retain their original accounting role.
+
 ## Recovering pre-install history
 
 Optionally, a saved connection can watch a Navidrome smart playlist (an `.nsp` such as "Recently Played"). On each check the service reads that playlist through the public `getPlaylist` API and stores one estimated play per track from its last-played timestamp. Re-runs never duplicate rows, listens already covered by live polling are skipped, and only plays that actually happened before installation are imported — older repeats implied by a track's play count are never invented. Configure the playlist ID per connection on the settings page.
@@ -249,6 +251,7 @@ To restore production, stop the service, preserve the current volume, extract th
 ## Security and privacy
 
 - Without `STATS_API_TOKEN`, dashboard data and APIs are anonymous. Use this only on a trusted network.
+- `STATS_API_TOKEN` grants one shared authorization level for viewing data, changing connections and settings, and running import, retention, or deletion operations. It is not a read-only user account.
 - `/health` and `/health/ready` remain public. `/metrics` is public by default unless `STATS_METRICS_AUTH=true` is used with a token.
 - `/metrics` includes polling and persistence health plus Dashboard build/cache, fixed-section query timing and budget violations, SQLite busy retry, import-duration, and cover-art cache metrics.
 - Static dashboard files remain loadable when authentication is enabled; their data requests require authorization.

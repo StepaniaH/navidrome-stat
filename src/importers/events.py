@@ -3,7 +3,7 @@
 All importers emit the event shape consumed by ``play_history`` writes:
 provenance columns (``source``/``source_id``/``source_name``), a
 deterministic ``external_event_key`` that makes re-runs idempotent, and
-honest confidence values (imported durations are unknown, so they stay
+accurate confidence values (imported durations are unknown, so they stay
 NULL and count as plays without inflating listening minutes).
 """
 

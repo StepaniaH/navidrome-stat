@@ -57,7 +57,7 @@ async def get_short_play_stats(
     start_date: date | None = None,
     end_date: date | None = None,
 ):
-    """Return short-play counts and rate; this is not a skip-rate claim."""
+    """Return short-play counts among observed attempts; this is not skip rate."""
     path = _path(db_path)
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
@@ -74,7 +74,8 @@ async def get_short_play_stats(
             short = await cursor.fetchone()
         async with db.execute(
             f"""
-            SELECT COUNT(*) AS counted_count FROM play_history WHERE {pred}
+            SELECT COUNT(*) AS counted_count FROM play_history
+            WHERE {pred} AND COALESCE(source, 'poller') IN ('poller', 'import')
         """,
             params,
         ) as cursor:

@@ -102,13 +102,8 @@ class CoverArtService:
         ).hexdigest()
         return self.cache_dir() / f"{digest}.img"
 
-    @staticmethod
-    def _mime_path(path: Path) -> Path:
-        return path.with_suffix(".mime")
-
     def _cached_content_type(self, data: bytes) -> str | None:
-        # A sidecar or upstream header is advisory only. Bytes must identify as
-        # one of the supported formats before they are served by the proxy.
+        # Cached bytes must identify as a supported format before they are served.
         return _detect_type(data)
 
     @asynccontextmanager
@@ -165,7 +160,7 @@ class CoverArtService:
             content_type = _detect_type(data)
             if content_type is None:
                 return None
-            cache_bytes = await asyncio.to_thread(self._store, path, data, content_type)
+            cache_bytes = await asyncio.to_thread(self._store, path, data)
             runtime_state.coverart_cache_bytes = cache_bytes
             return data, content_type
 
@@ -194,15 +189,13 @@ class CoverArtService:
             if content_type is not None and len(data) <= self._max_response_bytes:
                 return data, content_type, self._cache_bytes()
             path.unlink(missing_ok=True)
-            self._mime_path(path).unlink(missing_ok=True)
             self._tracked_bytes = None
             return None
 
-    def _store(self, path: Path, data: bytes, content_type: str) -> int:
+    def _store(self, path: Path, data: bytes) -> int:
         with self._cache_io_guard:
             self._cache_bytes()
             path.write_bytes(data)
-            self._mime_path(path).write_text(content_type, encoding="ascii")
             self._tracked_bytes += len(data)
             if self._tracked_bytes > self._max_bytes:
                 self._evict()
@@ -225,7 +218,6 @@ class CoverArtService:
                     break
                 total -= path.stat().st_size
                 path.unlink(missing_ok=True)
-                self._mime_path(path).unlink(missing_ok=True)
             self._tracked_bytes = total
 
     async def resolve_album_id(

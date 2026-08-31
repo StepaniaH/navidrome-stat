@@ -1,4 +1,4 @@
-"""getSongHistory importer seam for the upstream endpoint (Navidrome PR #5650).
+"""getSongHistory importer for the proposed upstream endpoint (Navidrome PR #5650).
 
 Inert until a server advertises the proposed ``getSongHistory`` read API;
 pagination, normalization, cutoff suppression, and idempotent writes are all
@@ -50,7 +50,7 @@ async def run_song_history(
     start_offset: int = 0,
     checkpoint: Callable[[int, bool], Awaitable[None]] | None = None,
 ) -> dict[str, int | bool]:
-    """Import bounded pages, durably checkpointing after each committed page."""
+    """Import a limited number of pages and checkpoint each committed page."""
     imported = 0
     skipped = 0
     processed = 0

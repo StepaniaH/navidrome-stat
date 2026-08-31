@@ -8,10 +8,10 @@ Navidrome Stat is a single-process FastAPI application with background collector
 2. A collector is created for each enabled Navidrome server. When the server list is empty, a compatible fallback connection is resolved field by field from non-empty `NAVIDROME_*` environment variables and previously saved fallback values, in that order. Once any server entry exists, only enabled entries from that list are collected; disabled entries do not reactivate the fallback.
 3. Each collector calls the Subsonic `getNowPlaying` endpoint on a fixed interval. It also checks `getOpenSubsonicExtensions` for the `playbackReport` capability.
 4. A `PlaybackSessionTracker` keeps active sessions in memory, keyed by player ID.
-5. Counted sessions and below-threshold attempts are written to SQLite through the stats service, which also invalidates the dashboard snapshot cache on every write.
+5. Counted sessions and below-threshold attempts are written to SQLite through the stats service, which requests dashboard-cache invalidation after every successful write. An invalidation failure is logged separately and does not turn a completed database write into a persistence failure.
 6. The statistics API aggregates stored data, and the dashboard renders the results with locally bundled Tailwind CSS and Apache ECharts assets.
 
-The implementation is split along its natural seams:
+The implementation is organized by responsibility:
 
 | Component | Files |
 | --- | --- |
@@ -23,17 +23,17 @@ The implementation is split along its natural seams:
 | Transactionally consistent dashboard reads | `src/stats_read_repository.py` |
 | HTTP routes: system/auth, statistics, privacy, connections | `src/routes/*.py` |
 | Playback session tracking | `src/sessions.py` |
-| History importers: event normalization, playlist bridge, `getSongHistory` seam | `src/importers/*.py` |
+| History importers: event normalization, playlist bridge, `getSongHistory` integration | `src/importers/*.py` |
 | SQLite schema, migrations, shared metadata store | `src/schema.py` |
 | Local-time windows and SQL predicate composition | `src/windows.py` |
 | Durable playback writes | `src/persistence.py` |
-| Statistics read queries by overview, timeline, ranking, and history | `src/stats_query_*.py`; `src/stats_queries.py` compatibility facade |
+| Statistics read queries by overview, timeline, ranking, and history | `src/stats_query_*.py`; `src/stats_queries.py` compatibility module |
 | Year-in-review aggregation | `src/review_queries.py` |
 | Server registry CRUD with credential encryption | `src/server_registry.py`, `src/secretbox.py` |
-| Retention, versioned archives, and deletion | `src/privacy_retention.py`, `src/privacy_archive.py`, `src/privacy_deletion.py`; `src/privacy_ops.py` compatibility facade |
+| Retention, versioned archives, and deletion | `src/privacy_retention.py`, `src/privacy_archive.py`, `src/privacy_deletion.py`; `src/privacy_ops.py` compatibility module |
 | Dashboard and settings UI | `src/static/`, `src/static/js/` |
 
-`src/database.py` remains a compatibility import surface for existing callers. New core paths depend on the narrower schema, persistence, query, and server-registry modules directly; it is not treated as a transaction or repository seam.
+`src/database.py` continues to provide compatibility imports for existing callers. New core paths depend on the schema, persistence, query, and server-registry modules directly; it is not a transaction or repository layer.
 
 ## Playback accounting
 
@@ -43,14 +43,14 @@ Once active time reaches `PLAY_THRESHOLD_SEC`, the session is stored as one coun
 
 When the upstream server advertises the OpenSubsonic `playbackReport` extension, position, state, and playback-rate fields improve duration accounting: `playing` and `starting` advance listening time, `paused` keeps the session in the pause grace window, and the terminal `stopped` and `expired` states finalize the session immediately. Otherwise the tracker estimates duration from polling intervals.
 
-Active sessions exist only in application memory; they are exposed to routes through a small behavioral surface (`now_playing()`, `active_count()`) rather than raw state. Counted sessions have durable checkpoints, but a process exit can still lose an uncommitted below-threshold session.
+Active sessions exist only in application memory; routes use the limited `now_playing()` and `active_count()` interface instead of accessing tracker state directly. Counted sessions have durable checkpoints, but a process exit can still lose an uncommitted below-threshold session.
 
 ## History importers
 
 Two optional importers fill the gap before live polling started. Both emit the same normalized listen event (provenance columns, unknown duration left NULL, `duration_confidence` set to `estimated`) and write through a single idempotent path: `StatsService.record_imported_events` inserts with an `external_event_key`, whose partial unique index makes re-runs no-ops. Import rows use `source = 'backfill'` or `'song_history'`, and add plays without inflating listening minutes.
 
 - **Backfill bridge**: each enabled server may point at a Navidrome smart playlist (`.nsp`). A watch task reads it through public `getPlaylist` on `BACKFILL_INTERVAL_SEC` and converts one estimated event per track from its last-played timestamp; only the newest play per track is exact, so older plays under `playCount` are never invented. A manual **sync** endpoint runs once immediately.
-- **`getSongHistory` seam**: the adapter paginates the proposed OpenSubsonic endpoint (upstream Navidrome PR #5650, not merged). The polling loop already probes for it; when a server advertises it, the initial import commits one page at a time, persists its per-source/user offset in SQLite, resumes bounded runs after restarts, and backs off after failures.
+- **`getSongHistory` importer**: the adapter paginates the proposed OpenSubsonic endpoint (upstream Navidrome PR #5650, not merged). The polling loop already probes for it; when a server advertises it, the initial import commits one page at a time, persists its per-source/user offset in SQLite, resumes limited batches after restarts, and backs off after failures.
 
 To avoid double counting, imports never land on or after live-poller coverage: events must predate the oldest `source = 'poller'` row of that source and username, minus a small safety margin (`BACKFILL_CUTOFF_MARGIN_SEC`).
 
@@ -62,7 +62,7 @@ Privacy exports use format v3. Every history row and short-play attempt carries 
 
 Album rankings use `(source, album_id)` when the upstream ID is present. Older rows fall back to `(source, album, artist)`, preventing common names such as “Live” or “Greatest Hits” from merging across artists or servers.
 
-Dashboard history is read through aggregate queries. A validated, immutable `StatsScope` is the shared interface for cache identity and repository query conditions, so date, timezone, metric, server, and user selections cannot diverge between those paths. `StatsReadRepository` builds the local dashboard data sequentially inside one SQLite read transaction, so a cache miss uses one physical connection and one database snapshot instead of combining results observed at different instants. Timestamp rows that still require Python's IANA timezone and DST rules are streamed from SQLite rather than materialized as a second full list. A short-lived in-process cache reduces repeated work for identical dashboard filters. The cache lives behind the stats service: every playback write, retention purge, user import or deletion, and server mutation invalidates it inside the service, so callers cannot forget. Below-threshold playback-attempt totals remain outside the main snapshot and are requested only when the Recent Plays accounting detail is opened; that request uses the same date, server, user, and timezone scope as the dashboard.
+Dashboard history is read through aggregate queries. A validated, immutable `StatsScope` is shared by cache identity and repository query conditions, so date, timezone, metric, server, and user selections stay consistent. `StatsReadRepository` builds the local dashboard data sequentially inside one SQLite read transaction, so a cache miss uses one physical connection and one database snapshot. Timestamp rows that require Python's IANA timezone and DST rules are streamed from SQLite instead of copied into another in-memory list. A short-lived in-process cache reduces repeated work for identical dashboard filters. The stats service requests invalidation after mutations; playback-cache errors are logged without misreporting a successful database write as a persistence failure. Below-threshold playback-attempt totals remain outside the main snapshot and are requested only when the Recent Plays accounting detail is opened. The request uses the same date, server, user, and timezone scope as the dashboard. Its rate compares below-threshold attempts with live-poller sessions and privacy-archive restores, excluding backfill and native-history imports that were not observed as playback attempts.
 
 Finite retention policies run during startup and in a periodic background task. Policy updates, background cleanup, and manual **Apply now** requests are serialized on the application's event loop; manual cleanup also verifies that the saved policy still matches the previewed policy.
 
@@ -99,7 +99,7 @@ The dashboard, settings, and API reference pages are plain ES modules served und
 | `js/dashboard/play-accounting.js` | Lazy counted/short-play explanation and scoped request lifecycle |
 | `js/dashboard/historical-dashboard.js` | Summary, chart, ranking, and source-breakdown rendering |
 
-Dashboard filters and year-in-review scope use shareable URL parameters. The dashboard carries the selected server, user, and resolved timezone into its review link; the review page restores those values together with the selected year, sends the same scope to the statistics API, and keeps the effective user/server scope visible. Review requests expose explicit loading, empty, error, and retry states. Changing years aborts the previous request, and a generation check prevents an older response from replacing the current selection.
+Dashboard filters and year-in-review scope use shareable URL parameters. The dashboard carries the selected server, user, and resolved timezone into its review link; the review page restores those values together with the selected year, sends the same scope to the statistics API, and keeps the year, user, server, and timezone visible. Review requests expose explicit loading, empty, error, and retry states. Changing years aborts the previous request, and a generation check prevents an older response from replacing the current selection.
 
 Appearance has two independent preferences. The mode is `system`, `dark`, or `light`; system mode resolves the browser's read-only `prefers-color-scheme` media query. The palette is one of Built-in, Gruvbox, Catppuccin, Solarized, Nord, Dracula, Tokyo Night, Macchiato, or Mocha. Every family provides a concrete light and dark variant, so the resolver always maps the pair directly to one of 18 theme IDs.
 
@@ -111,7 +111,7 @@ Pure frontend logic is covered by Node unit tests (`npm run test:unit`); page be
 
 Prometheus metrics cover poll/save health, dashboard build duration and cache outcomes, fixed-section query count/sum/max and budget violations, observed SQLite busy retries, import duration, and cover-art cache hits, misses, bytes in use, and configured limit. Query observations use a fixed set of section labels and the `STATS_QUERY_BUDGET_MS` budget; they do not include user, server, track, or other high-cardinality values. Daily or hourly rollups remain deferred until production observations and the multi-scale benchmark demonstrate that raw-history queries exceed their budgets.
 
-Cover art is streamed from the upstream server with a bounded response size before it is cached. The proxy serves only bytes whose actual JPEG, PNG, GIF, WebP, or AVIF signature is recognized; an upstream header or cache sidecar cannot override the detected type. Cache file reads, writes, scans, and eviction run in worker threads, and per-key single-flight locks are removed after their final waiter exits.
+Cover art is streamed from the upstream server with a size limit before it is cached. The proxy serves only bytes whose actual JPEG, PNG, GIF, WebP, or AVIF signature is recognized; an upstream header cannot override the detected type. Cache file reads, writes, scans, and eviction run in worker threads, and per-key request locks are removed after their final waiter exits.
 
 ## Runtime boundaries
 
@@ -119,7 +119,7 @@ Cover art is streamed from the upstream server with a bounded response size befo
 - Run the application with one worker and one event loop. Multi-worker deployments are not supported.
 - Multiple processes or replicas collecting the same sources are not supported and can double-count plays.
 - The SQLite file must be on storage suitable for a single-host database; shared network filesystems are not supported.
-- Authentication is optional. `STATS_API_TOKEN` protects dashboard data and application APIs when configured, but the application does not terminate TLS.
+- Authentication is optional. `STATS_API_TOKEN` protects dashboard data and application APIs at one shared authorization level when configured; there are no separate viewer and administrator roles. The application does not terminate TLS.
 - Health endpoints report process, database, collector, upstream, and durable-write state. A successful upstream poll cannot mask a failed playback write. These endpoints are not a replacement for deployment-level monitoring or backups.
 
 FastAPI exposes the current HTTP schema at `/openapi.json` and a same-origin searchable reference at `/docs` (also served at `/redoc`) unless OpenAPI routes are disabled with `OPENAPI_ENABLED=false`.

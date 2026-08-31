@@ -285,9 +285,9 @@ test("playback accounting details load only when opened", async ({ page }) => {
     "Playback attempts below the counting threshold",
   );
   await expect(panel.locator("#playAccountingValue")).toHaveText(
-    "2 attempts · 25% of all playback attempts",
+    "2 attempts · 25% of observed playback attempts",
   );
-  await expect(panel).toContainText("were not counted as plays");
+  await expect(panel).toContainText("were not recorded as plays");
   await expect.poll(() => requests.length).toBe(1);
   const query = new URL(requests[0]).searchParams;
   expect(query.get("days")).toBe("30");
@@ -403,6 +403,9 @@ test("first-use dashboard collapses historical analysis", async ({ page }) => {
   await expect(page.locator("#playerChartError")).toBeHidden();
   await expect(page.locator("#errorBanner")).toBeHidden();
   await expect(page.locator("#newUserGuide")).toBeVisible();
+  await expect(page.locator("#playAccountingButton")).toBeVisible();
+  await page.locator("#playAccountingButton").click();
+  await expect(page.locator("#playAccountingValue")).toContainText("25%");
 });
 
 test("empty filtered results do not look like first use", async ({ page }) => {

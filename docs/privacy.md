@@ -22,7 +22,7 @@ These fields can reveal personal listening habits when combined, even when the m
 
 Credentials supplied through `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` remain in the process environment and memory. Credentials saved from **Settings > Connections** or through the compatible fallback `/api/source/config` endpoint are encrypted at rest with AES-256-GCM. The per-installation key file, `secret.key`, is stored beside the SQLite database and must be backed up with it; restoring the database without that key leaves saved passwords unavailable until they are entered again.
 
-The settings APIs return configured URLs and usernames to authorized viewers, but never return saved passwords. Connection tests and `/api/diagnostics` return stable failure categories rather than upstream exception text. The diagnostics response contains aggregate connection, collector, and history counts but omits URLs, usernames, passwords, source IDs, and playback metadata; it is protected whenever `STATS_API_TOKEN` is configured. Protect the database, Docker volume, `.env` file, and backups as credentials.
+The settings APIs return configured URLs and usernames to authorized sessions, but never return saved passwords. Connection tests and `/api/diagnostics` return stable failure categories rather than upstream exception text. The diagnostics response contains aggregate connection, collector, and history counts but omits URLs, usernames, passwords, source IDs, and playback metadata; it is protected whenever `STATS_API_TOKEN` is configured. Protect the database, Docker volume, `.env` file, and backups as credentials.
 
 Subsonic authentication uses token and salt query parameters. The application avoids logging upstream request URLs, but reverse proxies, network tools, and the Navidrome server may have their own access logs. Configure those systems so authentication query parameters are not retained or shared.
 
@@ -36,7 +36,7 @@ Per-user controls support JSON export, import, and deletion. Format v3 exports i
 
 Deleting a user discards that user's active in-memory sessions and suppresses writes already queued for those sessions. Playback observed after deletion starts a new session and is collected normally. Deletion from the application database does not remove exports or copies already present in backups or external storage.
 
-The database retains a completed history-import checkpoint and a deletion cutoff after deletion so history and playlist importers cannot restore older records. Their keys use SHA-256 digests of the source ID and username; their values contain only an import offset and completion state or the UTC deletion time, not the cleartext username or listening metadata. Removing the application database also removes these markers.
+The database retains a history-import checkpoint and a deletion cutoff after deletion so history and playlist imports cannot restore older records. Their keys use SHA-256 digests of the source ID and username. The history checkpoint records the next offset, completion status, failure count, and next retry time; the deletion cutoff records the UTC deletion time. Neither value contains the cleartext username or listening metadata. Removing the application database also removes these markers.
 
 SQLite uses write-ahead logging. The database file, `-wal` and `-shm` files, volume snapshots, and backups can all contain the same sensitive data. Stop the application before taking a simple file-level backup, as shown in the README.
 
@@ -46,12 +46,15 @@ Language, theme, timezone, and reduced-motion preferences are stored in browser 
 
 Frontend assets are served by the application. Normal dashboard use does not load JavaScript or CSS from a public CDN, and the project does not include usage analytics or telemetry. The published container disables Uvicorn request access logs because application URLs can contain usernames, source identifiers, and dashboard filters. Operators using another application server or reverse proxy should apply an equivalent logging policy.
 
-Without `STATS_API_TOKEN`, dashboard data and APIs are available to anyone who can reach the service. The application does not provide TLS; use a trusted network or an HTTPS reverse proxy with appropriate access control.
+Navidrome Stat has one shared authorization level. Anyone with `STATS_API_TOKEN` can view all stored listening data and configured connection identities, change settings and connections, and use export, import, retention, and deletion controls. There are no separate viewer and administrator roles. Do not distribute the token as a read-only credential; use an access-controlled reverse proxy if deployments need that separation.
+
+Without `STATS_API_TOKEN`, dashboard data and all application APIs, including administrative and deletion operations, are available to anyone who can reach the service. The application does not provide TLS; use a trusted network or an HTTPS reverse proxy with appropriate access control.
 
 ## Operator checklist
 
 - Tell affected users what listening activity is collected and why.
 - Set `STATS_API_TOKEN` or equivalent proxy authentication when access is not limited to a trusted network.
+- Give the shared token only to people who may change settings and delete data.
 - Restrict access to `.env`, SQLite files, Docker volumes, exports, and backups.
 - Review proxy and Navidrome logs for authentication query parameters.
 - Choose a retention period and backup policy appropriate for the deployment.

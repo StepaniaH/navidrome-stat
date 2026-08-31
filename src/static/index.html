@@ -355,7 +355,7 @@
         </section>
 
         <!-- Recent plays -->
-        <section data-history-analysis class="history-section rounded-2xl bg-ink-900/80 shadow-card border border-white/5" role="region" aria-label="播放历史" data-i18n-attr="aria-label:dashboard.history">
+        <section class="history-section rounded-2xl bg-ink-900/80 shadow-card border border-white/5" role="region" aria-label="播放历史" data-i18n-attr="aria-label:dashboard.history">
             <div class="px-5 sm:px-6 py-5 border-b border-white/5">
                 <div class="flex items-center justify-between gap-3">
                     <h2 class="text-sm font-semibold text-slate-300" data-i18n="dashboard.history">最近播放</h2>
@@ -375,7 +375,7 @@
                                     <p id="playAccountingLoading" class="play-accounting-state" data-i18n="insight.shortPlaysLoading">正在加载播放尝试…</p>
                                     <div id="playAccountingContent" class="hidden">
                                         <p id="playAccountingValue" class="play-accounting-value"></p>
-                                        <p class="play-accounting-description" data-i18n="insight.shortPlaysDescription">这些播放尝试在达到当前计入阈值前结束，因此没有计入播放次数。</p>
+                                        <p class="play-accounting-description" data-i18n="insight.shortPlaysDescription">这些已观测会话在满足计入条件前结束，因此没有计入播放次数。</p>
                                     </div>
                                     <p id="playAccountingEmpty" class="play-accounting-state hidden" data-i18n="insight.shortPlaysEmpty">当前筛选范围内暂无播放尝试。</p>
                                     <div id="playAccountingError" class="play-accounting-state hidden" role="status">
@@ -385,7 +385,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="filter-control columns" id="historyColumnsControl">
+                        <div class="filter-control columns" id="historyColumnsControl" data-history-content>
                             <button id="historyColumnsButton" type="button" class="header-icon-button" aria-haspopup="true" aria-expanded="false" aria-controls="historyColumnsPanel" data-i18n-attr="aria-label:history.columns,title:history.columns" aria-label="列设置" title="列设置">
                                 <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 6h18M3 12h18M3 18h18"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 3v18"/></svg>
                             </button>
@@ -393,9 +393,9 @@
                         </div>
                     </div>
                 </div>
-                <p class="text-xs text-slate-600 mt-0.5" data-i18n="subtitle.history">按最近播放时间排序，重复收听会累加 Plays</p>
+                <p class="text-xs text-slate-600 mt-0.5" data-history-content data-i18n="subtitle.history">按最近播放时间排序，重复收听会累加 Plays</p>
             </div>
-            <div id="historyTableWrap" class="history-table-wrap relative">
+            <div id="historyTableWrap" class="history-table-wrap relative" data-history-content>
                 <table class="history-table text-sm">
                     <caption class="sr-only" data-i18n="history.caption">播放历史记录表</caption>
                     <colgroup>

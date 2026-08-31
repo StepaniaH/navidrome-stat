@@ -2,7 +2,7 @@
 
 Schema and migrations live in :mod:`src.schema`; the query layer lives in
 :mod:`src.stats_queries` with time windows in :mod:`src.windows`. This module
-re-exports the stable import surface that routes and services consume.
+re-exports names used by routes and services.
 """
 
 from src.persistence import (  # noqa: F401

@@ -1,4 +1,4 @@
-"""Compatibility facade for retention, archive, and deletion operations."""
+"""Compatibility imports for retention, archive, and deletion operations."""
 
 from src.privacy_archive import export_user_data, import_user_data
 from src.privacy_constants import (

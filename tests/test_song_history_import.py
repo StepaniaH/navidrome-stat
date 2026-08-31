@@ -1,4 +1,4 @@
-"""getSongHistory adapter seam (upstream Navidrome PR #5650, unmerged).
+"""getSongHistory adapter (upstream Navidrome PR #5650, unmerged).
 
 The live endpoint does not exist yet; these tests drive the adapter through
 fakes so the pipeline is fully exercised and only flips on capability probe.
