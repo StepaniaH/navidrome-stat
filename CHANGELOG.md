@@ -4,6 +4,8 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-08-31
+
 ### Added
 
 - Artist and album rankings now open a scoped detail drawer with playback and listening-time trends, first and latest play times, top tracks, recent plays, prior-period rank changes, and a stable shareable URL.
@@ -271,7 +273,8 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.8...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.9...HEAD
+[0.8.9]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.5...v0.8.6
