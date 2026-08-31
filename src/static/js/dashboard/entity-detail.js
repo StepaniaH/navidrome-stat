@@ -51,6 +51,7 @@ export function createEntityDetail({
     t,
     formatNumber,
     formatDuration,
+    formatPreciseDuration,
     formatPlays,
     getLocale,
     getScope,
@@ -286,8 +287,13 @@ export function createEntityDetail({
                 item.title || t('entity.unknownTrack'),
             );
             title.title = title.textContent;
-            const meta = [item.album, item.source_name].filter(Boolean).join(' · ');
-            appendText(copy, 'entity-list-meta', meta || '—');
+            const context = [item.album, item.source_name].filter(Boolean).join(' · ');
+            if (context) appendText(copy, 'entity-list-context', context);
+            if (item.last_played_at) {
+                appendText(copy, 'entity-list-meta', t('entity.lastPlayedAt', {
+                    time: formatDateTime(item.last_played_at),
+                }));
+            }
             const value = document.createElement('span');
             value.className = 'entity-list-value stat-value';
             value.textContent = `${formatPlays(item.play_count)} · ${formatDuration(item.total_listen_sec)}`;
@@ -314,6 +320,8 @@ export function createEntityDetail({
                 item.title || t('entity.unknownTrack'),
             );
             title.title = title.textContent;
+            const context = [item.album, item.source_name].filter(Boolean).join(' · ');
+            if (context) appendText(copy, 'entity-list-context', context);
             const meta = [
                 formatDateTime(item.played_at),
                 item.username,
@@ -333,6 +341,10 @@ export function createEntityDetail({
         renderIdentity(currentIdentity, payload);
         document.getElementById('entityDetailPlays').textContent = formatNumber(payload.total_plays);
         document.getElementById('entityDetailListen').textContent = formatDuration(payload.total_listen_sec);
+        document.getElementById('entityDetailAverage').textContent = formatPreciseDuration(
+            payload.average_listen_sec,
+        );
+        document.getElementById('entityDetailTracks').textContent = formatNumber(payload.unique_tracks);
         const first = document.getElementById('entityDetailFirst');
         const last = document.getElementById('entityDetailLast');
         first.textContent = formatDateTime(payload.first_played_at);

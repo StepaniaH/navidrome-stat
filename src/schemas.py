@@ -179,6 +179,8 @@ class EntityDetailResponse(BaseModel):
     metric: Literal["plays", "listen_time"]
     total_plays: int
     total_listen_sec: int
+    unique_tracks: int
+    average_listen_sec: float
     first_played_at: Optional[str] = None
     last_played_at: Optional[str] = None
     current_rank: Optional[int] = None

@@ -428,6 +428,7 @@ import {
         t: dashboardMessage,
         formatNumber: dashboardNumber,
         formatDuration: dashboardDuration,
+        formatPreciseDuration: dashboardPreciseDuration,
         formatPlays: dashboardPlays,
         getLocale: () => dashboardI18n.getLocale(),
         getScope: captureStatsRequestState,

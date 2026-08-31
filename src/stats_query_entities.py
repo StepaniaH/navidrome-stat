@@ -412,6 +412,8 @@ async def get_entity_detail(
         "metric": scope.metric,
         "total_plays": total_plays,
         "total_listen_sec": total_listen_sec,
+        "unique_tracks": len(track_totals),
+        "average_listen_sec": round(total_listen_sec / total_plays, 2) if total_plays else 0,
         "first_played_at": first_played_at,
         "last_played_at": last_played_at,
         "current_rank": current_rank,

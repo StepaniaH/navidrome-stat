@@ -95,6 +95,8 @@ const entityDetailSnapshot = {
   metric: "plays",
   total_plays: 3,
   total_listen_sec: 185,
+  unique_tracks: 2,
+  average_listen_sec: 61.67,
   first_played_at: "2026-07-27T12:00:00+00:00",
   last_played_at: "2026-07-28T12:00:00+00:00",
   current_rank: 2,
@@ -210,11 +212,16 @@ test("artist ranking opens a scoped, URL-addressable detail panel", async ({ pag
   await expect(page.locator("#entityDetailLayer")).toBeVisible();
   await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Artist");
   await expect(page.locator("#entityDetailPlays")).toHaveText("3");
+  await expect(page.locator("#entityDetailAverage")).toHaveText("1m 2s");
+  await expect(page.locator("#entityDetailTracks")).toHaveText("2");
   await expect(page.locator("#entityDetailCurrentRank")).toHaveText("#2");
   await expect(page.locator("#entityDetailScope")).toContainText("Plays");
   await expect(page.locator("#entityDetailScope")).toContainText("UTC");
   await expect(page.locator("#entityTopTracks")).toContainText("Synthetic Track");
+  await expect(page.locator("#entityTopTracks")).toContainText("Last played");
   await expect(page.locator("#entityRecentPlays")).toContainText("Synthetic Player");
+  await expect(page.locator("#entityRecentPlays")).toContainText("Synthetic Album");
+  await expect(page.locator("#entityRecentPlays")).toContainText("Synthetic Server");
   await expect(page.locator("#entityDetailLoading")).toBeHidden();
   await expect(page.locator("#entityDetailError")).toBeHidden();
   await expect(page.locator("#entityDetailContent")).toBeVisible();
