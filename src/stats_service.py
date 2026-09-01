@@ -256,7 +256,7 @@ class StatsService:
         scope: StatsScope,
         identity: EntityIdentity,
     ) -> dict:
-        """Return a cached artist or album drill-down for one stats scope."""
+        """Return a cached artist, album, or client detail for one stats scope."""
         return await self._cache.get_or_create(
             ("entity_detail", scope, identity),
             lambda: self._read_repository.entity_detail(scope, identity),

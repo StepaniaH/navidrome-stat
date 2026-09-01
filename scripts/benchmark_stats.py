@@ -18,11 +18,13 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.database import (  # noqa: E402
+    get_data_relations,
     get_playback_history,
     get_summary,
     get_time_bucket_stats,
     init_db,
 )
+from src.stats_scope import StatsScope  # noqa: E402
 
 MAX_ROWS = 1_000_000
 SEED_BATCH_SIZE = 10_000
@@ -120,6 +122,12 @@ async def benchmark_size(rows: int) -> dict[str, object]:
             "start_date": date(2024, 1, 1),
             "end_date": date(2024, 12, 31),
         }
+        relation_scope = StatsScope.create(
+            days=0,
+            timezone_name="UTC",
+            metric="plays",
+            **window,
+        )
         scenarios = {
             "time_buckets_all": await measure(
                 lambda: get_time_bucket_stats(days=0, db_path=db_path)
@@ -141,6 +149,27 @@ async def benchmark_size(rows: int) -> dict[str, object]:
                     username="synthetic-user-0",
                     db_path=db_path,
                     **window,
+                )
+            ),
+            "relations_artist_all": await measure(
+                lambda: get_data_relations(
+                    relation_scope,
+                    "artist",
+                    db_path=db_path,
+                )
+            ),
+            "relations_album_all": await measure(
+                lambda: get_data_relations(
+                    relation_scope,
+                    "album",
+                    db_path=db_path,
+                )
+            ),
+            "relations_client_all": await measure(
+                lambda: get_data_relations(
+                    relation_scope,
+                    "client",
+                    db_path=db_path,
                 )
             ),
         }

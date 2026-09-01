@@ -187,6 +187,12 @@ const entityDetailSnapshot = {
   }],
 };
 
+const clientDetailSnapshot = {
+  ...entityDetailSnapshot,
+  entity_type: "client",
+  name: "Synthetic Player",
+};
+
 function relationSnapshot(url) {
   const parsed = new URL(url);
   const dimension = parsed.searchParams.get("dimension") || "artist";
@@ -275,6 +281,9 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/stats/entity-detail?*", (route) =>
     route.fulfill({ json: entityDetailSnapshot }),
   );
+  await page.route("**/api/stats/client-detail", (route) =>
+    route.fulfill({ json: clientDetailSnapshot }),
+  );
   await page.route("**/api/stats/relations?*", (route) =>
     route.fulfill({ json: relationSnapshot(route.request().url()) }),
   );
@@ -359,13 +368,27 @@ test("cross analysis charts share dimension, metric, and URL state", async ({ pa
     .toBe("listen_time");
 });
 
-test("client rows and relationship cells open the same scoped detail", async ({ page }) => {
+test("client rows and relationship cells open detail without exposing the name in URLs", async ({ page }) => {
+  const clientRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/stats/client-detail")) {
+      clientRequests.push(request);
+    }
+  });
   await page.goto("/?timezone=UTC&relation=client");
+  const dashboardUrl = page.url();
   await page.locator("#playerChartLegend .client-detail-button").click();
   await expect(page.locator("#entityDetailLayer")).toBeVisible();
   await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Player");
-  await expect(page).toHaveURL(/entity_type=client/);
-  await expect(page).toHaveURL(/entity_name=Synthetic(?:\+|%20)Player/);
+  await expect(page).toHaveURL(dashboardUrl);
+  await expect(page.locator("#entityDetailCopy")).toBeHidden();
+  await expect.poll(() => clientRequests.length).toBe(1);
+  expect(clientRequests[0].method()).toBe("POST");
+  expect(new URL(clientRequests[0].url()).search).toBe("");
+  expect(clientRequests[0].postDataJSON()).toMatchObject({
+    name: "Synthetic Player",
+    timezone: "UTC",
+  });
   await expect(page.locator("#entityTopTracks")).toContainText("Synthetic Artist");
   await page.locator("#entityDetailClose").click();
   await expect(page.locator("#entityDetailLayer")).toBeHidden();
@@ -380,7 +403,8 @@ test("client rows and relationship cells open the same scoped detail", async ({ 
   await page.mouse.click(matrixPoint.x, matrixPoint.y);
   await expect(page.locator("#entityDetailLayer")).toBeVisible();
   await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Player");
-  await expect(page).toHaveURL(/entity_type=client/);
+  await expect(page).toHaveURL(dashboardUrl);
+  await expect.poll(() => clientRequests.length).toBe(2);
 });
 
 test("all dashboard locales stay contained at desktop and mobile widths", async ({ page }) => {

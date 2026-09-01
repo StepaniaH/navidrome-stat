@@ -4,6 +4,23 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-01
+
+### Added
+
+- A relationship section compares the top artists, albums, or clients over time, across four local-time dayparts, and against the immediately preceding equal-length period. Charts can use play count or recorded listening time and preserve the dashboard date, timezone, server, and user scope.
+- Client rows and relationship chart values open scoped client details with totals, trend, top tracks, recent plays, and current/previous-period rank.
+
+### Changed
+
+- Relationship charts report duration-field coverage when listening time is selected and keep missing durations distinguishable from recorded values.
+- Dashboard controls and detail layouts remain contained across all seven interface languages at desktop, tablet, mobile, and 320-pixel viewport widths.
+- The synthetic statistics benchmark now includes all three relationship dimensions at 100,000 and 1,000,000-row scales.
+
+### Security
+
+- Client detail names are sent in POST request bodies and are not stored in shareable URLs, browser history, copied links, or query-string access logs.
+
 ## [0.8.9] - 2026-08-31
 
 ### Added

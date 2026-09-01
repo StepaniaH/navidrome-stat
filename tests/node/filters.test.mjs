@@ -94,19 +94,19 @@ test("album detail URLs require a stable source identity", () => {
   assert.equal(next.entityName, "");
 });
 
-test("client detail identity is URL-addressable without a source identity", () => {
-  const next = pushFilters({
+test("client detail identity is excluded from shareable URL state", () => {
+  const next = setFilters({
     entityType: "client",
     entityName: "Symfonium",
     entityId: "ignored-id",
     entitySourceId: "ignored-source",
     entityArtist: "ignored-artist",
   });
-  assert.equal(next.entityType, "client");
-  assert.equal(next.entityName, "Symfonium");
-  const url = new URL(globalThis.__pushedUrl, "https://example.test");
-  assert.equal(url.searchParams.get("entity_type"), "client");
-  assert.equal(url.searchParams.get("entity_name"), "Symfonium");
+  assert.equal(next.entityType, "");
+  assert.equal(next.entityName, "");
+  const url = new URL(globalThis.__lastUrl, "https://example.test");
+  assert.equal(url.searchParams.has("entity_type"), false);
+  assert.equal(url.searchParams.has("entity_name"), false);
   assert.equal(url.searchParams.has("entity_id"), false);
   assert.equal(url.searchParams.has("entity_source_id"), false);
   assert.equal(url.searchParams.has("entity_artist"), false);
@@ -128,7 +128,7 @@ test("setFilters accepts a valid range and known metric", () => {
   assert.equal(next.startDate, "2026-01-01");
 });
 
-test("subscribers are notified with a frozen copy", () => {
+test("subscribers receive a copy isolated from stored state", () => {
   let seen = null;
   const unsubscribe = subscribe((f) => { seen = f; });
   setFilters({ days: 90 });

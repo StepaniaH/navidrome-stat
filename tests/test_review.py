@@ -9,6 +9,8 @@ import src.stats_service as stats_service_module
 from src.database import get_review_summary, init_db, save_play_session
 from src.main import app
 
+FIXTURE_NOW = datetime(2024, 7, 15, 12, tzinfo=timezone.utc)
+
 
 class FakeCache:
     async def invalidate(self):
@@ -20,7 +22,7 @@ class FakeCache:
 
 def session(days_ago, hour, *, track="t-1", title="Song", artist="Artist", album="Album",
             duration=200, tz_offset_hours=0):
-    played = datetime.now(timezone.utc).replace(
+    played = FIXTURE_NOW.replace(
         hour=hour, minute=0, second=0, microsecond=0
     ) - timedelta(days=days_ago)
     played -= timedelta(hours=tz_offset_hours)
@@ -48,7 +50,7 @@ def session(days_ago, hour, *, track="t-1", title="Song", artist="Artist", album
 @pytest.fixture
 async def seeded_db(isolated_db):
     await init_db(isolated_db)
-    year = datetime.now(timezone.utc).year
+    year = FIXTURE_NOW.year
     # Three consecutive days, two tracks, two hours.
     for offset in (0, 1, 2):
         await save_play_session(session(offset, 8, track="t-1", title="Morning Song"), isolated_db)
@@ -69,9 +71,9 @@ async def test_review_totals_and_buckets(seeded_db, isolated_db):
     assert review["longest_streak_days"] == 3
     assert review["first_played_at"] is not None
     assert review["last_played_at"] is not None
-    assert review["biggest_month"] == datetime.now(timezone.utc).strftime("%Y-%m")
+    assert review["biggest_month"] == FIXTURE_NOW.strftime("%Y-%m")
 
-    this_month = f"{year:04d}-{datetime.now(timezone.utc).month:02d}"
+    this_month = FIXTURE_NOW.strftime("%Y-%m")
     monthly = {entry["month"]: entry["count"] for entry in review["monthly"]}
     assert len(review["monthly"]) == 12
     assert monthly[this_month] == 4
@@ -92,7 +94,7 @@ async def test_review_buckets_carry_listen_seconds(seeded_db, isolated_db):
     hourly = {entry["hour"]: entry["total_listen_sec"] for entry in review["hourly"]}
     assert hourly[8] == 600
     assert hourly[22] == 200
-    month_key = f"{year:04d}-{datetime.now(timezone.utc).month:02d}"
+    month_key = FIXTURE_NOW.strftime("%Y-%m")
     monthly = {entry["month"]: entry["total_listen_sec"] for entry in review["monthly"]}
     assert monthly[month_key] == 800
     assert sum(entry["total_listen_sec"] for entry in review["weekday"]) == 800
@@ -114,7 +116,7 @@ async def test_review_top_lists(seeded_db, isolated_db):
 @pytest.mark.asyncio
 async def test_review_respects_timezone_day_buckets(seeded_db, isolated_db):
     # 22:00 UTC is already the next day in UTC+2, moving that play out of hour 22.
-    review = await get_review_summary(2026, "Europe/Kiev", db_path=isolated_db)
+    review = await get_review_summary(seeded_db, "Europe/Kiev", db_path=isolated_db)
     hourly = {entry["hour"]: entry["count"] for entry in review["hourly"]}
     assert hourly.get(22, 0) <= 1
 

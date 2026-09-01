@@ -7,7 +7,8 @@ preceding equal-length period.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from collections.abc import Callable
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 import aiosqlite
@@ -15,14 +16,10 @@ import aiosqlite
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
 from src.sqlite import connect_db
 from src.stats_query_common import database_path as _path
+from src.stats_query_common import scope_predicate
 from src.stats_scope import StatsScope
 from src.windows import (
     _local_date_range,
-    _played_at_to_local_datetime,
-    _previous_window_predicate,
-    _source_predicate,
-    _username_predicate,
-    _window_predicate,
     resolve_timezone,
 )
 
@@ -37,80 +34,81 @@ MATRIX_LIMIT = 8
 COMPARISON_LIMIT = 8
 
 
-def _scope_predicate(scope: StatsScope, *, previous: bool = False) -> tuple[str, list]:
-    predicate_factory = _previous_window_predicate if previous else _window_predicate
-    pred, params = predicate_factory(
-        scope.days,
-        scope.timezone_name,
-        scope.start_date,
-        scope.end_date,
-    )
-    pred, params = _source_predicate(pred, params, scope.source_id)
-    pred, params = _username_predicate(pred, params, scope.username)
-    return pred, params
+def _totals_query(predicate: str, dimension: RelationDimension) -> str:
+    """Build an aggregate query that groups by raw identity columns.
 
-
-def _clean(value) -> str:
-    return str(value).strip() if value not in (None, "") else ""
-
-
-def _entity_for_row(row: aiosqlite.Row, dimension: RelationDimension) -> dict | None:
-    if dimension == "artist":
-        label = _clean(row["artist"])
-        if not label:
-            return None
-        # Artist rankings and the existing artist drill-down both aggregate by
-        # name across the active source scope, so the relation view does too.
-        return {
-            "key": f"artist:{label}",
-            "label": label,
-            "artist": None,
-            "entity_id": None,
-            "source_id": None,
-            "source_name": None,
-        }
-
+    Constructing the public string key once per aggregate group is materially
+    cheaper than concatenating it for every history row before SQLite groups it.
+    """
     if dimension == "album":
-        label = _clean(row["album"])
-        if not label:
-            return None
-        source_id = _clean(row["source_id"]) or LEGACY_SOURCE_ID
-        source_name = _clean(row["source_name"]) or LEGACY_SOURCE_NAME
-        album_id = _clean(row["album_id"]) or None
-        artist = _clean(row["artist"]) or None
-        identity = (
-            f"id:{album_id}"
-            if album_id
-            else f"legacy:{label}\x1f{artist or ''}"
+        return f"""
+            SELECT
+                COALESCE(NULLIF(source_id, ''), ?),
+                MAX(COALESCE(NULLIF(source_name, ''), ?)),
+                NULLIF(album_id, ''),
+                album,
+                NULLIF(artist, ''),
+                COUNT(*) AS play_count,
+                COALESCE(SUM(COALESCE(listen_duration_sec, 0)), 0)
+                    AS total_listen_sec,
+                COUNT(listen_duration_sec) AS duration_count,
+                COALESCE(SUM(
+                    CASE
+                        WHEN listen_duration_sec IS NOT NULL
+                         AND duration_confidence = 'reported' THEN 1
+                        ELSE 0
+                    END
+                ), 0) AS reported_duration_count,
+                MIN(played_at_epoch) AS first_epoch,
+                MAX(played_at_epoch) AS last_epoch
+            FROM play_history
+            WHERE ({predicate}) AND album IS NOT NULL AND album != ''
+            GROUP BY source_id, album_id, album, artist
+        """
+
+    if dimension == "artist":
+        identity_columns = "NULL, NULL, NULL, artist, NULL"
+        eligible = "artist IS NOT NULL"
+        grouping = "artist"
+    else:
+        identity_columns = "NULL, NULL, NULL, COALESCE(client, ''), NULL"
+        eligible = "1=1"
+        grouping = "client"
+
+    return f"""
+        WITH base AS (
+            SELECT
+                played_at_epoch,
+                NULLIF(client_name, '') AS client,
+                NULLIF(artist, '') AS artist,
+                NULLIF(album, '') AS album,
+                NULLIF(album_id, '') AS album_id,
+                listen_duration_sec,
+                duration_confidence,
+                COALESCE(NULLIF(source_id, ''), ?) AS normalized_source_id,
+                COALESCE(NULLIF(source_name, ''), ?) AS normalized_source_name
+            FROM play_history
+            WHERE {predicate}
         )
-        return {
-            "key": f"album:{source_id}\x1f{identity}",
-            "label": label,
-            "artist": artist,
-            "entity_id": album_id,
-            "source_id": source_id,
-            "source_name": source_name,
-        }
-
-    label = _clean(row["client_name"])
-    return {
-        "key": f"client:{label}" if label else "client:__unknown__",
-        "label": label,
-        "artist": None,
-        "entity_id": None,
-        "source_id": None,
-        "source_name": None,
-    }
-
-
-def _merge_meta(target: dict[str, dict], entity: dict) -> None:
-    existing = target.get(entity["key"])
-    if existing is None:
-        target[entity["key"]] = entity
-        return
-    for field in ("artist", "entity_id", "source_id", "source_name"):
-        if not existing.get(field) and entity.get(field):
-            existing[field] = entity[field]
+        SELECT
+            {identity_columns},
+            COUNT(*) AS play_count,
+            COALESCE(SUM(COALESCE(listen_duration_sec, 0)), 0)
+                AS total_listen_sec,
+            COUNT(listen_duration_sec) AS duration_count,
+            COALESCE(SUM(
+                CASE
+                    WHEN listen_duration_sec IS NOT NULL
+                     AND duration_confidence = 'reported' THEN 1
+                    ELSE 0
+                END
+            ), 0) AS reported_duration_count,
+            MIN(played_at_epoch) AS first_epoch,
+            MAX(played_at_epoch) AS last_epoch
+        FROM base
+        WHERE {eligible}
+        GROUP BY {grouping}
+    """
 
 
 def _metric_value(values: dict, metric: str) -> int:
@@ -146,7 +144,7 @@ def _bucket_for_day(value: date, grain: RelationGrain) -> str:
         return value.isoformat()
     if grain == "week":
         return (value - timedelta(days=value.weekday())).isoformat()
-    return value.strftime("%Y-%m")
+    return f"{value.year:04d}-{value.month:02d}"
 
 
 def _bucket_range(start: date | None, end: date | None, grain: RelationGrain) -> list[str]:
@@ -165,7 +163,7 @@ def _bucket_range(start: date | None, end: date | None, grain: RelationGrain) ->
         return buckets
 
     current_year, current_month = start.year, start.month
-    last_key = end.strftime("%Y-%m")
+    last_key = f"{end.year:04d}-{end.month:02d}"
     buckets = []
     while True:
         key = f"{current_year:04d}-{current_month:02d}"
@@ -193,9 +191,186 @@ def _empty_values() -> dict[str, int]:
 
 
 def _add_value(target: dict, key, duration: int) -> None:
-    value = target.setdefault(key, _empty_values())
+    value = target.get(key)
+    if value is None:
+        target[key] = {"play_count": 1, "total_listen_sec": duration}
+        return
     value["play_count"] += 1
     value["total_listen_sec"] += duration
+
+
+def _add_aggregate(target: dict, key, plays: int, duration: int) -> None:
+    value = target.get(key)
+    if value is None:
+        target[key] = {"play_count": plays, "total_listen_sec": duration}
+        return
+    value["play_count"] += plays
+    value["total_listen_sec"] += duration
+
+
+def _shape_query(
+    predicate: str,
+    params: list,
+    dimension: RelationDimension,
+) -> tuple[str, list]:
+    if dimension == "artist":
+        return (
+            f"""
+            SELECT played_at_epoch, artist, COALESCE(listen_duration_sec, 0)
+            FROM play_history
+            WHERE ({predicate}) AND artist IS NOT NULL AND artist != ''
+            """,
+            params,
+        )
+    if dimension == "album":
+        return (
+            f"""
+            SELECT
+                played_at_epoch,
+                COALESCE(NULLIF(source_id, ''), ?),
+                NULLIF(album_id, ''),
+                album,
+                artist,
+                COALESCE(listen_duration_sec, 0)
+            FROM play_history
+            WHERE ({predicate}) AND album IS NOT NULL AND album != ''
+            """,
+            [LEGACY_SOURCE_ID, *params],
+        )
+    return (
+        f"""
+        SELECT played_at_epoch, client_name, COALESCE(listen_duration_sec, 0)
+        FROM play_history
+        WHERE {predicate}
+        """,
+        params,
+    )
+
+
+def _selected_key_resolver(
+    dimension: RelationDimension,
+    metadata: dict[str, dict],
+    selected_keys: set[str],
+) -> Callable[[tuple], str | None]:
+    """Resolve only visible identities, avoiding per-row public key creation."""
+    if dimension == "album":
+        identities = {
+            (
+                str(metadata[key].get("source_id") or LEGACY_SOURCE_ID),
+                str(metadata[key].get("entity_id") or ""),
+                "" if metadata[key].get("entity_id") else str(
+                    metadata[key].get("label") or ""
+                ),
+                "" if metadata[key].get("entity_id") else str(
+                    metadata[key].get("artist") or ""
+                ),
+            ): key
+            for key in selected_keys
+        }
+
+        def album_key(row: tuple) -> str | None:
+            entity_id = str(row[2] or "")
+            return identities.get((
+                str(row[1] or LEGACY_SOURCE_ID),
+                entity_id,
+                "" if entity_id else str(row[3] or ""),
+                "" if entity_id else str(row[4] or ""),
+            ))
+
+        return album_key
+
+    labels = {
+        str(metadata[key].get("label") or ""): key
+        for key in selected_keys
+    }
+    return lambda row: labels.get(str(row[1] or ""))
+
+
+async def _scan_album_month_shapes_utc(
+    db: aiosqlite.Connection,
+    predicate: str,
+    params: list,
+    *,
+    trend_keys: set[str],
+    matrix_keys: set[str],
+) -> tuple[dict[tuple[str, str], dict], dict[tuple[str, str], dict]]:
+    """Aggregate long UTC album ranges in SQLite instead of streaming every row."""
+    await db.execute("""
+        CREATE TEMP TABLE IF NOT EXISTS relation_selected_album (
+            entity_key TEXT PRIMARY KEY,
+            in_trend INTEGER NOT NULL,
+            in_matrix INTEGER NOT NULL
+        ) WITHOUT ROWID
+    """)
+    await db.execute("DELETE FROM relation_selected_album")
+    selected_keys = trend_keys | matrix_keys
+    await db.executemany(
+        """
+        INSERT INTO relation_selected_album (entity_key, in_trend, in_matrix)
+        VALUES (?, ?, ?)
+        """,
+        [
+            (key, int(key in trend_keys), int(key in matrix_keys))
+            for key in selected_keys
+        ],
+    )
+    entity_expression = """
+        'album:' || COALESCE(NULLIF(history.source_id, ''), ?) || char(31) ||
+        CASE
+            WHEN NULLIF(history.album_id, '') IS NOT NULL
+                THEN 'id:' || NULLIF(history.album_id, '')
+            ELSE 'legacy:' || history.album || char(31) ||
+                 COALESCE(NULLIF(history.artist, ''), '')
+        END
+    """
+    trend: dict[tuple[str, str], dict] = {}
+    matrix: dict[tuple[str, str], dict] = {}
+    async with db.execute(
+        f"""
+        SELECT
+            strftime('%Y-%m', history.played_at_epoch, 'unixepoch') AS bucket,
+            CAST(
+                (((history.played_at_epoch % 86400) + 86400) % 86400) / 21600
+                AS INTEGER
+            ) AS daypart_index,
+            CASE
+                WHEN selected.in_trend = 1 THEN selected.entity_key
+                ELSE ?
+            END AS trend_key,
+            CASE
+                WHEN selected.in_matrix = 1 THEN selected.entity_key
+                ELSE NULL
+            END AS matrix_key,
+            COUNT(*) AS play_count,
+            COALESCE(SUM(COALESCE(history.listen_duration_sec, 0)), 0)
+                AS total_listen_sec
+        FROM play_history AS history
+        LEFT JOIN relation_selected_album AS selected
+          ON selected.entity_key = ({entity_expression})
+        WHERE ({predicate})
+          AND history.album IS NOT NULL
+          AND history.album != ''
+          AND history.played_at_epoch IS NOT NULL
+        GROUP BY 1, 2, 3, 4
+        """,
+        [OTHER_KEY, LEGACY_SOURCE_ID, *params],
+    ) as cursor:
+        async for row in cursor:
+            if row[0] is None:
+                continue
+            bucket = str(row[0])
+            daypart = DAYPARTS[int(row[1])]
+            plays = int(row[4] or 0)
+            duration = int(row[5] or 0)
+            _add_aggregate(trend, (bucket, str(row[2])), plays, duration)
+            if row[3] is not None:
+                _add_aggregate(
+                    matrix,
+                    (str(row[3]), daypart),
+                    plays,
+                    duration,
+                )
+    return trend, matrix
 
 
 async def _scan_totals(
@@ -219,44 +394,76 @@ async def _scan_totals(
     row_count = 0
     duration_count = 0
     reported_duration_count = 0
-    first_date: date | None = None
-    last_date: date | None = None
+    first_epoch: int | None = None
+    last_epoch: int | None = None
     async with db.execute(
-        f"""
-        SELECT
-            played_at,
-            client_name,
-            artist,
-            artist_id,
-            album,
-            album_id,
-            listen_duration_sec,
-            duration_confidence,
-            COALESCE(source_id, ?) AS source_id,
-            COALESCE(source_name, ?) AS source_name
-        FROM play_history
-        WHERE {predicate}
-        """,
+        _totals_query(predicate, dimension),
         [LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME, *params],
     ) as cursor:
         async for row in cursor:
-            entity = _entity_for_row(row, dimension)
-            if entity is None:
-                continue
-            _merge_meta(metadata, entity)
-            duration = int(row["listen_duration_sec"] or 0)
-            _add_value(totals, entity["key"], duration)
-            row_count += 1
-            if row["listen_duration_sec"] is not None:
-                duration_count += 1
-                if row["duration_confidence"] == "reported":
-                    reported_duration_count += 1
-            if tz is not None:
-                local = _played_at_to_local_datetime(row["played_at"], tz)
-                if local is not None:
-                    local_date = local.date()
-                    first_date = local_date if first_date is None else min(first_date, local_date)
-                    last_date = local_date if last_date is None else max(last_date, local_date)
+            source_id = row[0]
+            source_name = row[1]
+            entity_id = row[2]
+            label = str(row[3] or "")
+            artist = row[4]
+            if dimension == "artist":
+                key = f"artist:{label}"
+            elif dimension == "album":
+                identity = (
+                    f"id:{entity_id}"
+                    if entity_id
+                    else f"legacy:{label}\x1f{artist or ''}"
+                )
+                key = f"album:{source_id}\x1f{identity}"
+            else:
+                key = f"client:{label}" if label else "client:__unknown__"
+            candidate = {
+                "key": key,
+                "label": label,
+                "artist": artist,
+                "entity_id": entity_id,
+                "source_id": source_id,
+                "source_name": source_name,
+            }
+            existing_meta = metadata.get(key)
+            if existing_meta is None:
+                metadata[key] = candidate
+            else:
+                for field in ("label", "artist", "source_name"):
+                    value = candidate.get(field)
+                    if value is not None and (
+                        existing_meta.get(field) is None
+                        or str(value) > str(existing_meta[field])
+                    ):
+                        existing_meta[field] = value
+            values = totals.get(key)
+            if values is None:
+                totals[key] = {
+                    "play_count": int(row[5] or 0),
+                    "total_listen_sec": int(row[6] or 0),
+                }
+            else:
+                values["play_count"] += int(row[5] or 0)
+                values["total_listen_sec"] += int(row[6] or 0)
+            row_count += int(row[5] or 0)
+            duration_count += int(row[7] or 0)
+            reported_duration_count += int(row[8] or 0)
+            if row[9] is not None:
+                value = int(row[9])
+                first_epoch = value if first_epoch is None else min(first_epoch, value)
+            if row[10] is not None:
+                value = int(row[10])
+                last_epoch = value if last_epoch is None else max(last_epoch, value)
+    first_date = (
+        datetime.fromtimestamp(first_epoch, tz).date()
+        if tz is not None and first_epoch is not None
+        else None
+    )
+    last_date = (
+        datetime.fromtimestamp(last_epoch, tz).date()
+        if tz is not None and last_epoch is not None
+        else None
+    )
     return (
         totals,
         metadata,
@@ -278,35 +485,42 @@ async def _scan_shapes(
     grain: RelationGrain,
     trend_keys: set[str],
     matrix_keys: set[str],
+    metadata: dict[str, dict],
 ) -> tuple[dict[tuple[str, str], dict], dict[tuple[str, str], dict]]:
+    if (
+        dimension == "album"
+        and getattr(tz, "key", None) == "UTC"
+        and grain == "month"
+    ):
+        return await _scan_album_month_shapes_utc(
+            db,
+            predicate,
+            params,
+            trend_keys=trend_keys,
+            matrix_keys=matrix_keys,
+        )
+
     trend: dict[tuple[str, str], dict] = {}
     matrix: dict[tuple[str, str], dict] = {}
+    query, query_params = _shape_query(predicate, params, dimension)
+    key_for_row = _selected_key_resolver(
+        dimension,
+        metadata,
+        trend_keys | matrix_keys,
+    )
     async with db.execute(
-        f"""
-        SELECT
-            played_at,
-            client_name,
-            artist,
-            artist_id,
-            album,
-            album_id,
-            listen_duration_sec,
-            COALESCE(source_id, ?) AS source_id,
-            COALESCE(source_name, ?) AS source_name
-        FROM play_history
-        WHERE {predicate}
-        """,
-        [LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME, *params],
+        query,
+        query_params,
     ) as cursor:
         async for row in cursor:
-            entity = _entity_for_row(row, dimension)
-            if entity is None:
+            if row[0] is None:
                 continue
-            local = _played_at_to_local_datetime(row["played_at"], tz)
-            if local is None:
+            try:
+                local = datetime.fromtimestamp(int(row[0]), tz)
+            except (OSError, OverflowError, ValueError):
                 continue
-            entity_key = entity["key"]
-            duration = int(row["listen_duration_sec"] or 0)
+            entity_key = key_for_row(row)
+            duration = int(row[-1] or 0)
             trend_key = entity_key if entity_key in trend_keys else OTHER_KEY
             _add_value(trend, (_bucket_for_day(local.date(), grain), trend_key), duration)
             if entity_key in matrix_keys:
@@ -339,11 +553,10 @@ async def get_data_relations(
 
     path = _path(db_path)
     tz = resolve_timezone(scope.timezone_name)
-    current_pred, current_params = _scope_predicate(scope)
-    previous_pred, previous_params = _scope_predicate(scope, previous=True)
+    current_pred, current_params = scope_predicate(scope)
+    previous_pred, previous_params = scope_predicate(scope, previous=True)
 
     async with connect_db(path) as db:
-        db.row_factory = aiosqlite.Row
         (
             current_totals,
             current_meta,
@@ -400,6 +613,7 @@ async def get_data_relations(
                 grain=grain,
                 trend_keys=set(trend_keys),
                 matrix_keys=set(matrix_keys),
+                metadata=current_meta,
             )
 
     visible_trend_keys = list(trend_keys)

@@ -322,16 +322,14 @@ def test_empty_entity_detail_returns_zero_derived_metrics(db_path):
     assert detail["trend"] == []
 
 
-@pytest.mark.asyncio
-@patch("src.routes.stats.stats_service.entity_detail", new_callable=AsyncMock)
-async def test_entity_detail_api_builds_stats_scope(mock_detail):
-    mock_detail.return_value = {
-        "entity_type": "artist",
-        "name": "Artist A",
+def _empty_api_detail(entity_type: str, name: str, *, metric: str) -> dict:
+    return {
+        "entity_type": entity_type,
+        "name": name,
         "artist": None,
-        "entity_id": "artist-a",
+        "entity_id": None,
         "entity_source_id": None,
-        "metric": "listen_time",
+        "metric": metric,
         "total_plays": 0,
         "total_listen_sec": 0,
         "unique_tracks": 0,
@@ -345,6 +343,15 @@ async def test_entity_detail_api_builds_stats_scope(mock_detail):
         "trend": [],
         "top_tracks": [],
         "recent_plays": [],
+    }
+
+
+@pytest.mark.asyncio
+@patch("src.routes.stats.stats_service.entity_detail", new_callable=AsyncMock)
+async def test_entity_detail_api_builds_stats_scope(mock_detail):
+    mock_detail.return_value = {
+        **_empty_api_detail("artist", "Artist A", metric="listen_time"),
+        "entity_id": "artist-a",
     }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -379,11 +386,56 @@ async def test_entity_detail_api_builds_stats_scope(mock_detail):
 
 
 @pytest.mark.asyncio
+@patch("src.routes.stats.stats_service.entity_detail", new_callable=AsyncMock)
+async def test_client_detail_api_uses_post_body_for_private_identity(mock_detail):
+    mock_detail.return_value = _empty_api_detail(
+        "client",
+        "Symfonium",
+        metric="listen_time",
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/stats/client-detail",
+            json={
+                "name": "Symfonium",
+                "days": 30,
+                "timezone": "Asia/Shanghai",
+                "metric": "listen_time",
+                "source_id": "source-a",
+                "username": "listener",
+            },
+        )
+
+    assert response.status_code == 200
+    scope, identity = mock_detail.await_args.args
+    assert scope == StatsScope.create(
+        days=30,
+        timezone_name="Asia/Shanghai",
+        metric="listen_time",
+        source_id="source-a",
+        username="listener",
+    )
+    assert identity == EntityIdentity.create(entity_type="client", name="Symfonium")
+
+
+@pytest.mark.asyncio
 async def test_entity_detail_api_rejects_unknown_entity_type():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(
             "/api/stats/entity-detail",
             params={"entity_type": "track", "name": "Song"},
+        )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_entity_detail_get_rejects_client_identity():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            "/api/stats/entity-detail",
+            params={"entity_type": "client", "name": "Symfonium"},
         )
 
     assert response.status_code == 422

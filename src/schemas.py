@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -190,6 +191,19 @@ class EntityDetailResponse(BaseModel):
     trend: list[EntityTrendPoint]
     top_tracks: list[EntityTrackItem]
     recent_plays: list[EntityRecentPlayItem]
+
+
+class ClientDetailRequest(BaseModel):
+    """Scoped client detail request kept out of URL query parameters."""
+
+    name: str = Field(min_length=1, max_length=512)
+    days: int = Field(default=STATS_DAYS_DEFAULT, ge=0, le=STATS_DAYS_MAX)
+    timezone: str = TIMEZONE_DEFAULT
+    metric: Literal["plays", "listen_time"] = RANKING_METRIC_DEFAULT
+    source_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    username: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
 
 
 class RelationEntityBase(BaseModel):

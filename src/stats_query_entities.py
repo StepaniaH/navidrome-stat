@@ -11,14 +11,11 @@ import aiosqlite
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
 from src.sqlite import connect_db
 from src.stats_query_common import database_path as _path
+from src.stats_query_common import scope_predicate
 from src.stats_scope import StatsScope
 from src.windows import (
     _local_date_range,
     _played_at_to_local_datetime,
-    _previous_window_predicate,
-    _source_predicate,
-    _username_predicate,
-    _window_predicate,
     resolve_timezone,
 )
 
@@ -27,7 +24,7 @@ EntityType = Literal["artist", "album", "client"]
 
 @dataclass(frozen=True, slots=True)
 class EntityIdentity:
-    """Stable identity carried by a ranking row and its shareable URL."""
+    """Stable identity shared by ranking, relationship, and detail queries."""
 
     entity_type: EntityType
     name: str
@@ -62,19 +59,6 @@ class EntityIdentity:
             source_id=source_id or None,
             artist=artist or None,
         )
-
-
-def _scope_predicate(scope: StatsScope, *, previous: bool = False) -> tuple[str, list]:
-    predicate_factory = _previous_window_predicate if previous else _window_predicate
-    pred, params = predicate_factory(
-        scope.days,
-        scope.timezone_name,
-        scope.start_date,
-        scope.end_date,
-    )
-    pred, params = _source_predicate(pred, params, scope.source_id)
-    pred, params = _username_predicate(pred, params, scope.username)
-    return pred, params
 
 
 def _entity_predicate(identity: EntityIdentity) -> tuple[str, list]:
@@ -119,7 +103,7 @@ async def _artist_rank(
     *,
     previous: bool,
 ) -> int | None:
-    pred, params = _scope_predicate(scope, previous=previous)
+    pred, params = scope_predicate(scope, previous=previous)
     value_column = "play_count" if scope.metric == "plays" else "total_listen_sec"
     async with db.execute(
         f"""
@@ -154,7 +138,7 @@ async def _album_rank(
     *,
     previous: bool,
 ) -> int | None:
-    pred, params = _scope_predicate(scope, previous=previous)
+    pred, params = scope_predicate(scope, previous=previous)
     value_column = "play_count" if scope.metric == "plays" else "total_listen_sec"
     target_predicates = []
     target_params: list = []
@@ -241,7 +225,7 @@ async def _client_rank(
     *,
     previous: bool,
 ) -> int | None:
-    pred, params = _scope_predicate(scope, previous=previous)
+    pred, params = scope_predicate(scope, previous=previous)
     value_column = "play_count" if scope.metric == "plays" else "total_listen_sec"
     async with db.execute(
         f"""
@@ -297,7 +281,7 @@ async def get_entity_detail(
     """
     path = _path(db_path)
     tz = resolve_timezone(scope.timezone_name)
-    scope_pred, scope_params = _scope_predicate(scope)
+    scope_pred, scope_params = scope_predicate(scope)
     entity_pred, entity_params = _entity_predicate(identity)
     where = f"({scope_pred}) AND ({entity_pred})"
     params = [*scope_params, *entity_params]

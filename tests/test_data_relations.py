@@ -1,7 +1,7 @@
 """Cross-dimensional relation query and API tests."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -46,7 +46,7 @@ def _save(db_path: str, payload: dict) -> None:
     asyncio.run(save_play_session(payload, db_path=db_path))
 
 
-def test_artist_relations_return_values_without_interpretation(db_path):
+def test_artist_relations_return_ranked_trends_dayparts_and_coverage(db_path):
     asyncio.run(init_db(db_path))
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -141,6 +141,91 @@ def test_album_relations_keep_source_scoped_identity(db_path):
     assert {row["entity_id"] for row in result["trend"]} == {"album-a", "album-b"}
     assert result["comparison_available"] is False
     assert result["comparison"] == []
+
+
+def test_album_month_relations_merge_metadata_for_stable_ids(db_path):
+    asyncio.run(init_db(db_path))
+    _save(db_path, _play(
+        datetime(2026, 1, 15, 1, tzinfo=timezone.utc),
+        track_id="album-old-label",
+        artist="Artist A",
+        album="Album A",
+        album_id="stable-album-id",
+        duration=30,
+    ))
+    _save(db_path, _play(
+        datetime(2026, 8, 15, 13, tzinfo=timezone.utc),
+        track_id="album-new-label",
+        artist="Artist B",
+        album="Album B",
+        album_id="stable-album-id",
+        duration=90,
+    ))
+
+    result = asyncio.run(get_data_relations(
+        StatsScope.create(
+            days=0,
+            timezone_name="UTC",
+            metric="plays",
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 12, 31),
+        ),
+        "album",
+        db_path=db_path,
+    ))
+
+    assert result["grain"] == "month"
+    assert len(result["trend"]) == 1
+    assert result["trend"][0]["entity_id"] == "stable-album-id"
+    assert sum(point["play_count"] for point in result["trend"][0]["points"]) == 2
+    assert sum(point["total_listen_sec"] for point in result["trend"][0]["points"]) == 120
+    assert {
+        point["daypart"]: point["play_count"]
+        for point in result["matrix"][0]["points"]
+    } == {
+        "night": 1,
+        "morning": 0,
+        "afternoon": 1,
+        "evening": 0,
+    }
+
+
+def test_client_relations_preserve_repeated_hour_across_dst_fallback(db_path):
+    asyncio.run(init_db(db_path))
+    _save(db_path, _play(
+        datetime(2026, 11, 1, 5, 30, tzinfo=timezone.utc),
+        track_id="before-fallback",
+        client="Living Room",
+    ))
+    _save(db_path, _play(
+        datetime(2026, 11, 1, 6, 30, tzinfo=timezone.utc),
+        track_id="after-fallback",
+        client="Living Room",
+    ))
+
+    result = asyncio.run(get_data_relations(
+        StatsScope.create(
+            days=0,
+            timezone_name="America/New_York",
+            metric="plays",
+            start_date=date(2026, 11, 1),
+            end_date=date(2026, 11, 1),
+        ),
+        "client",
+        db_path=db_path,
+    ))
+
+    assert result["trend"][0]["points"] == [{
+        "bucket": "2026-11-01",
+        "play_count": 2,
+        "total_listen_sec": 120,
+    }]
+    night = next(
+        point
+        for point in result["matrix"][0]["points"]
+        if point["daypart"] == "night"
+    )
+    assert night["play_count"] == 2
 
 
 @pytest.mark.asyncio

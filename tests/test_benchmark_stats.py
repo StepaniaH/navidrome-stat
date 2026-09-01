@@ -23,6 +23,9 @@ async def test_benchmark_report_includes_scenarios_and_index_plan():
         "time_buckets_all",
         "summary_filtered",
         "history_filtered",
+        "relations_artist_all",
+        "relations_album_all",
+        "relations_client_all",
     }
     assert result["query_plan"]["uses_expected_index"] is True
 

@@ -43,6 +43,7 @@ from src.schemas import (
     TOP_LIMIT_DEFAULT,
     TOP_LIMIT_MAX,
     TOP_LIMIT_MIN,
+    ClientDetailRequest,
     DailyStat,
     DashboardSnapshot,
     DataRelationsResponse,
@@ -437,7 +438,7 @@ async def api_top_albums(
 
 @router.get("/api/stats/entity-detail", response_model=EntityDetailResponse)
 async def api_entity_detail(
-    entity_type: Literal["artist", "album", "client"] = Query(),
+    entity_type: Literal["artist", "album"] = Query(),
     name: str = Query(min_length=1, max_length=512),
     entity_id: str | None = Query(default=None, min_length=1, max_length=128),
     entity_source_id: str | None = Query(
@@ -454,7 +455,7 @@ async def api_entity_detail(
     end_date: date | None = Query(default=None),
     username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
-    """Return a scoped artist, album, or client drill-down payload."""
+    """Return a scoped artist or album drill-down payload."""
     try:
         scope = StatsScope.create(
             days=days,
@@ -472,6 +473,25 @@ async def api_entity_detail(
             source_id=entity_source_id,
             artist=artist,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await _query_stats(lambda: stats_service.entity_detail(scope, identity))
+
+
+@router.post("/api/stats/client-detail", response_model=EntityDetailResponse)
+async def api_client_detail(payload: ClientDetailRequest):
+    """Return client drill-down data without placing its name in the URL."""
+    try:
+        scope = StatsScope.create(
+            days=payload.days,
+            timezone_name=payload.timezone,
+            metric=payload.metric,
+            source_id=payload.source_id,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            username=payload.username,
+        )
+        identity = EntityIdentity.create(entity_type="client", name=payload.name)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return await _query_stats(lambda: stats_service.entity_detail(scope, identity))

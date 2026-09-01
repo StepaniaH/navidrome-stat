@@ -92,7 +92,6 @@ function sanitize(candidate) {
         (
             candidate.entityType === 'artist'
             || candidate.entityType === 'album'
-            || candidate.entityType === 'client'
         )
         && typeof candidate.entityName === 'string'
         && candidate.entityName.length > 0
@@ -101,19 +100,17 @@ function sanitize(candidate) {
     ) {
         filters.entityType = candidate.entityType;
         filters.entityName = candidate.entityName;
-        if (candidate.entityType !== 'client') {
-            if (typeof candidate.entityId === 'string' && candidate.entityId.length <= 128) {
-                filters.entityId = candidate.entityId;
-            }
-            if (hasValidEntitySource) {
-                filters.entitySourceId = candidate.entitySourceId;
-            }
-            if (
-                typeof candidate.entityArtist === 'string'
-                && candidate.entityArtist.length <= 512
-            ) {
-                filters.entityArtist = candidate.entityArtist;
-            }
+        if (typeof candidate.entityId === 'string' && candidate.entityId.length <= 128) {
+            filters.entityId = candidate.entityId;
+        }
+        if (hasValidEntitySource) {
+            filters.entitySourceId = candidate.entitySourceId;
+        }
+        if (
+            typeof candidate.entityArtist === 'string'
+            && candidate.entityArtist.length <= 512
+        ) {
+            filters.entityArtist = candidate.entityArtist;
         }
     }
     return filters;
