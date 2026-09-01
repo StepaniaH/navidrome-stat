@@ -13,7 +13,7 @@
 [![Docker Hub](https://img.shields.io/docker/v/stepaniah/navidrome-statistic/latest?label=Docker&logo=docker&logoColor=white)](https://hub.docker.com/r/stepaniah/navidrome-statistic)
 [![Docker Pulls](https://img.shields.io/docker/pulls/stepaniah/navidrome-statistic?logo=docker&logoColor=white)](https://hub.docker.com/r/stepaniah/navidrome-statistic)
 
-<img src="assets/screenshots/dashboard-frappe-top.png" alt="播放统计仪表盘：正在播放、总览、客户端与转码图表" width="920">
+<img src="assets/screenshots/dashboard-frappe-top.png" alt="播放统计仪表盘：正在播放、总览、客户端与转码图表" width="640">
 
 </div>
 
