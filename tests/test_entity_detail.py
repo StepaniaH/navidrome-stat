@@ -34,6 +34,7 @@ def _play(
     session_id: str | None = None,
     duration_confidence: str = "estimated",
     source: str = "poller",
+    finalized: bool = True,
 ) -> dict:
     return {
         "last_seen_at": _iso(moment),
@@ -52,7 +53,7 @@ def _play(
         "source": source,
         "source_id": source_id,
         "source_name": source_name,
-        "finalized": True,
+        "finalized": finalized,
     }
 
 
@@ -330,7 +331,7 @@ def test_entity_detail_exposes_duration_quality_without_inventing_precision(db_p
         title="Threshold checkpoint",
         artist="Artist A",
         album="Live",
-        duration=30,
+        duration=75,
         session_id="affected-session",
         duration_confidence="reported",
     ))
@@ -362,6 +363,27 @@ def test_entity_detail_exposes_duration_quality_without_inventing_precision(db_p
         duration=None,
         source="backfill",
     ))
+    _save(db_path, _play(
+        now + timedelta(seconds=5),
+        track_id="active",
+        title="Active checkpoint",
+        artist="Artist A",
+        album="Live",
+        duration=90,
+        session_id="active-session",
+        duration_confidence="reported",
+        finalized=False,
+    ))
+    _save(db_path, _play(
+        now + timedelta(seconds=6),
+        track_id="external",
+        title="Reported external event",
+        artist="Artist A",
+        album="Archive",
+        duration=100,
+        duration_confidence="reported",
+        source="external",
+    ))
 
     detail = asyncio.run(get_entity_detail(
         StatsScope.create(days=0, timezone_name="UTC", metric="plays"),
@@ -369,8 +391,8 @@ def test_entity_detail_exposes_duration_quality_without_inventing_precision(db_p
         db_path=db_path,
     ))
 
-    assert detail["total_plays"] == 5
-    assert detail["total_listen_sec"] == 255
+    assert detail["total_plays"] == 7
+    assert detail["total_listen_sec"] == 490
     assert detail["duration_quality"] == "lower_bound"
     assert detail["trend"][0]["duration_quality"] == "lower_bound"
     assert detail["top_tracks"][0]["play_count"] == 2
@@ -381,18 +403,22 @@ def test_entity_detail_exposes_duration_quality_without_inventing_precision(db_p
     }
     assert track_qualities == {
         "Legacy checkpoint": "lower_bound",
-        "Threshold checkpoint": "lower_bound",
+        "Threshold checkpoint": "estimated",
         "Estimated session": "estimated",
         "Imported history": "unknown",
+        "Active checkpoint": "lower_bound",
+        "Reported external event": "reported",
     }
     assert [row["duration_quality"] for row in detail["recent_plays"]] == [
-        "unknown",
-        "estimated",
         "reported",
         "lower_bound",
+        "unknown",
+        "estimated",
+        "estimated",
+        "estimated",
         "lower_bound",
     ]
-    assert detail["recent_plays"][0]["listen_duration_sec"] is None
+    assert detail["recent_plays"][2]["listen_duration_sec"] is None
 
 
 def test_empty_entity_detail_returns_zero_derived_metrics(db_path):

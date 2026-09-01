@@ -3,6 +3,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from src.core_types import DurationQuality
+
 HISTORY_LIMIT_DEFAULT = 10
 HISTORY_LIMIT_MIN = 1
 HISTORY_LIMIT_MAX = 100
@@ -145,9 +147,7 @@ class EntityTrendPoint(BaseModel):
     date: str
     play_count: int
     total_listen_sec: int
-    duration_quality: Literal["reported", "estimated", "lower_bound", "unknown"] = (
-        "reported"
-    )
+    duration_quality: DurationQuality = "reported"
 
 
 class EntityTrackItem(BaseModel):
@@ -157,9 +157,7 @@ class EntityTrackItem(BaseModel):
     album: Optional[str] = None
     play_count: int
     total_listen_sec: int
-    duration_quality: Literal["reported", "estimated", "lower_bound", "unknown"] = (
-        "reported"
-    )
+    duration_quality: DurationQuality = "reported"
     last_played_at: Optional[str] = None
     source_id: Optional[str] = None
     source_name: Optional[str] = None
@@ -174,9 +172,7 @@ class EntityRecentPlayItem(BaseModel):
     artist: Optional[str] = None
     album: Optional[str] = None
     listen_duration_sec: Optional[int] = None
-    duration_quality: Literal["reported", "estimated", "lower_bound", "unknown"] = (
-        "reported"
-    )
+    duration_quality: DurationQuality = "reported"
     source_id: Optional[str] = None
     source_name: Optional[str] = None
 
@@ -191,9 +187,7 @@ class EntityDetailResponse(BaseModel):
     metric: Literal["plays", "listen_time"]
     total_plays: int
     total_listen_sec: int
-    duration_quality: Literal["reported", "estimated", "lower_bound", "unknown"] = (
-        "reported"
-    )
+    duration_quality: DurationQuality = "reported"
     unique_tracks: int
     average_listen_sec: float
     first_played_at: Optional[str] = None

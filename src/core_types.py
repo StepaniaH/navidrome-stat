@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping, TypedDict
+from typing import Any, Literal, Mapping, TypedDict
+
+DurationQuality = Literal["reported", "estimated", "lower_bound", "unknown"]
 
 
 @dataclass(frozen=True, slots=True)

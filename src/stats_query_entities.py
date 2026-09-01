@@ -8,6 +8,7 @@ from typing import Literal
 
 import aiosqlite
 
+from src.core_types import DurationQuality
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
 from src.sqlite import connect_db
 from src.stats_query_common import database_path as _path
@@ -20,8 +21,6 @@ from src.windows import (
 )
 
 EntityType = Literal["artist", "album", "client"]
-DurationQuality = Literal["reported", "estimated", "lower_bound", "unknown"]
-EARLY_CHECKPOINT_DURATION_SEC = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,18 +100,18 @@ def _track_key(row: aiosqlite.Row) -> tuple:
 def _row_duration_quality(row: aiosqlite.Row) -> DurationQuality:
     """Describe what a stored duration can honestly claim.
 
-    Poller rows written before idempotent session checkpoints have no
-    ``session_id``. Those releases persisted the first threshold crossing and
-    did not update the row when playback continued. Later affected builds
-    could retain the default 30-second threshold even with a session ID, so an
-    exact threshold value is also treated conservatively as a lower bound.
+    Poller rows written before idempotent session checkpoints have no session
+    ID, and unfinished durable rows contain only the latest checkpoint. A
+    finalized polling duration is still an estimate: existing rows do not
+    record which collector version produced them, so playback-report records
+    from before the sparse-report fix cannot be distinguished safely.
     """
     if row["listen_duration_sec"] is None:
         return "unknown"
     if row["source"] == "poller":
-        duration = int(row["listen_duration_sec"])
-        if not row["session_id"] or duration == EARLY_CHECKPOINT_DURATION_SEC:
+        if not row["session_id"] or not bool(row["finalized"]):
             return "lower_bound"
+        return "estimated"
     if row["duration_confidence"] == "reported":
         return "reported"
     return "estimated"
@@ -349,6 +348,7 @@ async def get_entity_detail(
                 listen_duration_sec,
                 COALESCE(source, 'poller') AS source,
                 session_id,
+                COALESCE(finalized, 1) AS finalized,
                 COALESCE(duration_confidence, 'estimated') AS duration_confidence,
                 COALESCE(source_id, ?) AS source_id,
                 COALESCE(source_name, ?) AS source_name
