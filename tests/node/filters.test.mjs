@@ -43,12 +43,25 @@ test("defaults when URL has no filter params", () => {
     username: "",
     startDate: "",
     endDate: "",
+    relationDimension: "artist",
     entityType: "",
     entityName: "",
     entityId: "",
     entitySourceId: "",
     entityArtist: "",
   });
+});
+
+test("relation dimension is sanitized and persisted when non-default", () => {
+  const next = setFilters({ relationDimension: "client" });
+  assert.equal(next.relationDimension, "client");
+  let url = new URL(globalThis.__lastUrl, "https://example.test");
+  assert.equal(url.searchParams.get("relation"), "client");
+
+  const fallback = setFilters({ relationDimension: "track" });
+  assert.equal(fallback.relationDimension, "artist");
+  url = new URL(globalThis.__lastUrl, "https://example.test");
+  assert.equal(url.searchParams.has("relation"), false);
 });
 
 test("entity identity is pushed into a shareable URL", () => {
@@ -81,6 +94,24 @@ test("album detail URLs require a stable source identity", () => {
   assert.equal(next.entityName, "");
 });
 
+test("client detail identity is excluded from shareable URL state", () => {
+  const next = setFilters({
+    entityType: "client",
+    entityName: "Symfonium",
+    entityId: "ignored-id",
+    entitySourceId: "ignored-source",
+    entityArtist: "ignored-artist",
+  });
+  assert.equal(next.entityType, "");
+  assert.equal(next.entityName, "");
+  const url = new URL(globalThis.__lastUrl, "https://example.test");
+  assert.equal(url.searchParams.has("entity_type"), false);
+  assert.equal(url.searchParams.has("entity_name"), false);
+  assert.equal(url.searchParams.has("entity_id"), false);
+  assert.equal(url.searchParams.has("entity_source_id"), false);
+  assert.equal(url.searchParams.has("entity_artist"), false);
+});
+
 test("setFilters sanitizes unknown metric and broken ranges", () => {
   const next = setFilters({ metric: "bogus", startDate: "2026-02-01", endDate: "2026-01-01" });
   assert.equal(next.metric, "plays");
@@ -97,7 +128,7 @@ test("setFilters accepts a valid range and known metric", () => {
   assert.equal(next.startDate, "2026-01-01");
 });
 
-test("subscribers are notified with a frozen copy", () => {
+test("subscribers receive a copy isolated from stored state", () => {
   let seen = null;
   const unsubscribe = subscribe((f) => { seen = f; });
   setFilters({ days: 90 });

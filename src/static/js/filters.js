@@ -9,6 +9,7 @@ import { validateCustomRange } from './format.js';
 
 const KEYS = [
     'days', 'timezone', 'metric', 'sourceId', 'username', 'startDate', 'endDate',
+    'relationDimension',
     'entityType', 'entityName', 'entityId', 'entitySourceId', 'entityArtist',
 ];
 const PARAM_ALIASES = {
@@ -19,6 +20,7 @@ const PARAM_ALIASES = {
     username: 'username',
     startDate: 'start_date',
     endDate: 'end_date',
+    relationDimension: 'relation',
     entityType: 'entity_type',
     entityName: 'entity_name',
     entityId: 'entity_id',
@@ -34,6 +36,7 @@ const DEFAULTS = Object.freeze({
     username: '',
     startDate: '',
     endDate: '',
+    relationDimension: 'artist',
     entityType: '',
     entityName: '',
     entityId: '',
@@ -60,6 +63,13 @@ function sanitize(candidate) {
     if (candidate.metric === 'plays' || candidate.metric === 'listen_time') {
         filters.metric = candidate.metric;
     }
+    if (
+        candidate.relationDimension === 'artist'
+        || candidate.relationDimension === 'album'
+        || candidate.relationDimension === 'client'
+    ) {
+        filters.relationDimension = candidate.relationDimension;
+    }
     if (typeof candidate.sourceId === 'string' && candidate.sourceId.length <= 128) {
         filters.sourceId = candidate.sourceId;
     }
@@ -79,7 +89,10 @@ function sanitize(candidate) {
         && candidate.entitySourceId.length <= 128
     );
     if (
-        (candidate.entityType === 'artist' || candidate.entityType === 'album')
+        (
+            candidate.entityType === 'artist'
+            || candidate.entityType === 'album'
+        )
         && typeof candidate.entityName === 'string'
         && candidate.entityName.length > 0
         && candidate.entityName.length <= 512
@@ -120,7 +133,11 @@ function toUrl(filters) {
     const params = new URLSearchParams();
     for (const [key, param] of Object.entries(PARAM_ALIASES)) {
         const value = String(filters[key]);
-        if (value && !(key === 'days' && value === String(DEFAULTS.days))) {
+        const isDefault = (
+            (key === 'days' && value === String(DEFAULTS.days))
+            || (key === 'relationDimension' && value === DEFAULTS.relationDimension)
+        );
+        if (value && !isDefault) {
             params.set(param, value);
         }
     }

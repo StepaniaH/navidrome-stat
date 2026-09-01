@@ -17,6 +17,7 @@ from src.stats_query_overview import (
     list_usernames,
 )
 from src.stats_query_rankings import get_top_albums, get_top_artists
+from src.stats_query_relations import get_data_relations
 from src.stats_query_timeline import (
     WEEKDAY_HOUR_CELL_COUNT,
     WEEKDAY_HOUR_HOUR_COUNT,
@@ -32,6 +33,7 @@ __all__ = [
     "WEEKDAY_HOUR_HOUR_COUNT",
     "WEEKDAY_HOUR_WEEKDAY_COUNT",
     "get_daily_stats",
+    "get_data_relations",
     "get_entity_detail",
     "get_earliest_poller_played_at",
     "get_hourly_stats",

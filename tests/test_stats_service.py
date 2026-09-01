@@ -298,6 +298,19 @@ async def test_entity_detail_uses_scope_and_identity_in_cache_key(cache, service
 
 
 @pytest.mark.asyncio
+async def test_data_relations_uses_scope_and_dimension_in_cache_key(cache, service):
+    payload = {"dimension": "client", "trend": []}
+    service._read_repository.data_relations = AsyncMock(return_value=payload)
+    scope = StatsScope.create(days=30, timezone_name="UTC", metric="listen_time")
+
+    result = await service.data_relations(scope, "client")
+
+    assert result == payload
+    assert cache.keys == [("data_relations", scope, "client")]
+    service._read_repository.data_relations.assert_awaited_once_with(scope, "client")
+
+
+@pytest.mark.asyncio
 async def test_dashboard_build_duration_is_observable(cache, service, monkeypatch):
     from src.runtime_state import RuntimeState
 

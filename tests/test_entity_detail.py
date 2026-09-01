@@ -1,4 +1,4 @@
-"""Artist and album drill-down query and API tests."""
+"""Artist, album, and client drill-down query and API tests."""
 
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -28,13 +28,14 @@ def _play(
     source_id: str = "source-a",
     source_name: str = "Source A",
     username: str = "listener",
+    client_name: str = "Test Player",
     artist_id: str | None = None,
     album_id: str | None = None,
 ) -> dict:
     return {
         "last_seen_at": _iso(moment),
         "username": username,
-        "client_name": "Test Player",
+        "client_name": client_name,
         "track_id": track_id,
         "title": title,
         "artist": artist,
@@ -202,6 +203,74 @@ def test_album_detail_uses_source_and_album_identity(db_path):
     assert detail["rank_change"] is None
 
 
+def test_client_detail_builds_cross_track_history_and_period_rank(db_path):
+    asyncio.run(init_db(db_path))
+    now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+
+    for index, artist in enumerate(("Artist A", "Artist A", "Artist B")):
+        _save(db_path, _play(
+            now - timedelta(days=index % 2),
+            track_id=f"client-current-{index}",
+            title=f"Client track {index}",
+            artist=artist,
+            album=f"Album {artist[-1]}",
+            duration=90 + index * 30,
+            client_name="Focused Client",
+        ))
+    for index in range(4):
+        _save(db_path, _play(
+            now,
+            track_id=f"rival-current-{index}",
+            title=f"Rival current {index}",
+            artist="Rival Artist",
+            album="Rival Album",
+            client_name="Current Leader",
+        ))
+    for index in range(5):
+        _save(db_path, _play(
+            now - timedelta(days=8),
+            track_id=f"client-previous-{index}",
+            title=f"Client previous {index}",
+            artist="Archive Artist",
+            album="Archive",
+            client_name="Focused Client",
+        ))
+    for index in range(2):
+        _save(db_path, _play(
+            now - timedelta(days=8),
+            track_id=f"rival-previous-{index}",
+            title=f"Rival previous {index}",
+            artist="Rival Artist",
+            album="Archive",
+            client_name="Current Leader",
+        ))
+
+    detail = asyncio.run(get_entity_detail(
+        StatsScope.create(days=7, timezone_name="UTC", metric="plays"),
+        EntityIdentity.create(
+            entity_type="client",
+            name="Focused Client",
+            entity_id="ignored-id",
+            source_id="ignored-source",
+            artist="ignored-artist",
+        ),
+        db_path=db_path,
+    ))
+
+    assert detail["entity_type"] == "client"
+    assert detail["name"] == "Focused Client"
+    assert detail["entity_id"] is None
+    assert detail["artist"] is None
+    assert detail["total_plays"] == 3
+    assert detail["total_listen_sec"] == 360
+    assert detail["unique_tracks"] == 3
+    assert detail["current_rank"] == 2
+    assert detail["previous_rank"] == 1
+    assert detail["rank_change"] == -1
+    assert {row["artist"] for row in detail["top_tracks"]} == {"Artist A", "Artist B"}
+    assert {row["client_name"] for row in detail["recent_plays"]} == {"Focused Client"}
+
+
 def test_legacy_album_detail_does_not_merge_identified_album_rows(db_path):
     asyncio.run(init_db(db_path))
     now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -253,16 +322,14 @@ def test_empty_entity_detail_returns_zero_derived_metrics(db_path):
     assert detail["trend"] == []
 
 
-@pytest.mark.asyncio
-@patch("src.routes.stats.stats_service.entity_detail", new_callable=AsyncMock)
-async def test_entity_detail_api_builds_stats_scope(mock_detail):
-    mock_detail.return_value = {
-        "entity_type": "artist",
-        "name": "Artist A",
+def _empty_api_detail(entity_type: str, name: str, *, metric: str) -> dict:
+    return {
+        "entity_type": entity_type,
+        "name": name,
         "artist": None,
-        "entity_id": "artist-a",
+        "entity_id": None,
         "entity_source_id": None,
-        "metric": "listen_time",
+        "metric": metric,
         "total_plays": 0,
         "total_listen_sec": 0,
         "unique_tracks": 0,
@@ -276,6 +343,15 @@ async def test_entity_detail_api_builds_stats_scope(mock_detail):
         "trend": [],
         "top_tracks": [],
         "recent_plays": [],
+    }
+
+
+@pytest.mark.asyncio
+@patch("src.routes.stats.stats_service.entity_detail", new_callable=AsyncMock)
+async def test_entity_detail_api_builds_stats_scope(mock_detail):
+    mock_detail.return_value = {
+        **_empty_api_detail("artist", "Artist A", metric="listen_time"),
+        "entity_id": "artist-a",
     }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -310,11 +386,56 @@ async def test_entity_detail_api_builds_stats_scope(mock_detail):
 
 
 @pytest.mark.asyncio
+@patch("src.routes.stats.stats_service.entity_detail", new_callable=AsyncMock)
+async def test_client_detail_api_uses_post_body_for_private_identity(mock_detail):
+    mock_detail.return_value = _empty_api_detail(
+        "client",
+        "Symfonium",
+        metric="listen_time",
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/stats/client-detail",
+            json={
+                "name": "Symfonium",
+                "days": 30,
+                "timezone": "Asia/Shanghai",
+                "metric": "listen_time",
+                "source_id": "source-a",
+                "username": "listener",
+            },
+        )
+
+    assert response.status_code == 200
+    scope, identity = mock_detail.await_args.args
+    assert scope == StatsScope.create(
+        days=30,
+        timezone_name="Asia/Shanghai",
+        metric="listen_time",
+        source_id="source-a",
+        username="listener",
+    )
+    assert identity == EntityIdentity.create(entity_type="client", name="Symfonium")
+
+
+@pytest.mark.asyncio
 async def test_entity_detail_api_rejects_unknown_entity_type():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(
             "/api/stats/entity-detail",
             params={"entity_type": "track", "name": "Song"},
+        )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_entity_detail_get_rejects_client_identity():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            "/api/stats/entity-detail",
+            params={"entity_type": "client", "name": "Symfonium"},
         )
 
     assert response.status_code == 422

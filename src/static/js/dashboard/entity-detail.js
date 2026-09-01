@@ -36,6 +36,20 @@ function identityPatch(identity) {
     };
 }
 
+function clientDetailPayload(identity, scope) {
+    const payload = {
+        name: identity.name,
+        days: scope.days,
+        timezone: scope.timezone,
+        metric: scope.metric,
+    };
+    if (scope.sourceId) payload.source_id = scope.sourceId;
+    if (scope.username) payload.username = scope.username;
+    if (scope.startDate) payload.start_date = scope.startDate;
+    if (scope.endDate) payload.end_date = scope.endDate;
+    return payload;
+}
+
 function appendText(parent, className, text) {
     const element = document.createElement('span');
     element.className = className;
@@ -44,7 +58,7 @@ function appendText(parent, className, text) {
     return element;
 }
 
-/** Own the URL-addressable artist/album detail dialog. */
+/** Own URL-addressable artist/album details and in-page client details. */
 export function createEntityDetail({
     apiFetch,
     isAbortError,
@@ -146,13 +160,22 @@ export function createEntityDetail({
     }
 
     function renderIdentity(identity, payload = null) {
-        const type = identity.type === 'album' ? t('entity.album') : t('entity.artist');
+        const typeKey = identity.type === 'album'
+            ? 'entity.album'
+            : identity.type === 'client'
+                ? 'entity.client'
+                : 'entity.artist';
+        const type = t(typeKey);
         document.getElementById('entityDetailType').textContent = t('entity.detailType', { type });
         document.getElementById('entityDetailName').textContent = identity.name;
         const artist = document.getElementById('entityDetailArtist');
         const artistName = payload?.artist || identity.artist;
         artist.textContent = artistName || '';
         artist.classList.toggle('hidden', !artistName || identity.type !== 'album');
+        document.getElementById('entityDetailCopy').classList.toggle(
+            'hidden',
+            identity.type === 'client',
+        );
         renderScope();
         renderCover(identity, payload?.entity_id || identity.id);
     }
@@ -287,7 +310,7 @@ export function createEntityDetail({
                 item.title || t('entity.unknownTrack'),
             );
             title.title = title.textContent;
-            const context = [item.album, item.source_name].filter(Boolean).join(' · ');
+            const context = detailContext(item);
             if (context) appendText(copy, 'entity-list-context', context);
             if (item.last_played_at) {
                 appendText(copy, 'entity-list-meta', t('entity.lastPlayedAt', {
@@ -320,12 +343,12 @@ export function createEntityDetail({
                 item.title || t('entity.unknownTrack'),
             );
             title.title = title.textContent;
-            const context = [item.album, item.source_name].filter(Boolean).join(' · ');
+            const context = detailContext(item);
             if (context) appendText(copy, 'entity-list-context', context);
             const meta = [
                 formatDateTime(item.played_at),
                 item.username,
-                item.client_name,
+                currentIdentity?.type === 'client' ? '' : item.client_name,
             ].filter(Boolean).join(' · ');
             appendText(copy, 'entity-list-meta', meta);
             const value = document.createElement('span');
@@ -334,6 +357,13 @@ export function createEntityDetail({
             row.append(copy, value);
             container.appendChild(row);
         });
+    }
+
+    function detailContext(item) {
+        const fields = currentIdentity?.type === 'client'
+            ? [item.artist, item.album, item.source_name]
+            : [item.album, item.source_name];
+        return fields.filter(Boolean).join(' · ');
     }
 
     function renderPayload(payload) {
@@ -395,15 +425,25 @@ export function createEntityDetail({
         setState('loading');
         try {
             const scope = getScope();
-            const params = new URLSearchParams(buildStatsQuery(scope));
-            params.set('entity_type', identity.type);
-            params.set('name', identity.name);
-            if (identity.id) params.set('entity_id', identity.id);
-            if (identity.sourceId) params.set('entity_source_id', identity.sourceId);
-            if (identity.artist) params.set('artist', identity.artist);
-            const response = await apiFetch(`/api/stats/entity-detail?${params}`, {
-                signal: controller.signal,
-            });
+            let response;
+            if (identity.type === 'client') {
+                response = await apiFetch('/api/stats/client-detail', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(clientDetailPayload(identity, scope)),
+                    signal: controller.signal,
+                });
+            } else {
+                const params = new URLSearchParams(buildStatsQuery(scope));
+                params.set('entity_type', identity.type);
+                params.set('name', identity.name);
+                if (identity.id) params.set('entity_id', identity.id);
+                if (identity.sourceId) params.set('entity_source_id', identity.sourceId);
+                if (identity.artist) params.set('artist', identity.artist);
+                response = await apiFetch(`/api/stats/entity-detail?${params}`, {
+                    signal: controller.signal,
+                });
+            }
             if (!response.ok) throw new Error(`entity detail request failed (${response.status})`);
             const payload = await response.json();
             if (generation !== requestGeneration || controller.signal.aborted) return;
@@ -430,6 +470,11 @@ export function createEntityDetail({
 
     function open(identity, trigger = document.activeElement) {
         lastFocused = trigger;
+        if (identity.type === 'client') {
+            show(identity);
+            load(identity);
+            return;
+        }
         const patch = {
             ...identityPatch(identity),
             // A shared detail URL must keep the exact IANA zone, not the
@@ -441,6 +486,10 @@ export function createEntityDetail({
     }
 
     function close() {
+        if (currentIdentity?.type === 'client') {
+            hide();
+            return;
+        }
         if (window.history.state?.navidromeEntityDetail) {
             window.history.back();
         } else {

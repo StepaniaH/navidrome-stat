@@ -46,6 +46,8 @@ Language, theme, timezone, and reduced-motion preferences are stored in browser 
 
 Frontend assets are served by the application. Normal dashboard use does not load JavaScript or CSS from a public CDN, and the project does not include usage analytics or telemetry. The published container disables Uvicorn request access logs because application URLs can contain usernames, source identifiers, dashboard filters, and shareable artist or album detail names. Operators using another application server or reverse proxy should apply an equivalent logging policy.
 
+Client detail views are not shareable URLs. The browser sends the client name in a POST body and keeps that detail state out of browser history and query strings. Client names remain visible in authorized dashboard responses and on-screen charts because they are part of the stored listening data described above.
+
 Navidrome Stat has one shared authorization level. Anyone with `STATS_API_TOKEN` can view all stored listening data and configured connection identities, change settings and connections, and use export, import, retention, and deletion controls. There are no separate viewer and administrator roles. Do not distribute the token as a read-only credential; use an access-controlled reverse proxy if deployments need that separation.
 
 Without `STATS_API_TOKEN`, dashboard data and all application APIs, including administrative and deletion operations, are available to anyone who can reach the service. The application does not provide TLS; use a trusted network or an HTTPS reverse proxy with appropriate access control.

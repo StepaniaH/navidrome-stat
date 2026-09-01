@@ -19,6 +19,7 @@ from src.stats_queries import (
     get_transcoding_stats,
 )
 from src.stats_query_entities import EntityIdentity, get_entity_detail
+from src.stats_query_relations import RelationDimension, get_data_relations
 from src.stats_scope import StatsScope
 
 QUERY_BUDGET_SECONDS = env_int(
@@ -124,6 +125,19 @@ class StatsReadRepository:
             return await self._timed(
                 "entity_detail",
                 get_entity_detail(scope, identity, db_path=path),
+            )
+
+    async def data_relations(
+        self,
+        scope: StatsScope,
+        dimension: RelationDimension,
+    ) -> dict:
+        """Return cross-dimensional chart data from one SQLite snapshot."""
+        path = self._path()
+        async with read_snapshot(path):
+            return await self._timed(
+                "data_relations",
+                get_data_relations(scope, dimension, db_path=path),
             )
 
 

@@ -17,6 +17,7 @@ import { createHistory } from './js/dashboard/history.js';
 import { createPlayAccounting } from './js/dashboard/play-accounting.js';
 import { createHistoricalDashboard } from './js/dashboard/historical-dashboard.js';
 import { createEntityDetail } from './js/dashboard/entity-detail.js';
+import { createDataRelations } from './js/dashboard/data-relations.js';
 import {
     apiFetch,
     isAbortError,
@@ -40,11 +41,13 @@ import {
     let customEndDate = initialFilters.endDate;
     let selectedSourceId = initialFilters.sourceId;
     let selectedUsername = initialFilters.username;
+    let selectedRelationDimension = initialFilters.relationDimension;
     const knownSources = new Map();
     let knownUsers = [];
     let globalHistoryRecordCount = null;
     let entityDetail = null;
     let historicalDashboard = null;
+    let dataRelations = null;
     // Shared by the artist and album rankings; changing it refreshes both.
     let rankingMetric = initialFilters.metric;
 
@@ -58,6 +61,7 @@ import {
             username: selectedUsername,
             startDate: customStartDate,
             endDate: customEndDate,
+            relationDimension: selectedRelationDimension,
         });
         syncReviewLink();
     }
@@ -102,6 +106,7 @@ import {
         nowPlaying.cancel();
         playAccounting.cancel();
         entityDetail?.cancel();
+        dataRelations?.cancel();
     }
 
     function stopDashboardActivity() {
@@ -159,6 +164,7 @@ import {
     function applyChartTheme() {
         historicalDashboard?.updateTheme();
         entityDetail?.updateTheme();
+        dataRelations?.updateTheme();
     }
 
     window.addEventListener(THEME_CHANGE_EVENT, applyChartTheme);
@@ -203,6 +209,7 @@ import {
         history.localize();
         playAccounting.localize();
         entityDetail?.localize();
+        dataRelations?.localize();
     }
     translateDashboard();
     window.addEventListener(UNAUTHORIZED_EVENT, () => {
@@ -232,7 +239,8 @@ import {
 
     const STATS_PANEL_NAMES = [
         'summary', 'players', 'transcoding', 'hourly', 'daily',
-        'heatmap', 'artists', 'albums', 'sources', 'history',
+        'heatmap', 'relationTrend', 'relationMatrix', 'relationComparison',
+        'artists', 'albums', 'sources', 'history',
     ];
     const PANEL_CONFIG = {
         nowPlaying: {
@@ -288,6 +296,30 @@ import {
             empty: 'weekdayHourChartEmpty',
             error: 'weekdayHourChartError',
             summary: 'weekdayHourChartSummary',
+        },
+        relationTrend: {
+            wrap: 'relationTrendChartWrap',
+            skeleton: 'relationTrendChartSkeleton',
+            contents: [{ id: 'relationTrendChart', hide: 'visibility' }],
+            empty: 'relationTrendChartEmpty',
+            error: 'relationTrendChartError',
+            summary: 'relationTrendChartSummary',
+        },
+        relationMatrix: {
+            wrap: 'relationMatrixChartWrap',
+            skeleton: 'relationMatrixChartSkeleton',
+            contents: [{ id: 'relationMatrixChart', hide: 'visibility' }],
+            empty: 'relationMatrixChartEmpty',
+            error: 'relationMatrixChartError',
+            summary: 'relationMatrixChartSummary',
+        },
+        relationComparison: {
+            wrap: 'relationComparisonChartWrap',
+            skeleton: 'relationComparisonChartSkeleton',
+            contents: [{ id: 'relationComparisonChart', hide: 'visibility' }],
+            empty: 'relationComparisonChartEmpty',
+            error: 'relationComparisonChartError',
+            summary: 'relationComparisonChartSummary',
         },
         artists: {
             wrap: 'topArtistsChartWrap',
@@ -459,6 +491,25 @@ import {
         getFirstSourceId: firstKnownSourceId,
         onEntitySelect: (identity, trigger) => entityDetail.open(identity, trigger),
     });
+    dataRelations = createDataRelations({
+        apiFetch,
+        isAbortError,
+        t: dashboardMessage,
+        formatNumber: dashboardNumber,
+        formatDuration: dashboardDuration,
+        formatPlays: dashboardPlays,
+        getLocale: () => dashboardI18n.getLocale(),
+        getScope: captureStatsRequestState,
+        getWindowLabel: statsWindowLabel,
+        getDimension: () => selectedRelationDimension,
+        onDimensionChange: (dimension) => {
+            selectedRelationDimension = dimension;
+            persistFilters();
+        },
+        onEntitySelect: (identity, trigger) => entityDetail.open(identity, trigger),
+        setPanelState,
+        setPanelSummary,
+    });
 
     function firstKnownSourceId() {
         for (const id of knownSources.keys()) return id;
@@ -593,6 +644,7 @@ import {
         let sourceSelectionReset = false;
         setLoading(true);
         setStatus('loading', dashboardMessage('status.syncing'));
+        dataRelations.refresh({ scope: requestState });
 
         try {
             const query = buildStatsQuery({
@@ -698,6 +750,7 @@ import {
             const element = document.getElementById(id);
             if (element) element.textContent = label;
         });
+        dataRelations?.sync();
     }
 
     async function fetchRankings() {
@@ -812,6 +865,7 @@ import {
     playAccounting.mount();
     history.mount();
     entityDetail.mount();
+    dataRelations.mount();
     updateSourceOptions([]);
     renderUserOptions();
 
@@ -866,7 +920,10 @@ import {
         nowPlaying.refresh();
     });
 
-    window.addEventListener('resize', historicalDashboard.resize);
+    window.addEventListener('resize', () => {
+        historicalDashboard.resize();
+        dataRelations.resize();
+    });
 
     async function bootstrap() {
         try {

@@ -287,6 +287,89 @@
             </div>
         </section>
 
+        <!-- Cross-dimensional relationships -->
+        <section id="dataRelationsSection" data-history-analysis class="mb-8" role="region"
+            aria-label="交叉分析" data-i18n-attr="aria-label:relations.title">
+            <div class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-300" data-i18n="relations.title">交叉分析</h2>
+                    <p id="relationsScope" class="text-xs text-slate-600 mt-1"></p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <div id="relationsDimensionControl" role="group" aria-label="分析维度"
+                        data-i18n-attr="aria-label:relations.dimension"
+                        class="inline-flex rounded-lg bg-ink-800 border border-white/5 p-0.5 text-xs">
+                        <button type="button" data-relations-dimension="artist"
+                            data-i18n="relations.byArtist" class="relations-dimension-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">按艺人</button>
+                        <button type="button" data-relations-dimension="album"
+                            data-i18n="relations.byAlbum" class="relations-dimension-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">按专辑</button>
+                        <button type="button" data-relations-dimension="client"
+                            data-i18n="relations.byClient" class="relations-dimension-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">按客户端</button>
+                    </div>
+                    <div id="relationsMetricControl" role="group" aria-label="图表指标"
+                        data-i18n-attr="aria-label:relations.metric"
+                        class="inline-flex rounded-lg bg-ink-800 border border-white/5 p-0.5 text-xs">
+                        <button type="button" data-ranking-metric="plays"
+                            data-i18n="metric.plays" class="ranking-metric-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">播放次数</button>
+                        <button type="button" data-ranking-metric="listen_time"
+                            data-i18n="metric.listenTime" class="ranking-metric-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50">收听时长</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5 mb-5">
+                <h3 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="relations.trend">随时间变化</h3>
+                <p id="relationTrendSubtitle" class="text-xs text-slate-600 mb-4"></p>
+                <div id="relationTrendChartWrap" class="relative">
+                    <div id="relationTrendChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                    <div id="relationTrendChart" class="chart-container" role="img" aria-label="分组时间趋势"
+                        data-i18n-attr="aria-label:relations.ariaTrend" aria-describedby="relationTrendChartSummary"></div>
+                    <div id="relationTrendChartEmpty" class="hidden absolute inset-0 flex items-center justify-center text-slate-600 text-sm">
+                        <span id="relationTrendEmptyText" data-i18n="relations.emptyTrend">当前范围内暂无趋势数据</span>
+                    </div>
+                    <div id="relationTrendChartError" class="hidden absolute inset-0 flex items-center justify-center text-sm panel-error" role="status">
+                        <span data-i18n="error.section">无法加载此分区。</span>
+                    </div>
+                    <p id="relationTrendChartSummary" class="visually-hidden"></p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="relations.daypart">一天中的分布</h3>
+                    <p id="relationMatrixSubtitle" class="text-xs text-slate-600 mb-4"></p>
+                    <div id="relationMatrixChartWrap" class="relative">
+                        <div id="relationMatrixChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                        <div id="relationMatrixChart" class="chart-container" role="img" aria-label="维度与一天时段热力图"
+                            data-i18n-attr="aria-label:relations.ariaDaypart" aria-describedby="relationMatrixChartSummary"></div>
+                        <div id="relationMatrixChartEmpty" class="hidden absolute inset-0 flex items-center justify-center text-slate-600 text-sm">
+                            <span id="relationMatrixEmptyText" data-i18n="relations.emptyDaypart">当前范围内暂无时段数据</span>
+                        </div>
+                        <div id="relationMatrixChartError" class="hidden absolute inset-0 flex items-center justify-center text-sm panel-error" role="status">
+                            <span data-i18n="error.section">无法加载此分区。</span>
+                        </div>
+                        <p id="relationMatrixChartSummary" class="visually-hidden"></p>
+                    </div>
+                </div>
+                <div class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-1" data-i18n="relations.comparison">与上周期对比</h3>
+                    <p id="relationComparisonSubtitle" class="text-xs text-slate-600 mb-4"></p>
+                    <div id="relationComparisonChartWrap" class="relative">
+                        <div id="relationComparisonChartSkeleton" class="chart-container skeleton hidden" aria-hidden="true"></div>
+                        <div id="relationComparisonChart" class="chart-container" role="img" aria-label="当前与上周期分组对比图"
+                            data-i18n-attr="aria-label:relations.ariaComparison" aria-describedby="relationComparisonChartSummary"></div>
+                        <div id="relationComparisonChartEmpty" class="hidden absolute inset-0 flex items-center justify-center text-slate-600 text-sm px-4 text-center">
+                            <span id="relationComparisonEmptyText" data-i18n="relations.emptyComparison">当前范围内暂无对比数据</span>
+                        </div>
+                        <div id="relationComparisonChartError" class="hidden absolute inset-0 flex items-center justify-center text-sm panel-error" role="status">
+                            <span data-i18n="error.section">无法加载此分区。</span>
+                        </div>
+                        <p id="relationComparisonChartSummary" class="visually-hidden"></p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Top Artists & Top Albums -->
         <section data-history-analysis class="mb-8" role="region" aria-label="热门艺人与专辑" data-i18n-attr="aria-label:dashboard.rankings">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
