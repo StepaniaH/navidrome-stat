@@ -298,6 +298,33 @@ async def test_entity_detail_uses_scope_and_identity_in_cache_key(cache, service
 
 
 @pytest.mark.asyncio
+async def test_legacy_album_detail_resolves_cover_without_changing_identity(
+    cache, service, monkeypatch
+):
+    payload = {
+        "entity_type": "album",
+        "name": "Legacy Album",
+        "entity_id": None,
+    }
+    service._read_repository.entity_detail = AsyncMock(return_value=payload)
+    lookup = AsyncMock(return_value="resolved-cover-id")
+    monkeypatch.setattr(stats_module.cover_art_service, "resolve_album_id", lookup)
+    scope = StatsScope.create(days=30, timezone_name="UTC", metric="plays")
+    identity = EntityIdentity.create(
+        entity_type="album",
+        name="Legacy Album",
+        source_id="server-1",
+        artist="Artist A",
+    )
+
+    result = await service.entity_detail(scope, identity)
+
+    assert result["entity_id"] is None
+    assert result["cover_art_id"] == "resolved-cover-id"
+    lookup.assert_awaited_once_with("server-1", "Legacy Album", "Artist A")
+
+
+@pytest.mark.asyncio
 async def test_data_relations_uses_scope_and_dimension_in_cache_key(cache, service):
     payload = {"dimension": "client", "trend": []}
     service._read_repository.data_relations = AsyncMock(return_value=payload)
@@ -360,6 +387,44 @@ async def test_dashboard_keeps_local_stats_when_album_art_lookup_fails(cache, se
             "total_listen_sec": 120,
             "value": 3,
             "album_id": None,
+            "cover_art_id": None,
         }
     ]
     lookup.assert_awaited_once_with("server-1", "Local Album", None)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_keeps_legacy_album_identity_when_cover_art_is_resolved(
+    cache, service, monkeypatch
+):
+    service._read_repository.dashboard = AsyncMock(
+        return_value={
+            "summary": {"total_plays": 2},
+            "players": [],
+            "transcoding": [],
+            "time_buckets": {"hourly": [], "daily": [], "heatmap": []},
+            "history": [],
+            "servers": [],
+            "available_servers": [
+                {"id": "server-1", "display_name": "Synthetic Server"}
+            ],
+            "top_artists": [],
+            "top_albums": [{
+                "album": "Legacy Album",
+                "artist": "Artist A",
+                "album_id": None,
+                "source_id": "server-1",
+                "count": 2,
+                "total_listen_sec": 120,
+                "value": 2,
+            }],
+        }
+    )
+    lookup = AsyncMock(return_value="resolved-cover-id")
+    monkeypatch.setattr(stats_module.cover_art_service, "resolve_album_id", lookup)
+
+    result = await service.dashboard(StatsScope.create(days=30, timezone_name="UTC"))
+
+    assert result["top_albums"][0]["album_id"] is None
+    assert result["top_albums"][0]["cover_art_id"] == "resolved-cover-id"
+    lookup.assert_awaited_once_with("server-1", "Legacy Album", "Artist A")

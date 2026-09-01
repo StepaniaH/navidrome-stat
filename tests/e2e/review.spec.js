@@ -18,7 +18,7 @@ const REVIEW = {
   hourly: Array.from({ length: 24 }, (_, hour) => ({ hour, count: hour === 9 ? 60 : 10, total_listen_sec: hour === 9 ? 18000 : 3000 })),
   weekday: Array.from({ length: 7 }, (_, weekday) => ({ weekday, count: weekday === 2 ? 90 : 40, total_listen_sec: weekday === 2 ? 26000 : 12000 })),
   top_artists: [{ name: "Synthetic Artist", count: 90, total_listen_sec: 18000, value: 18000 }],
-  top_albums: [{ name: "Synthetic Album", count: 60, total_listen_sec: 12000, value: 12000, album_id: "al-1", source_id: "src-1" }],
+  top_albums: [{ name: "Synthetic Album", count: 60, total_listen_sec: 12000, value: 12000, album_id: "al-1", cover_art_id: "al-1", source_id: "src-1" }],
   top_tracks: [{ name: "Synthetic Song", count: 40, total_listen_sec: 8000, value: 8000, track_id: "tr-1", source_id: "src-1" }],
 };
 

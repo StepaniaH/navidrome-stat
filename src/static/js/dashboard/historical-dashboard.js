@@ -626,7 +626,9 @@ export function createHistoricalDashboard({
             label.title = labelValue;
             const cover = createCoverImage({
                 sourceId: item.source_id || sourceId,
-                id: panel === 'albums' ? item.album_id : item.artist_id,
+                id: panel === 'albums'
+                    ? (item.cover_art_id || item.album_id)
+                    : item.artist_id,
                 className: 'ranking-cover',
                 onError: (image) => image.replaceWith(createRankingFallback(labelValue)),
             });
@@ -666,7 +668,7 @@ export function createHistoricalDashboard({
                 name: labelValue,
                 id: panel === 'artists' ? item.artist_id : item.album_id,
                 sourceId: panel === 'albums' ? (item.source_id || sourceId) : '',
-                artist: panel === 'albums' && !item.album_id ? (item.artist || '') : '',
+                artist: panel === 'albums' ? (item.artist || '') : '',
             }, row));
             row.append(rank, cover || createRankingFallback(labelValue), label, barCell, countCell);
             listItem.appendChild(row);

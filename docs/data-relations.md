@@ -30,6 +30,9 @@ not open a detail view because they do not identify one entity.
   strings.
 - Every detail request retains the selected date, timezone, server, user, and
   metric scope.
+- Track rows use play count and total recorded listening time. Detail durations
+  preserve whether a value was reported, estimated, a lower bound from older
+  checkpoints, or unavailable.
 
 ## Candidate drill-downs
 

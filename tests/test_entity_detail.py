@@ -24,13 +24,16 @@ def _play(
     title: str,
     artist: str,
     album: str,
-    duration: int = 60,
+    duration: int | None = 60,
     source_id: str = "source-a",
     source_name: str = "Source A",
     username: str = "listener",
     client_name: str = "Test Player",
     artist_id: str | None = None,
     album_id: str | None = None,
+    session_id: str | None = None,
+    duration_confidence: str = "estimated",
+    source: str = "poller",
 ) -> dict:
     return {
         "last_seen_at": _iso(moment),
@@ -44,6 +47,9 @@ def _play(
         "album_id": album_id,
         "is_transcoding": 0,
         "duration_sec": duration,
+        "duration_confidence": duration_confidence,
+        "session_id": session_id,
+        "source": source,
         "source_id": source_id,
         "source_name": source_name,
         "finalized": True,
@@ -305,6 +311,88 @@ def test_legacy_album_detail_does_not_merge_identified_album_rows(db_path):
 
     assert detail["total_plays"] == 1
     assert [row["title"] for row in detail["recent_plays"]] == ["Legacy row"]
+
+
+def test_entity_detail_exposes_duration_quality_without_inventing_precision(db_path):
+    asyncio.run(init_db(db_path))
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    _save(db_path, _play(
+        now,
+        track_id="legacy",
+        title="Legacy checkpoint",
+        artist="Artist A",
+        album="Live",
+        duration=45,
+    ))
+    _save(db_path, _play(
+        now + timedelta(seconds=1),
+        track_id="threshold",
+        title="Threshold checkpoint",
+        artist="Artist A",
+        album="Live",
+        duration=30,
+        session_id="affected-session",
+        duration_confidence="reported",
+    ))
+    _save(db_path, _play(
+        now + timedelta(seconds=2),
+        track_id="legacy",
+        title="Legacy checkpoint",
+        artist="Artist A",
+        album="Live",
+        duration=120,
+        session_id="modern-session",
+        duration_confidence="reported",
+    ))
+    _save(db_path, _play(
+        now + timedelta(seconds=3),
+        track_id="estimated",
+        title="Estimated session",
+        artist="Artist A",
+        album="Live",
+        duration=60,
+        session_id="estimated-session",
+    ))
+    _save(db_path, _play(
+        now + timedelta(seconds=4),
+        track_id="imported",
+        title="Imported history",
+        artist="Artist A",
+        album="Archive",
+        duration=None,
+        source="backfill",
+    ))
+
+    detail = asyncio.run(get_entity_detail(
+        StatsScope.create(days=0, timezone_name="UTC", metric="plays"),
+        EntityIdentity.create(entity_type="artist", name="Artist A"),
+        db_path=db_path,
+    ))
+
+    assert detail["total_plays"] == 5
+    assert detail["total_listen_sec"] == 255
+    assert detail["duration_quality"] == "lower_bound"
+    assert detail["trend"][0]["duration_quality"] == "lower_bound"
+    assert detail["top_tracks"][0]["play_count"] == 2
+    assert detail["top_tracks"][0]["total_listen_sec"] == 165
+    assert detail["top_tracks"][0]["duration_quality"] == "lower_bound"
+    track_qualities = {
+        row["title"]: row["duration_quality"] for row in detail["top_tracks"]
+    }
+    assert track_qualities == {
+        "Legacy checkpoint": "lower_bound",
+        "Threshold checkpoint": "lower_bound",
+        "Estimated session": "estimated",
+        "Imported history": "unknown",
+    }
+    assert [row["duration_quality"] for row in detail["recent_plays"]] == [
+        "unknown",
+        "estimated",
+        "reported",
+        "lower_bound",
+        "lower_bound",
+    ]
+    assert detail["recent_plays"][0]["listen_duration_sec"] is None
 
 
 def test_empty_entity_detail_returns_zero_derived_metrics(db_path):

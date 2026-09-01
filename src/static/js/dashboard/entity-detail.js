@@ -125,6 +125,23 @@ export function createEntityDetail({
         }
     }
 
+    function formatDurationByQuality(value, quality, { precise = false } = {}) {
+        if (value === null || value === undefined || quality === 'unknown') return '—';
+        const formatted = precise
+            ? formatPreciseDuration(value)
+            : formatDuration(value);
+        if (quality === 'lower_bound') return `≥ ${formatted}`;
+        if (quality === 'estimated') return `≈ ${formatted}`;
+        return formatted;
+    }
+
+    function durationQualityTitle(quality) {
+        if (quality === 'lower_bound') return t('entity.durationLowerBound');
+        if (quality === 'estimated') return t('entity.durationEstimated');
+        if (quality === 'unknown') return t('entity.durationUnknown');
+        return '';
+    }
+
     function renderCover(identity, entityId = identity.id) {
         const cover = document.getElementById('entityDetailCover');
         const fallback = document.createElement('span');
@@ -177,7 +194,10 @@ export function createEntityDetail({
             identity.type === 'client',
         );
         renderScope();
-        renderCover(identity, payload?.entity_id || identity.id);
+        renderCover(
+            identity,
+            payload?.cover_art_id || payload?.entity_id || identity.id,
+        );
     }
 
     function renderRank(payload) {
@@ -230,7 +250,16 @@ export function createEntityDetail({
                     const date = items[0]?.axisValueLabel || '';
                     const plays = items.find((item) => item.seriesName === t('metric.plays'))?.value || 0;
                     const listen = items.find((item) => item.seriesName === t('metric.listenTime'))?.value || 0;
-                    return `${date}<br>${t('metric.plays')}: ${formatNumber(plays)}<br>${t('metric.listenTime')}: ${formatDuration(listen)}`;
+                    const point = rows.find((row) => row.date === date);
+                    const listenText = formatDurationByQuality(
+                        listen,
+                        point?.duration_quality,
+                    );
+                    return [
+                        date,
+                        `${t('metric.plays')}: ${formatNumber(plays)}`,
+                        `${t('metric.listenTime')}: ${listenText}`,
+                    ].join('<br>');
                 },
             },
             legend: {
@@ -280,7 +309,11 @@ export function createEntityDetail({
                     smooth: true,
                     symbol: 'none',
                     lineStyle: { width: 1.5, type: 'dashed' },
-                    data: rows.map((row) => Number(row.total_listen_sec) || 0),
+                    data: rows.map((row) => (
+                        row.duration_quality === 'unknown'
+                            ? null
+                            : (Number(row.total_listen_sec) || 0)
+                    )),
                 },
             ],
         }, true);
@@ -288,7 +321,10 @@ export function createEntityDetail({
         document.getElementById('entityTrendSummary').textContent = t('entity.trendSummary', {
             days: formatNumber(rows.length),
             plays: formatNumber(payload.total_plays),
-            duration: formatDuration(payload.total_listen_sec),
+            duration: formatDurationByQuality(
+                payload.total_listen_sec,
+                payload.duration_quality,
+            ),
         });
     }
 
@@ -319,7 +355,11 @@ export function createEntityDetail({
             }
             const value = document.createElement('span');
             value.className = 'entity-list-value stat-value';
-            value.textContent = `${formatPlays(item.play_count)} · ${formatDuration(item.total_listen_sec)}`;
+            value.textContent = `${formatPlays(item.play_count)} · ${formatDurationByQuality(
+                item.total_listen_sec,
+                item.duration_quality,
+            )}`;
+            value.title = durationQualityTitle(item.duration_quality);
             row.append(copy, value);
             container.appendChild(row);
         });
@@ -353,7 +393,11 @@ export function createEntityDetail({
             appendText(copy, 'entity-list-meta', meta);
             const value = document.createElement('span');
             value.className = 'entity-list-value stat-value';
-            value.textContent = formatDuration(item.listen_duration_sec);
+            value.textContent = formatDurationByQuality(
+                item.listen_duration_sec,
+                item.duration_quality,
+            );
+            value.title = durationQualityTitle(item.duration_quality);
             row.append(copy, value);
             container.appendChild(row);
         });
@@ -370,10 +414,19 @@ export function createEntityDetail({
         lastPayload = payload;
         renderIdentity(currentIdentity, payload);
         document.getElementById('entityDetailPlays').textContent = formatNumber(payload.total_plays);
-        document.getElementById('entityDetailListen').textContent = formatDuration(payload.total_listen_sec);
-        document.getElementById('entityDetailAverage').textContent = formatPreciseDuration(
-            payload.average_listen_sec,
+        const listen = document.getElementById('entityDetailListen');
+        listen.textContent = formatDurationByQuality(
+            payload.total_listen_sec,
+            payload.duration_quality,
         );
+        listen.title = durationQualityTitle(payload.duration_quality);
+        const average = document.getElementById('entityDetailAverage');
+        average.textContent = formatDurationByQuality(
+            payload.average_listen_sec,
+            payload.duration_quality,
+            { precise: true },
+        );
+        average.title = durationQualityTitle(payload.duration_quality);
         document.getElementById('entityDetailTracks').textContent = formatNumber(payload.unique_tracks);
         const first = document.getElementById('entityDetailFirst');
         const last = document.getElementById('entityDetailLast');

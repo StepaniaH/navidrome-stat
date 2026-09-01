@@ -20,6 +20,8 @@ from src.windows import (
 )
 
 EntityType = Literal["artist", "album", "client"]
+DurationQuality = Literal["reported", "estimated", "lower_bound", "unknown"]
+EARLY_CHECKPOINT_DURATION_SEC = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +96,37 @@ def _track_key(row: aiosqlite.Row) -> tuple:
         row["artist"],
         row["album"],
     )
+
+
+def _row_duration_quality(row: aiosqlite.Row) -> DurationQuality:
+    """Describe what a stored duration can honestly claim.
+
+    Poller rows written before idempotent session checkpoints have no
+    ``session_id``. Those releases persisted the first threshold crossing and
+    did not update the row when playback continued. Later affected builds
+    could retain the default 30-second threshold even with a session ID, so an
+    exact threshold value is also treated conservatively as a lower bound.
+    """
+    if row["listen_duration_sec"] is None:
+        return "unknown"
+    if row["source"] == "poller":
+        duration = int(row["listen_duration_sec"])
+        if not row["session_id"] or duration == EARLY_CHECKPOINT_DURATION_SEC:
+            return "lower_bound"
+    if row["duration_confidence"] == "reported":
+        return "reported"
+    return "estimated"
+
+
+def _combined_duration_quality(qualities: set[DurationQuality]) -> DurationQuality:
+    """Combine row-level duration quality without overstating precision."""
+    if not qualities or qualities == {"unknown"}:
+        return "unknown"
+    if "unknown" in qualities or "lower_bound" in qualities:
+        return "lower_bound"
+    if "estimated" in qualities:
+        return "estimated"
+    return "reported"
 
 
 async def _artist_rank(
@@ -292,9 +325,10 @@ async def get_entity_detail(
     last_played_at: str | None = None
     resolved_entity_id = identity.entity_id
     resolved_artist = identity.artist
-    trend: dict[str, dict[str, int | str]] = {}
+    trend: dict[str, dict] = {}
     track_totals: dict[tuple, dict] = {}
     recent_plays: list[dict] = []
+    duration_qualities: set[DurationQuality] = set()
 
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
@@ -312,7 +346,10 @@ async def get_entity_detail(
                 artist_id,
                 album,
                 album_id,
-                COALESCE(listen_duration_sec, 0) AS listen_duration_sec,
+                listen_duration_sec,
+                COALESCE(source, 'poller') AS source,
+                session_id,
+                COALESCE(duration_confidence, 'estimated') AS duration_confidence,
                 COALESCE(source_id, ?) AS source_id,
                 COALESCE(source_name, ?) AS source_name
             FROM play_history
@@ -322,7 +359,10 @@ async def get_entity_detail(
             [LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME, *params],
         ) as cursor:
             async for row in cursor:
-                duration = int(row["listen_duration_sec"] or 0)
+                stored_duration = row["listen_duration_sec"]
+                duration = int(stored_duration or 0)
+                duration_quality = _row_duration_quality(row)
+                duration_qualities.add(duration_quality)
                 total_plays += 1
                 total_listen_sec += duration
                 played_at = row["played_at"]
@@ -345,9 +385,11 @@ async def get_entity_detail(
                         "date": bucket_key,
                         "play_count": 0,
                         "total_listen_sec": 0,
+                        "_duration_qualities": set(),
                     })
                     bucket["play_count"] += 1
                     bucket["total_listen_sec"] += duration
+                    bucket["_duration_qualities"].add(duration_quality)
 
                 if len(recent_plays) < 10:
                     recent_plays.append({
@@ -358,7 +400,10 @@ async def get_entity_detail(
                         "title": row["title"],
                         "artist": row["artist"],
                         "album": row["album"],
-                        "listen_duration_sec": duration,
+                        "listen_duration_sec": (
+                            int(stored_duration) if stored_duration is not None else None
+                        ),
+                        "duration_quality": duration_quality,
                         "source_id": row["source_id"],
                         "source_name": row["source_name"],
                     })
@@ -376,10 +421,12 @@ async def get_entity_detail(
                         "last_played_at": played_at,
                         "source_id": row["source_id"],
                         "source_name": row["source_name"],
+                        "_duration_qualities": set(),
                     }
                     track_totals[key] = track
                 track["play_count"] += 1
                 track["total_listen_sec"] += duration
+                track["_duration_qualities"].add(duration_quality)
 
         current_rank = await _entity_rank(db, scope, identity, previous=False)
         comparison_available = bool(
@@ -412,8 +459,21 @@ async def get_entity_detail(
                 "date": bucket_key,
                 "play_count": 0,
                 "total_listen_sec": 0,
+                "_duration_qualities": set(),
             })
             cursor_date += timedelta(days=1)
+
+    for bucket in trend.values():
+        qualities = bucket.pop("_duration_qualities")
+        bucket["duration_quality"] = (
+            "reported"
+            if int(bucket["play_count"]) == 0
+            else _combined_duration_quality(qualities)
+        )
+    for track in track_totals.values():
+        track["duration_quality"] = _combined_duration_quality(
+            track.pop("_duration_qualities")
+        )
 
     metric_key = "play_count" if scope.metric == "plays" else "total_listen_sec"
     top_tracks = sorted(
@@ -439,6 +499,7 @@ async def get_entity_detail(
         "metric": scope.metric,
         "total_plays": total_plays,
         "total_listen_sec": total_listen_sec,
+        "duration_quality": _combined_duration_quality(duration_qualities),
         "unique_tracks": len(track_totals),
         "average_listen_sec": round(total_listen_sec / total_plays, 2) if total_plays else 0,
         "first_played_at": first_played_at,

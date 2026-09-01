@@ -137,6 +137,7 @@ class TopAlbumItem(BaseModel):
     total_listen_sec: Optional[int] = None
     value: Optional[int] = None
     album_id: Optional[str] = None
+    cover_art_id: Optional[str] = None
     source_id: Optional[str] = None
 
 
@@ -144,6 +145,9 @@ class EntityTrendPoint(BaseModel):
     date: str
     play_count: int
     total_listen_sec: int
+    duration_quality: Literal["reported", "estimated", "lower_bound", "unknown"] = (
+        "reported"
+    )
 
 
 class EntityTrackItem(BaseModel):
@@ -153,6 +157,9 @@ class EntityTrackItem(BaseModel):
     album: Optional[str] = None
     play_count: int
     total_listen_sec: int
+    duration_quality: Literal["reported", "estimated", "lower_bound", "unknown"] = (
+        "reported"
+    )
     last_played_at: Optional[str] = None
     source_id: Optional[str] = None
     source_name: Optional[str] = None
@@ -166,7 +173,10 @@ class EntityRecentPlayItem(BaseModel):
     title: Optional[str] = None
     artist: Optional[str] = None
     album: Optional[str] = None
-    listen_duration_sec: int
+    listen_duration_sec: Optional[int] = None
+    duration_quality: Literal["reported", "estimated", "lower_bound", "unknown"] = (
+        "reported"
+    )
     source_id: Optional[str] = None
     source_name: Optional[str] = None
 
@@ -176,10 +186,14 @@ class EntityDetailResponse(BaseModel):
     name: str
     artist: Optional[str] = None
     entity_id: Optional[str] = None
+    cover_art_id: Optional[str] = None
     entity_source_id: Optional[str] = None
     metric: Literal["plays", "listen_time"]
     total_plays: int
     total_listen_sec: int
+    duration_quality: Literal["reported", "estimated", "lower_bound", "unknown"] = (
+        "reported"
+    )
     unique_tracks: int
     average_listen_sec: float
     first_played_at: Optional[str] = None
@@ -526,6 +540,7 @@ class ReviewTopItem(BaseModel):
     value: Optional[int] = None
     source_id: Optional[str] = None
     album_id: Optional[str] = None
+    cover_art_id: Optional[str] = None
     track_id: Optional[str] = None
 
 

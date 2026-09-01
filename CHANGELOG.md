@@ -4,6 +4,14 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Changed
+
+- Detail track rows consistently show play count and total recorded listening time. Estimated values use `≈`, older incomplete checkpoint values use `≥`, and missing durations remain unknown instead of appearing as zero seconds.
+
+### Fixed
+
+- Album cover lookup no longer replaces the stored album identity. Details for pre-album-ID history now use the original server, album, and artist identity instead of opening an empty ID-scoped view.
+
 ## [0.9.0] - 2026-09-01
 
 ### Added

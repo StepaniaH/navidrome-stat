@@ -232,7 +232,7 @@ function renderReview(review, sourceId) {
     }
     renderCharts(review);
     renderTopList('reviewTopArtists', review.top_artists, { coverId: 'artist_id', sourceId });
-    renderTopList('reviewTopAlbums', review.top_albums, { coverId: 'album_id', sourceId });
+    renderTopList('reviewTopAlbums', review.top_albums, { coverId: 'cover_art_id', sourceId });
     renderTopList('reviewTopTracks', review.top_tracks, { coverId: 'track_id', sourceId });
 }
 
