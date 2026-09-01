@@ -7,10 +7,12 @@ All notable user-facing changes are documented in this file. The format follows 
 ### Changed
 
 - Detail track rows consistently show play count and total recorded listening time. Estimated values use `≈`, older incomplete checkpoint values use `≥`, and missing durations remain unknown instead of appearing as zero seconds.
+- Privacy exports use format v4 to preserve duration-quality semantics across restore. Formats v1 through v3 remain importable, and existing v3 fingerprints keep their original duplicate/conflict behavior.
 
 ### Fixed
 
 - Album cover lookup no longer replaces the stored album identity. Details for pre-album-ID history now use the original server, album, and artist identity instead of opening an empty ID-scoped view.
+- Interrupted durable checkpoints retain their lower-bound duration marker after startup recovery. Privacy export/import preserves derived duration quality, including missing durations.
 
 ## [0.9.0] - 2026-09-01
 
@@ -298,7 +300,8 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.9...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.9...v0.9.0
 [0.8.9]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.6...v0.8.7

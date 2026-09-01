@@ -8,7 +8,7 @@ from typing import Literal
 
 import aiosqlite
 
-from src.core_types import DurationQuality
+from src.core_types import DurationQuality, classify_history_duration_quality
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
 from src.sqlite import connect_db
 from src.stats_query_common import database_path as _path
@@ -106,15 +106,13 @@ def _row_duration_quality(row: aiosqlite.Row) -> DurationQuality:
     record which collector version produced them, so playback-report records
     from before the sparse-report fix cannot be distinguished safely.
     """
-    if row["listen_duration_sec"] is None:
-        return "unknown"
-    if row["source"] == "poller":
-        if not row["session_id"] or not bool(row["finalized"]):
-            return "lower_bound"
-        return "estimated"
-    if row["duration_confidence"] == "reported":
-        return "reported"
-    return "estimated"
+    return classify_history_duration_quality(
+        listen_duration_sec=row["listen_duration_sec"],
+        source=row["source"],
+        session_id=row["session_id"],
+        finalized=row["finalized"],
+        duration_confidence=row["duration_confidence"],
+    )
 
 
 def _combined_duration_quality(qualities: set[DurationQuality]) -> DurationQuality:

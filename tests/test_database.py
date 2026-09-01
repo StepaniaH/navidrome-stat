@@ -132,7 +132,7 @@ def test_startup_recovers_incomplete_checkpoint_without_duplicate(db_path):
     row = conn.execute(
         """
         SELECT COUNT(*), listen_duration_sec, finalized, finalized_at,
-               checkpointed_at
+               checkpointed_at, duration_confidence
         FROM play_history WHERE session_id = ?
         """,
         ("synthetic-interrupted-session",),
@@ -147,6 +147,7 @@ def test_startup_recovers_incomplete_checkpoint_without_duplicate(db_path):
         1,
         "2024-03-24T12:01:00+00:00",
         "2024-03-24T12:01:00+00:00",
+        "lower_bound",
     )
     assert journal_mode == "wal"
     # Foreign keys are connection-local; direct sqlite3 callers remain off.

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.database import init_db, save_play_session
+from src.database import init_db, recover_incomplete_sessions, save_play_session
 from src.main import app
 from src.stats_query_entities import EntityIdentity, get_entity_detail
 from src.stats_scope import StatsScope
@@ -419,6 +419,34 @@ def test_entity_detail_exposes_duration_quality_without_inventing_precision(db_p
         "lower_bound",
     ]
     assert detail["recent_plays"][2]["listen_duration_sec"] is None
+
+
+def test_recovered_checkpoint_remains_a_lower_bound_in_entity_detail(db_path):
+    asyncio.run(init_db(db_path))
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    _save(db_path, _play(
+        now,
+        track_id="interrupted",
+        title="Interrupted checkpoint",
+        artist="Artist A",
+        album="Live",
+        duration=90,
+        session_id="interrupted-session",
+        duration_confidence="reported",
+        finalized=False,
+    ))
+
+    assert asyncio.run(recover_incomplete_sessions(db_path)) == 1
+    detail = asyncio.run(get_entity_detail(
+        StatsScope.create(days=0, timezone_name="UTC", metric="plays"),
+        EntityIdentity.create(entity_type="artist", name="Artist A"),
+        db_path=db_path,
+    ))
+
+    assert detail["duration_quality"] == "lower_bound"
+    assert detail["trend"][0]["duration_quality"] == "lower_bound"
+    assert detail["top_tracks"][0]["duration_quality"] == "lower_bound"
+    assert detail["recent_plays"][0]["duration_quality"] == "lower_bound"
 
 
 def test_empty_entity_detail_returns_zero_derived_metrics(db_path):
