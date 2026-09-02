@@ -13,7 +13,7 @@
 [![Docker Hub](https://img.shields.io/docker/v/stepaniah/navidrome-statistic/latest?label=Docker&logo=docker&logoColor=white)](https://hub.docker.com/r/stepaniah/navidrome-statistic)
 [![Docker Pulls](https://img.shields.io/docker/pulls/stepaniah/navidrome-statistic?logo=docker&logoColor=white)](https://hub.docker.com/r/stepaniah/navidrome-statistic)
 
-<img src="assets/screenshots/dashboard-frappe-top.png" alt="Playback statistics dashboard with now playing, totals, client and transcoding charts" width="920">
+<img src="assets/screenshots/dashboard-frappe-top.png" alt="Playback statistics dashboard with now playing, totals, client and transcoding charts" width="640">
 
 </div>
 
@@ -28,7 +28,7 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 - Aggregates current and historical playback across clients, devices, users, and Navidrome servers.
 - Shows listening time, play history, hourly and daily trends, a weekday × hour heatmap, client usage, transcoding, and artist, album, or track rankings.
 - Compares top artists, albums, or clients over time, across four dayparts, and against the preceding equal-length period, using either play count or recorded listening time.
-- Artist and album rankings open shareable detail views with scoped totals, average time per play, unique-track count, trends, first and latest play times, top tracks, recent plays, and prior-period rank changes.
+- Artist and album rankings open shareable detail views with scoped totals, average time per play, unique-track count, trends, first and latest play times, top tracks, recent plays, and prior-period rank changes. Track rows use play count and total recorded listening time; `≈`, `≥`, and `—` distinguish estimated, minimum-only, and missing duration values.
 - Client rows and relationship charts open the same scoped detail data without adding client names to shareable URLs.
 - A year-in-review page with totals, listening streaks, monthly and time-of-day charts, top lists, and URL-persisted year, server, user, and timezone scope.
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.

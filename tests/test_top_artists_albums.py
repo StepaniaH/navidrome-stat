@@ -150,6 +150,7 @@ async def test_api_top_albums(mock_get):
             "total_listen_sec": 90,
             "value": 3,
             "album_id": None,
+            "cover_art_id": None,
             "source_id": None,
         }
     ]

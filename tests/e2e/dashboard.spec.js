@@ -126,10 +126,22 @@ const snapshot = {
   }],
   top_albums: [{
     album: "Synthetic Album",
+    artist: "Synthetic Artist",
     count: 3,
     total_listen_sec: 185,
     value: 3,
     album_id: "al-1",
+    cover_art_id: "al-1",
+    source_id: "server-1",
+  }, {
+    album: "Legacy Album",
+    artist: "Legacy Artist",
+    count: 2,
+    total_listen_sec: 60,
+    value: 2,
+    album_id: null,
+    cover_art_id: "legacy-cover",
+    source_id: "server-1",
   }],
 };
 
@@ -150,6 +162,7 @@ const entityDetailSnapshot = {
   metric: "plays",
   total_plays: 3,
   total_listen_sec: 185,
+  duration_quality: "lower_bound",
   unique_tracks: 2,
   average_listen_sec: 61.67,
   first_played_at: "2026-07-27T12:00:00+00:00",
@@ -159,8 +172,8 @@ const entityDetailSnapshot = {
   rank_change: 2,
   comparison_available: true,
   trend: [
-    { date: "2026-07-27", play_count: 1, total_listen_sec: 60 },
-    { date: "2026-07-28", play_count: 2, total_listen_sec: 125 },
+    { date: "2026-07-27", play_count: 1, total_listen_sec: 60, duration_quality: "lower_bound" },
+    { date: "2026-07-28", play_count: 2, total_listen_sec: 125, duration_quality: "lower_bound" },
   ],
   top_tracks: [{
     track_id: "tr-1",
@@ -169,6 +182,7 @@ const entityDetailSnapshot = {
     album: "Synthetic Album",
     play_count: 2,
     total_listen_sec: 120,
+    duration_quality: "lower_bound",
     last_played_at: "2026-07-28T12:00:00+00:00",
     source_id: "server-1",
     source_name: "Synthetic Server",
@@ -181,7 +195,8 @@ const entityDetailSnapshot = {
     title: "Synthetic Track",
     artist: "Synthetic Artist",
     album: "Synthetic Album",
-    listen_duration_sec: 60,
+    listen_duration_sec: null,
+    duration_quality: "unknown",
     source_id: "server-1",
     source_name: "Synthetic Server",
   }],
@@ -192,6 +207,22 @@ const clientDetailSnapshot = {
   entity_type: "client",
   name: "Synthetic Player",
 };
+
+function scopedEntityDetailSnapshot(url) {
+  const params = new URL(url).searchParams;
+  if (params.get("entity_type") !== "album") return entityDetailSnapshot;
+  const name = params.get("name") || "Synthetic Album";
+  const entityId = params.get("entity_id");
+  return {
+    ...entityDetailSnapshot,
+    entity_type: "album",
+    name,
+    artist: params.get("artist"),
+    entity_id: entityId,
+    cover_art_id: entityId || (name === "Legacy Album" ? "legacy-cover" : null),
+    entity_source_id: params.get("entity_source_id"),
+  };
+}
 
 function relationSnapshot(url) {
   const parsed = new URL(url);
@@ -260,6 +291,12 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({ json: { auth_required: false } }),
   );
+  await page.route("**/api/coverart?*", (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+    }),
+  );
   await page.route("**/api/stats/dashboard?*", (route) =>
     route.fulfill({ json: snapshot }),
   );
@@ -279,7 +316,7 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({ json: playAccountingSnapshot }),
   );
   await page.route("**/api/stats/entity-detail?*", (route) =>
-    route.fulfill({ json: entityDetailSnapshot }),
+    route.fulfill({ json: scopedEntityDetailSnapshot(route.request().url()) }),
   );
   await page.route("**/api/stats/client-detail", (route) =>
     route.fulfill({ json: clientDetailSnapshot }),
@@ -481,16 +518,18 @@ test("artist ranking opens a scoped, URL-addressable detail panel", async ({ pag
   await expect(page.locator("#entityDetailLayer")).toBeVisible();
   await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Artist");
   await expect(page.locator("#entityDetailPlays")).toHaveText("3");
-  await expect(page.locator("#entityDetailAverage")).toHaveText("1m 2s");
+  await expect(page.locator("#entityDetailAverage")).toHaveText("≥ 1m 2s");
   await expect(page.locator("#entityDetailTracks")).toHaveText("2");
   await expect(page.locator("#entityDetailCurrentRank")).toHaveText("#2");
   await expect(page.locator("#entityDetailScope")).toContainText("Plays");
   await expect(page.locator("#entityDetailScope")).toContainText("UTC");
   await expect(page.locator("#entityTopTracks")).toContainText("Synthetic Track");
+  await expect(page.locator("#entityTopTracks")).toContainText("2 plays · ≥ 2m");
   await expect(page.locator("#entityTopTracks")).toContainText("Last played");
   await expect(page.locator("#entityRecentPlays")).toContainText("Synthetic Player");
   await expect(page.locator("#entityRecentPlays")).toContainText("Synthetic Album");
   await expect(page.locator("#entityRecentPlays")).toContainText("Synthetic Server");
+  await expect(page.locator("#entityRecentPlays .entity-list-value")).toHaveText("—");
   await expect(page.locator("#entityDetailLoading")).toBeHidden();
   await expect(page.locator("#entityDetailError")).toBeHidden();
   await expect(page.locator("#entityDetailContent")).toBeVisible();
@@ -534,7 +573,7 @@ test("artist ranking opens a scoped, URL-addressable detail panel", async ({ pag
   await expect(page.locator("#entityDetailLayer")).toBeHidden();
   expect(new URL(page.url()).searchParams.has("entity_type")).toBe(false);
 
-  await page.locator("#topAlbumsChart .ranking-row").click();
+  await page.locator("#topAlbumsChart .ranking-row").first().click();
   await expect(page.locator("#entityDetailLayer")).toBeVisible();
   await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Album");
   const albumLocation = new URL(page.url());
@@ -555,6 +594,47 @@ test("artist ranking opens a scoped, URL-addressable detail panel", async ({ pag
   await expect(page.locator("#entityDetailName")).toHaveText("Synthetic Album");
   await page.keyboard.press("Escape");
   await expect(page.locator("#entityDetailLayer")).toBeHidden();
+
+  const legacyAlbum = page.locator("#topAlbumsChart .ranking-row").nth(1);
+  await expect(legacyAlbum.locator("img")).toHaveAttribute("src", /id=legacy-cover/);
+  await legacyAlbum.click();
+  await expect(page.locator("#entityDetailLayer")).toBeVisible();
+  await expect(page.locator("#entityDetailName")).toHaveText("Legacy Album");
+  await expect(page.locator("#entityDetailCover img")).toHaveAttribute(
+    "src",
+    /id=legacy-cover/,
+  );
+  const legacyLocation = new URL(page.url());
+  expect(legacyLocation.searchParams.get("entity_type")).toBe("album");
+  expect(legacyLocation.searchParams.get("entity_name")).toBe("Legacy Album");
+  expect(legacyLocation.searchParams.has("entity_id")).toBe(false);
+  expect(legacyLocation.searchParams.get("entity_source_id")).toBe("server-1");
+  expect(legacyLocation.searchParams.get("entity_artist")).toBe("Legacy Artist");
+  await expect.poll(() => detailRequests.some((url) => {
+    const params = new URL(url).searchParams;
+    return params.get("entity_type") === "album"
+      && params.get("name") === "Legacy Album"
+      && !params.has("entity_id")
+      && params.get("entity_source_id") === "server-1"
+      && params.get("artist") === "Legacy Artist";
+  })).toBe(true);
+});
+
+test("detail timestamps use the selected timezone exactly once", async ({ page }) => {
+  await page.goto("/?days=0&timezone=Asia%2FShanghai");
+  await page.locator("#topArtistsChart .ranking-row").click();
+
+  const expected = await page.evaluate(() => new Intl.DateTimeFormat(
+    document.documentElement.lang || "en",
+    {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Asia/Shanghai",
+    },
+  ).format(new Date("2026-07-28T12:00:00+00:00")));
+
+  await expect(page.locator("#entityDetailScope")).toContainText("Asia/Shanghai");
+  await expect(page.locator("#entityRecentPlays .entity-list-meta")).toContainText(expected);
 });
 
 test("desktop header stays on one compact row", async ({

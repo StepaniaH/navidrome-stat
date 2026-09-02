@@ -4,7 +4,32 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping, TypedDict
+from typing import Any, Literal, Mapping, TypedDict
+
+DurationQuality = Literal["reported", "estimated", "lower_bound", "unknown"]
+
+
+def classify_history_duration_quality(
+    *,
+    listen_duration_sec: int | None,
+    source: str | None,
+    session_id: str | None,
+    finalized: bool | int | None,
+    duration_confidence: str | None,
+) -> DurationQuality:
+    """Return the strongest duration claim supported by one history row."""
+
+    if listen_duration_sec is None:
+        return "unknown"
+    if duration_confidence == "lower_bound":
+        return "lower_bound"
+    if source == "poller":
+        if not session_id or not bool(finalized):
+            return "lower_bound"
+        return "estimated"
+    if duration_confidence == "reported":
+        return "reported"
+    return "estimated"
 
 
 @dataclass(frozen=True, slots=True)

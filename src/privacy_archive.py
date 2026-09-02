@@ -7,6 +7,7 @@ from typing import Any
 
 import aiosqlite
 
+from src.core_types import classify_history_duration_quality
 from src.privacy_common import database_path as _path
 from src.privacy_constants import (
     EXPORT_FORMAT_VERSION,
@@ -41,7 +42,21 @@ def _record_fingerprint(
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _row_to_export_record(row: aiosqlite.Row) -> dict[str, Any]:
+def _row_to_archive_record(
+    row: aiosqlite.Row,
+    *,
+    freeze_duration_quality: bool,
+) -> dict[str, Any]:
+    duration_confidence = row["duration_confidence"]
+    if freeze_duration_quality:
+        quality = classify_history_duration_quality(
+            listen_duration_sec=row["listen_duration_sec"],
+            source=row["source"],
+            session_id=row["session_id"],
+            finalized=row["finalized"],
+            duration_confidence=duration_confidence,
+        )
+        duration_confidence = quality if quality != "unknown" else "estimated"
     return {
         "record_id": row["record_id"],
         "played_at": row["played_at"],
@@ -57,8 +72,16 @@ def _row_to_export_record(row: aiosqlite.Row) -> dict[str, Any]:
         "source": row["source"],
         "source_id": row["source_id"],
         "source_name": row["source_name"],
-        "duration_confidence": row["duration_confidence"],
+        "duration_confidence": duration_confidence,
     }
+
+
+def _row_to_export_record(row: aiosqlite.Row) -> dict[str, Any]:
+    return _row_to_archive_record(row, freeze_duration_quality=True)
+
+
+def _row_to_legacy_export_record(row: aiosqlite.Row) -> dict[str, Any]:
+    return _row_to_archive_record(row, freeze_duration_quality=False)
 
 
 def _row_to_export_attempt(row: aiosqlite.Row) -> dict[str, Any]:
@@ -90,7 +113,7 @@ async def export_user_data(username: str, db_path: str | None = None) -> dict[st
             SELECT record_id, played_at, client_name, track_id, title, artist,
                    artist_id, album, album_id,
                    is_transcoding, listen_duration_sec, source, source_id,
-                   source_name, duration_confidence
+                   source_name, session_id, finalized, duration_confidence
             FROM play_history
             WHERE username = ?
             ORDER BY played_at_epoch ASC, id ASC
@@ -156,12 +179,27 @@ def _validate_timestamp(value: Any) -> str:
     return parsed.astimezone(timezone.utc).isoformat()
 
 
-def _validate_duration(value: Any, field: str) -> int:
+def _validate_duration(
+    value: Any,
+    field: str,
+    *,
+    allow_none: bool = False,
+) -> int | None:
+    if value is None and allow_none:
+        return None
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"Import {field} must be an integer")
     if value < 0 or value > IMPORT_MAX_DURATION_SEC:
         raise ValueError(f"Import {field} must be between 0 and {IMPORT_MAX_DURATION_SEC}")
     return value
+
+
+def _validate_duration_confidence(value: Any) -> str:
+    if value == "reported":
+        return "reported"
+    if value == "lower_bound":
+        return "lower_bound"
+    return "estimated"
 
 
 def _validate_transcoding(value: Any) -> int:
@@ -192,11 +230,12 @@ def _validate_import_record(record: dict[str, Any]) -> dict[str, Any]:
         "listen_duration_sec": _validate_duration(
             record.get("listen_duration_sec", 0),
             "listen_duration_sec",
+            allow_none=True,
         ),
         "source_id": _validate_text(record.get("source_id"), "source_id"),
         "source_name": _validate_text(record.get("source_name"), "source_name"),
-        "duration_confidence": (
-            "reported" if record.get("duration_confidence") == "reported" else "estimated"
+        "duration_confidence": _validate_duration_confidence(
+            record.get("duration_confidence")
         ),
     }
 
@@ -204,10 +243,12 @@ def _validate_import_record(record: dict[str, Any]) -> dict[str, Any]:
 def _validate_import_attempt(record: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(record, dict):
         raise ValueError("Import attempts must be objects")
+    duration_sec = _validate_duration(record.get("duration_sec", 0), "duration_sec")
+    assert duration_sec is not None
     validated = _validate_import_record(
         {
             **record,
-            "listen_duration_sec": record.get("duration_sec", 0),
+            "listen_duration_sec": duration_sec,
         }
     )
     validated["duration_sec"] = validated.pop("listen_duration_sec")
@@ -255,17 +296,22 @@ async def _existing_import_fingerprint(
     username: str,
     kind: str,
     record_id: str,
+    format_version: int,
 ) -> str | None:
     if kind == "history":
         query = """
             SELECT record_id, played_at, client_name, track_id, title, artist,
                    artist_id, album, album_id, is_transcoding,
                    listen_duration_sec, source, source_id, source_name,
-                   duration_confidence
+                   session_id, finalized, duration_confidence
             FROM play_history
             WHERE username = ? AND record_id = ?
         """
-        converter = _row_to_export_record
+        converter = (
+            _row_to_export_record
+            if format_version >= 4
+            else _row_to_legacy_export_record
+        )
     else:
         query = """
             SELECT record_id, played_at, client_name, track_id, title, artist,
@@ -312,6 +358,15 @@ async def import_user_data(
 
     def identify(raw: dict[str, Any], kind: str) -> dict[str, Any]:
         base = _validate_import_record(raw) if kind == "history" else _validate_import_attempt(raw)
+        if (
+            kind == "history"
+            and format_version >= 4
+            and base["listen_duration_sec"] is None
+            and base["duration_confidence"] != "estimated"
+        ):
+            raise ValueError(
+                "Format v4 records without a duration must use estimated confidence"
+            )
         fingerprint = _record_fingerprint(username, kind, base)
         occurrence_key = (kind, fingerprint)
         occurrence = occurrences.get(occurrence_key, 0)
@@ -404,6 +459,7 @@ async def import_user_data(
                     username=username,
                     kind="history",
                     record_id=record["record_id"],
+                    format_version=format_version,
                 )
                 if existing_fingerprint == record["fingerprint"]:
                     skipped += 1
@@ -451,6 +507,7 @@ async def import_user_data(
                     username=username,
                     kind="attempt",
                     record_id=record["record_id"],
+                    format_version=format_version,
                 )
                 if existing_fingerprint == record["fingerprint"]:
                     skipped += 1

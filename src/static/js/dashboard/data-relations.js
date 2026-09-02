@@ -125,7 +125,7 @@ export function createDataRelations({
                 name: item.label,
                 id: item.entity_id || '',
                 sourceId: item.source_id,
-                artist: item.entity_id ? '' : (item.artist || ''),
+                artist: item.artist || '',
             }, chart.getDom());
         }
     }

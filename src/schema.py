@@ -431,6 +431,7 @@ async def _recover_incomplete_sessions(db: aiosqlite.Connection) -> int:
         """
         UPDATE play_history
         SET finalized = 1,
+            duration_confidence = 'lower_bound',
             finalized_at = COALESCE(checkpointed_at, played_at)
         WHERE session_id IS NOT NULL AND finalized = 0
         """

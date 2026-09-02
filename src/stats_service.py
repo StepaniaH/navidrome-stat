@@ -257,9 +257,28 @@ class StatsService:
         identity: EntityIdentity,
     ) -> dict:
         """Return a cached artist, album, or client detail for one stats scope."""
+        async def build() -> dict:
+            detail = await self._read_repository.entity_detail(scope, identity)
+            if identity.entity_type != "album":
+                return detail
+            cover_art_id = identity.entity_id
+            if cover_art_id is None:
+                try:
+                    cover_art_id = await cover_art_service.resolve_album_id(
+                        identity.source_id,
+                        identity.name,
+                        identity.artist,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Album detail cover enrichment skipped (type=%s)",
+                        exception_kind(exc),
+                    )
+            return {**detail, "cover_art_id": cover_art_id}
+
         return await self._cache.get_or_create(
             ("entity_detail", scope, identity),
-            lambda: self._read_repository.entity_detail(scope, identity),
+            build,
         )
 
     async def data_relations(
@@ -291,7 +310,7 @@ class StatsService:
                 username=username,
             )
             servers = await list_server_options()
-            summary["top_albums"] = await self._attach_album_ids(
+            summary["top_albums"] = await self._attach_album_cover_ids(
                 source_id, summary["top_albums"], servers
             )
             effective_source = self._resolve_effective_source(source_id, servers)
@@ -310,23 +329,24 @@ class StatsService:
             return available_servers[0].get("id")
         return None
 
-    async def _attach_album_ids(
+    async def _attach_album_cover_ids(
         self,
         source_id: str | None,
         albums: list,
         available_servers: list,
     ) -> list:
+        """Resolve artwork without changing the identity stored in history."""
         if not albums:
             return albums
         effective_source = self._resolve_effective_source(source_id, available_servers)
         attached = []
         for entry in albums:
             if entry.get("album_id"):
-                attached.append(entry)
+                attached.append({**entry, "cover_art_id": entry["album_id"]})
                 continue
             entry_source = entry.get("source_id") or effective_source
             if entry_source is None:
-                attached.append({**entry, "album_id": None})
+                attached.append({**entry, "album_id": None, "cover_art_id": None})
                 continue
             try:
                 album_id = await cover_art_service.resolve_album_id(
@@ -337,9 +357,13 @@ class StatsService:
                     "Album cover enrichment skipped (type=%s)",
                     exception_kind(exc),
                 )
-                attached.append({**entry, "album_id": None})
+                attached.append({**entry, "album_id": None, "cover_art_id": None})
                 continue
-            attached.append({**entry, "album_id": album_id})
+            attached.append({
+                **entry,
+                "album_id": None,
+                "cover_art_id": album_id,
+            })
         return attached
 
     async def _build_snapshot(self, scope: StatsScope) -> dict:
@@ -348,7 +372,7 @@ class StatsService:
         time_buckets = snapshot["time_buckets"]
         available_servers = snapshot["available_servers"]
         top_albums = snapshot["top_albums"]
-        top_albums = await self._attach_album_ids(
+        top_albums = await self._attach_album_cover_ids(
             scope.source_id,
             top_albums,
             available_servers,
