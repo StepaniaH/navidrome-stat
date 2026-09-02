@@ -4,6 +4,19 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+### Added
+
+- Collaborating artists can be displayed together or separately in Settings. Separate mode credits each artist once per play across rankings, detail views, relationship charts, and year-in-review, while preserving recording totals.
+- Structured OpenSubsonic artist credits are stored with recordings and preserved by privacy archive v5. Archive formats v1–v4 remain importable.
+
+### Fixed
+
+- Changing the settings language immediately updates theme-mode cards, palette labels, and theme-editor status messages while preserving unsaved color changes.
+
+### Changed
+
+- Updated the English and Chinese README screenshots for the dashboard, client details, relationship charts, rankings, and theme settings.
+
 ## [0.9.1] - 2026-09-02
 
 ### Changed

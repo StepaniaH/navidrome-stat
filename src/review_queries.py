@@ -32,6 +32,7 @@ async def get_review_summary(
     db_path: str | None = None,
     source_id: str | None = None,
     username: str | None = None,
+    artist_mode: str = "combined",
 ):
     """Aggregate one local calendar year for the review page.
 
@@ -102,6 +103,7 @@ async def get_review_summary(
         previous_date = active_date
 
     raw_artists = await get_top_artists(
+        artist_mode=artist_mode,
         limit=10,
         days=0,
         timezone_name=timezone_name,

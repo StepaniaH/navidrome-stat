@@ -44,6 +44,7 @@ test("defaults when URL has no filter params", () => {
     startDate: "",
     endDate: "",
     relationDimension: "artist",
+    artistMode: "combined",
     entityType: "",
     entityName: "",
     entityId: "",

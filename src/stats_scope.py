@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from src.artist_credits import ARTIST_MODES
 from src.schemas import (
     RANKING_METRIC_DEFAULT,
     RANKING_METRICS,
@@ -31,6 +32,7 @@ class StatsScope:
     username: str | None = None
     start_date: date | None = None
     end_date: date | None = None
+    artist_mode: str = "combined"
 
     @classmethod
     def create(
@@ -43,6 +45,7 @@ class StatsScope:
         username: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
+        artist_mode: str = "combined",
     ) -> StatsScope:
         if days != STATS_DAYS_ALL and not STATS_DAYS_MIN <= days <= STATS_DAYS_MAX:
             raise ValueError(
@@ -55,6 +58,8 @@ class StatsScope:
             raise ValueError("timezone must be a valid IANA timezone name") from exc
         if metric not in RANKING_METRICS:
             raise ValueError("metric must be one of: plays, listen_time")
+        if artist_mode not in ARTIST_MODES:
+            raise ValueError("artist_mode must be one of: combined, separate")
         if (start_date is None) != (end_date is None):
             raise ValueError("start_date and end_date must be provided together")
         if start_date is not None and end_date is not None:
@@ -70,6 +75,7 @@ class StatsScope:
             username=username,
             start_date=start_date,
             end_date=end_date,
+            artist_mode=artist_mode,
         )
 
     def query_kwargs(self) -> dict:

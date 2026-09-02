@@ -7,6 +7,7 @@ from typing import Any
 
 import aiosqlite
 
+from src.artist_credits import encode_artists, normalize_artists
 from src.core_types import classify_history_duration_quality
 from src.privacy_common import database_path as _path
 from src.privacy_constants import (
@@ -65,6 +66,7 @@ def _row_to_archive_record(
         "title": row["title"],
         "artist": row["artist"],
         "artist_id": row["artist_id"],
+        **({"artists": json.loads(row["artists"])} if row["artists"] else {}),
         "album": row["album"],
         "album_id": row["album_id"],
         "is_transcoding": row["is_transcoding"],
@@ -93,6 +95,7 @@ def _row_to_export_attempt(row: aiosqlite.Row) -> dict[str, Any]:
         "title": row["title"],
         "artist": row["artist"],
         "artist_id": row["artist_id"],
+        **({"artists": json.loads(row["artists"])} if row["artists"] else {}),
         "album": row["album"],
         "album_id": row["album_id"],
         "is_transcoding": row["is_transcoding"],
@@ -111,7 +114,7 @@ async def export_user_data(username: str, db_path: str | None = None) -> dict[st
         async with db.execute(
             """
             SELECT record_id, played_at, client_name, track_id, title, artist,
-                   artist_id, album, album_id,
+                   artists, artist_id, album, album_id,
                    is_transcoding, listen_duration_sec, source, source_id,
                    source_name, session_id, finalized, duration_confidence
             FROM play_history
@@ -124,7 +127,7 @@ async def export_user_data(username: str, db_path: str | None = None) -> dict[st
         async with db.execute(
             """
             SELECT record_id, played_at, client_name, track_id, title, artist,
-                   artist_id, album, album_id, is_transcoding, duration_sec,
+                   artists, artist_id, album, album_id, is_transcoding, duration_sec,
                    outcome, source_id, source_name, duration_confidence
             FROM play_attempts
             WHERE username = ?
@@ -301,7 +304,7 @@ async def _existing_import_fingerprint(
     if kind == "history":
         query = """
             SELECT record_id, played_at, client_name, track_id, title, artist,
-                   artist_id, album, album_id, is_transcoding,
+                   artists, artist_id, album, album_id, is_transcoding,
                    listen_duration_sec, source, source_id, source_name,
                    session_id, finalized, duration_confidence
             FROM play_history
@@ -315,7 +318,7 @@ async def _existing_import_fingerprint(
     else:
         query = """
             SELECT record_id, played_at, client_name, track_id, title, artist,
-                   artist_id, album, album_id, is_transcoding, duration_sec,
+                   artists, artist_id, album, album_id, is_transcoding, duration_sec,
                    outcome, source_id, source_name, duration_confidence
             FROM play_attempts
             WHERE username = ? AND record_id = ?
@@ -325,7 +328,10 @@ async def _existing_import_fingerprint(
         row = await cursor.fetchone()
     if row is None:
         return None
-    return _record_fingerprint(username, kind, converter(row))
+    record = converter(row)
+    if format_version < 5:
+        record.pop("artists", None)
+    return _record_fingerprint(username, kind, record)
 
 
 async def import_user_data(
@@ -358,6 +364,20 @@ async def import_user_data(
 
     def identify(raw: dict[str, Any], kind: str) -> dict[str, Any]:
         base = _validate_import_record(raw) if kind == "history" else _validate_import_attempt(raw)
+        if format_version >= 5 and "artists" in raw:
+            artists = raw["artists"]
+            if (not isinstance(artists, list) or not 1 <= len(artists) <= 64
+                    or any(not isinstance(item, dict) for item in artists)):
+                raise ValueError("Import artists must be a list of 1 to 64 artists")
+            for item in artists:
+                name = _validate_text(item.get("name"), "artists.name", required=True)
+                artist_id = _validate_text(item.get("id"), "artists.id")
+                if len(name) > 512 or (artist_id is not None and len(artist_id) > 128):
+                    raise ValueError("Import artist name or id is too long")
+            normalized = normalize_artists(artists)
+            if normalized != artists:
+                raise ValueError("Import artists must use unique, normalized names and ids")
+            base["artists"] = normalized
         if (
             kind == "history"
             and format_version >= 4
@@ -428,8 +448,8 @@ async def import_user_data(
                         played_at, username, client_name, track_id,
                         title, artist, artist_id, album, album_id, is_transcoding,
                         listen_duration_sec, source, source_id, source_name,
-                        duration_confidence, record_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        duration_confidence, record_id, artists
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(record_id) WHERE record_id IS NOT NULL DO NOTHING
                     """,
                     (
@@ -449,6 +469,7 @@ async def import_user_data(
                         record["source_name"],
                         record["duration_confidence"],
                         record["record_id"],
+                        encode_artists(record.get("artists")),
                     ),
                 )
                 if cursor.rowcount:
@@ -476,8 +497,8 @@ async def import_user_data(
                         played_at, username, client_name, track_id, title,
                         artist, artist_id, album, album_id, is_transcoding,
                         duration_sec, outcome, source_id, source_name,
-                        duration_confidence, record_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        duration_confidence, record_id, artists
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(record_id) WHERE record_id IS NOT NULL DO NOTHING
                     """,
                     (
@@ -497,6 +518,7 @@ async def import_user_data(
                         record["source_name"],
                         record["duration_confidence"],
                         record["record_id"],
+                        encode_artists(record.get("artists")),
                     ),
                 )
                 if cursor.rowcount:

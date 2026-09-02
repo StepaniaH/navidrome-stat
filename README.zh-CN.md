@@ -33,6 +33,7 @@ Navidrome Stat 汇总 Navidrome 上报的播放活动，并通过一个仪表盘
 - 年度回顾页面：全年总量、连续收听天数、逐月与时段分布、热门榜单，以及保存在 URL 中的年份、服务器、用户和时区范围。
 - 播放历史、排行与正在播放显示封面图（经认证的本地缓存代理）。
 - 外观支持跟随系统、深色和浅色三种模式，以及 9 个配色家族、18 个具体变体；每个家族均有对应的深浅色方案。高级设置可在当前浏览器中实时预览并微调每个预设的六项核心颜色，按文字用途汇总对比度检查、复制 HEX 色值、保护未保存的预览，并以严格的单预设 JSON 格式导入或导出。外观选择会同步应用于统计页、年度回顾、设置和 API 文档；另提供七种界面语言。
+- 在**设置 > 偏好设置**中选择合作歌手合并或分别显示。分别显示时每位歌手各计一次播放，歌曲数量、总播放次数和总收听时长保持不变。元数据支持范围及计数规则见[艺人归属说明](docs/artist-attribution.md)。
 - 仪表盘筛选条件、艺人和专辑详情与年度回顾范围均保存在 URL 中，刷新不丢失、链接可分享。
 - 最近播放表格在桌面端和移动端均支持自定义显示列，按浏览器保存偏好，并可按需查看未计入播放次数的短会话详情。
 - 支持自定义播放阈值与暂停宽限期、持久化会话检查点，并在上游支持时使用 OpenSubsonic 播放进度。
@@ -45,8 +46,9 @@ Navidrome Stat 汇总 Navidrome 上报的播放活动，并通过一个仪表盘
 
 | | |
 | --- | --- |
-| <img src="assets/screenshots/dashboard-frappe-charts.png" alt="小时、每日与星期 × 小时图表"> | <img src="assets/screenshots/dashboard-frappe-rankings.png" alt="热门艺人与专辑、服务器来源、最近播放"> |
-| <img src="assets/screenshots/dashboard-gruvbox.png" alt="Gruvbox 主题下的同一仪表盘"> | |
+| <img src="assets/screenshots/dashboard-frappe-charts.png" alt="小时、每日与星期 × 小时图表"> | <img src="assets/screenshots/data-relations.png" alt="艺人趋势、时段分布与周期对比"> |
+| <img src="assets/screenshots/dashboard-frappe-rankings.png" alt="热门艺人、专辑与服务器统计"> | <img src="assets/screenshots/client-detail.png" alt="客户端详情、收听趋势与热门歌曲"> |
+| <img src="assets/screenshots/theme-settings.png" alt="主题模式、调色板与自定义颜色"> | |
 
 ## 重要限制
 

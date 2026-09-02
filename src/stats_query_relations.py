@@ -7,12 +7,14 @@ preceding equal-length period.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Literal
 
 import aiosqlite
 
+from src.artist_credits import artist_query_source
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
 from src.sqlite import connect_db
 from src.stats_query_common import database_path as _path
@@ -34,7 +36,9 @@ MATRIX_LIMIT = 8
 COMPARISON_LIMIT = 8
 
 
-def _totals_query(predicate: str, dimension: RelationDimension) -> str:
+def _totals_query(
+    predicate: str, dimension: RelationDimension, artist_mode: str = "combined",
+) -> str:
     """Build an aggregate query that groups by raw identity columns.
 
     Constructing the public string key once per aggregate group is materially
@@ -66,6 +70,9 @@ def _totals_query(predicate: str, dimension: RelationDimension) -> str:
             GROUP BY source_id, album_id, album, artist
         """
 
+    source, name_column, _ = artist_query_source(
+        artist_mode if dimension == "artist" else "combined"
+    )
     if dimension == "artist":
         identity_columns = "NULL, NULL, NULL, artist, NULL"
         eligible = "artist IS NOT NULL"
@@ -80,14 +87,14 @@ def _totals_query(predicate: str, dimension: RelationDimension) -> str:
             SELECT
                 played_at_epoch,
                 NULLIF(client_name, '') AS client,
-                NULLIF(artist, '') AS artist,
+                NULLIF({name_column}, '') AS artist,
                 NULLIF(album, '') AS album,
                 NULLIF(album_id, '') AS album_id,
                 listen_duration_sec,
                 duration_confidence,
                 COALESCE(NULLIF(source_id, ''), ?) AS normalized_source_id,
                 COALESCE(NULLIF(source_name, ''), ?) AS normalized_source_name
-            FROM play_history
+            FROM {source}
             WHERE {predicate}
         )
         SELECT
@@ -212,13 +219,18 @@ def _shape_query(
     predicate: str,
     params: list,
     dimension: RelationDimension,
+    artist_mode: str = "combined",
 ) -> tuple[str, list]:
     if dimension == "artist":
+        name = "artist_credits(artist, artists, artist_id)" if artist_mode == "separate" else "artist"
+        eligible = "artist IS NOT NULL AND artist != ''"
+        if artist_mode == "separate":
+            eligible = f"({eligible}) OR artists IS NOT NULL"
         return (
             f"""
-            SELECT played_at_epoch, artist, COALESCE(listen_duration_sec, 0)
+            SELECT played_at_epoch, {name}, COALESCE(listen_duration_sec, 0)
             FROM play_history
-            WHERE ({predicate}) AND artist IS NOT NULL AND artist != ''
+            WHERE ({predicate}) AND ({eligible})
             """,
             params,
         )
@@ -380,6 +392,7 @@ async def _scan_totals(
     dimension: RelationDimension,
     *,
     tz=None,
+    artist_mode: str = "combined",
 ) -> tuple[
     dict[str, dict],
     dict[str, dict],
@@ -397,7 +410,7 @@ async def _scan_totals(
     first_epoch: int | None = None
     last_epoch: int | None = None
     async with db.execute(
-        _totals_query(predicate, dimension),
+        _totals_query(predicate, dimension, artist_mode),
         [LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME, *params],
     ) as cursor:
         async for row in cursor:
@@ -454,6 +467,17 @@ async def _scan_totals(
             if row[10] is not None:
                 value = int(row[10])
                 last_epoch = value if last_epoch is None else max(last_epoch, value)
+    if dimension == "artist" and artist_mode == "separate":
+        # Coverage measures recordings, including a duet only once.
+        async with db.execute(
+            f"""SELECT COUNT(*), COUNT(listen_duration_sec),
+                       COALESCE(SUM(listen_duration_sec IS NOT NULL
+                                    AND duration_confidence = 'reported'), 0)
+                FROM play_history WHERE ({predicate})
+                AND json_array_length(artist_credits(artist, artists, artist_id)) > 0""",
+            params,
+        ) as cursor:
+            row_count, duration_count, reported_duration_count = await cursor.fetchone()
     first_date = (
         datetime.fromtimestamp(first_epoch, tz).date()
         if tz is not None and first_epoch is not None
@@ -486,6 +510,7 @@ async def _scan_shapes(
     trend_keys: set[str],
     matrix_keys: set[str],
     metadata: dict[str, dict],
+    artist_mode: str = "combined",
 ) -> tuple[dict[tuple[str, str], dict], dict[tuple[str, str], dict]]:
     if (
         dimension == "album"
@@ -502,7 +527,7 @@ async def _scan_shapes(
 
     trend: dict[tuple[str, str], dict] = {}
     matrix: dict[tuple[str, str], dict] = {}
-    query, query_params = _shape_query(predicate, params, dimension)
+    query, query_params = _shape_query(predicate, params, dimension, artist_mode)
     key_for_row = _selected_key_resolver(
         dimension,
         metadata,
@@ -519,11 +544,15 @@ async def _scan_shapes(
                 local = datetime.fromtimestamp(int(row[0]), tz)
             except (OSError, OverflowError, ValueError):
                 continue
-            entity_key = key_for_row(row)
+            if dimension == "artist" and artist_mode == "separate":
+                entity_keys = {f"artist:{credit['name']}" for credit in json.loads(row[1])}
+            else:
+                entity_keys = {key_for_row(row)}
             duration = int(row[-1] or 0)
-            trend_key = entity_key if entity_key in trend_keys else OTHER_KEY
-            _add_value(trend, (_bucket_for_day(local.date(), grain), trend_key), duration)
-            if entity_key in matrix_keys:
+            row_trend_keys = {key if key in trend_keys else OTHER_KEY for key in entity_keys}
+            for trend_key in row_trend_keys:
+                _add_value(trend, (_bucket_for_day(local.date(), grain), trend_key), duration)
+            for entity_key in entity_keys & matrix_keys:
                 _add_value(matrix, (entity_key, _daypart(local.hour)), duration)
     return trend, matrix
 
@@ -571,6 +600,7 @@ async def get_data_relations(
             current_params,
             dimension,
             tz=tz,
+            artist_mode=scope.artist_mode,
         )
 
         comparison_available = bool(
@@ -585,6 +615,7 @@ async def get_data_relations(
                 previous_pred,
                 previous_params,
                 dimension,
+                artist_mode=scope.artist_mode,
             )
 
         requested_start, requested_end = _local_date_range(
@@ -614,6 +645,7 @@ async def get_data_relations(
                 trend_keys=set(trend_keys),
                 matrix_keys=set(matrix_keys),
                 metadata=current_meta,
+                artist_mode=scope.artist_mode,
             )
 
     visible_trend_keys = list(trend_keys)

@@ -139,6 +139,7 @@ def _normalize_entries(
         event["title"] = entry.get("title")
         event["artist"] = entry.get("artist")
         event["artist_id"] = entry.get("artistId")
+        event["artists"] = entry.get("artists")
         event["album"] = entry.get("album")
         event["album_id"] = entry.get("albumId")
         events.append(event)

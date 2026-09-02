@@ -314,6 +314,19 @@
                             </div>
                             <div class="setting-row">
                                 <div class="setting-copy">
+                                    <strong data-i18n="preferences.artistMode">Collaborating artists</strong>
+                                    <span data-i18n="preferences.artistModeHelp">Show the full artist credit together, or count the play once for each artist. Track counts, total plays, and total listening time stay unchanged.</span>
+                                </div>
+                                <div id="artistModeSelect" class="settings-select" data-open="false" data-value="combined">
+                                    <button id="artistModeSelectButton" class="settings-select-trigger" type="button" data-listbox-trigger aria-haspopup="listbox" aria-expanded="false" aria-controls="artistModeSelectMenu">
+                                        <span data-listbox-label>Show together</span>
+                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>
+                                    </button>
+                                    <div id="artistModeSelectMenu" class="settings-options" role="listbox" aria-label="Collaborating artists" data-i18n-attr="aria-label:preferences.artistMode" hidden></div>
+                                </div>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-copy">
                                     <strong data-i18n="preferences.timezone">Statistics timezone</strong>
                                     <span data-i18n="preferences.timezoneHelp">“Browser timezone” uses the IANA timezone reported by this device.</span>
                                 </div>
@@ -380,7 +393,7 @@
                             <div class="setting-row">
                                 <div class="setting-copy">
                                     <strong data-i18n="preferences.reset">Reset local preferences</strong>
-                                    <span data-i18n="preferences.resetHelp">Restores the default language, theme mode, palette, browser timezone, and motion preference.</span>
+                                    <span data-i18n="preferences.resetHelp">Restores all local display preferences to their defaults.</span>
                                 </div>
                                 <button id="resetPreferencesBtn" class="secondary-button" type="button" data-i18n="preferences.resetButton">Restore defaults</button>
                             </div>

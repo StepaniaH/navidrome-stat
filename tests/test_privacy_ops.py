@@ -102,7 +102,7 @@ async def test_export_import_roundtrip(db_path):
     await save_play_session(_session("carol", "2025-06-01T12:00:00+00:00"), db_path=db_path)
 
     payload = await export_user_data("carol", db_path=db_path)
-    assert payload["format_version"] == 4
+    assert payload["format_version"] == 5
     assert payload["records"][0]["record_id"]
     assert payload["records"][0]["fingerprint"]
     await delete_user_data("carol", db_path=db_path)
@@ -412,7 +412,7 @@ async def test_export_v4_roundtrips_short_attempts(db_path):
         db_path=db_path,
     )
     payload = await export_user_data("synthetic-user", db_path=db_path)
-    assert payload["format_version"] == 4
+    assert payload["format_version"] == 5
     assert payload["attempt_count"] == 1
     assert payload["attempts"][0]["record_id"]
     assert payload["attempts"][0]["fingerprint"]

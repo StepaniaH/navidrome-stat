@@ -586,3 +586,53 @@ test("editing exposes disabled state, uses the saved password, and can re-enable
   await expect(page.locator("#sourceName")).toHaveValue("");
   await expect(page.locator("#sourcePass")).toHaveAttribute("required", "");
 });
+
+test("language changes update theme cards and keep an unsaved color draft", async ({ page }) => {
+  await page.goto("/settings#preferences");
+  await page.locator('#themeModePicker input[value="light"]').check();
+  await page.locator('#themePalettePicker input[value="nord"]').check();
+  await page.locator("#themeCustomization > summary").click();
+  const accent = page.locator('[data-theme-hex="accent"]');
+  await accent.fill("#275f7d");
+  await expect(page.locator("#saveThemeCustomizationBtn")).toBeEnabled();
+  await page.locator("#languageSelectButton").click();
+  await page.getByRole("option", { name: /简体中文/ }).click();
+  await expect(page.locator("#themeModePicker .theme-swatch-name")).toHaveText(["跟随系统", "深色", "浅色"]);
+  await expect(page.locator('#themeModePicker input[value="system"]')).toHaveAttribute("aria-label", "跟随系统");
+  await expect(page.locator('#themePalettePicker input[value="builtin"]')).toHaveAttribute("aria-label", "内置");
+  await expect(page.locator("#artistModeSelectButton")).toContainText("合在一起显示");
+  await expect(accent).toHaveValue("#275f7d");
+  await expect(page.locator("#saveThemeCustomizationBtn")).toBeEnabled();
+  await page.locator("#languageSelectButton").click();
+  await page.getByRole("option", { name: /English/ }).click();
+  await expect(page.locator("#themeModePicker .theme-swatch-name")).toHaveText(["System", "Dark", "Light"]);
+  await expect(accent).toHaveValue("#275f7d");
+  await page.locator("#cancelThemePreviewBtn").click();
+});
+
+test("artist display preference reaches dashboard, details and review requests", async ({ page }) => {
+  const queries = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/stats/")) queries.push(url);
+  });
+  await page.goto("/settings#preferences");
+  await page.locator("#artistModeSelectButton").click();
+  await page.getByRole("option", { name: "Show separately", exact: true }).click();
+  await page.reload();
+  await expect(page.locator("#artistModeSelectButton")).toContainText("Show separately");
+  await page.goto("/?entity_type=artist&entity_name=Beta");
+  for (const path of ["dashboard", "relations", "entity-detail"]) {
+    await expect.poll(() => queries.some(url => url.pathname === `/api/stats/${path}` && url.searchParams.get("artist_mode") === "separate")).toBe(true);
+  }
+  await expect(page.locator("#reviewLink")).toHaveAttribute("href", /artist_mode=separate/);
+  await page.goto("/review");
+  await expect.poll(() => queries.some(url => url.pathname === "/api/stats/review" && url.searchParams.get("artist_mode") === "separate")).toBe(true);
+  queries.length = 0;
+  await page.goto("/?artist_mode=combined");
+  await expect.poll(() => queries.some(url => url.pathname === "/api/stats/dashboard" && url.searchParams.get("artist_mode") === "combined")).toBe(true);
+  await page.goto("/settings#preferences");
+  page.once("dialog", dialog => dialog.accept());
+  await page.locator("#resetPreferencesBtn").click();
+  await expect(page.locator("#artistModeSelectButton")).toContainText("Show together");
+});

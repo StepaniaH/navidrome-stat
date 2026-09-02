@@ -48,6 +48,7 @@ export function buildStatsScopeQuery(filters) {
 export function buildStatsQuery(filters) {
     const params = statsScopeParams(filters);
     params.set('metric', filters.metric);
+    if (filters.artistMode) params.set('artist_mode', filters.artistMode);
     return params.toString();
 }
 

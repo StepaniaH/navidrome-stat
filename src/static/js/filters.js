@@ -6,10 +6,11 @@
  */
 
 import { validateCustomRange } from './format.js';
+import { readPreference } from './prefs.js';
 
 const KEYS = [
     'days', 'timezone', 'metric', 'sourceId', 'username', 'startDate', 'endDate',
-    'relationDimension',
+    'relationDimension', 'artistMode',
     'entityType', 'entityName', 'entityId', 'entitySourceId', 'entityArtist',
 ];
 const PARAM_ALIASES = {
@@ -21,6 +22,7 @@ const PARAM_ALIASES = {
     startDate: 'start_date',
     endDate: 'end_date',
     relationDimension: 'relation',
+    artistMode: 'artist_mode',
     entityType: 'entity_type',
     entityName: 'entity_name',
     entityId: 'entity_id',
@@ -37,6 +39,7 @@ const DEFAULTS = Object.freeze({
     startDate: '',
     endDate: '',
     relationDimension: 'artist',
+    artistMode: 'combined',
     entityType: '',
     entityName: '',
     entityId: '',
@@ -50,6 +53,7 @@ export const allowedTimezones = Object.freeze(['browser', 'UTC']);
 
 function sanitize(candidate) {
     const filters = { ...DEFAULTS };
+    if (candidate.artistMode === 'separate') filters.artistMode = 'separate';
 
     if (Number.isFinite(Number(candidate.days))) {
         const days = Number(candidate.days);
@@ -124,6 +128,9 @@ function fromUrl() {
     }
     if (params.has('days')) candidate.days = Number(params.get('days'));
     else delete candidate.days;
+    if (!params.has('artist_mode')) {
+        candidate.artistMode = readPreference('navidrome-artist-mode', 'combined');
+    }
     return sanitize(candidate);
 }
 

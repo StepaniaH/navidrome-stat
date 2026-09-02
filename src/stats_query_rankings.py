@@ -4,6 +4,7 @@ from datetime import date
 
 import aiosqlite
 
+from src.artist_credits import artist_query_source
 from src.schema import LEGACY_SOURCE_ID
 from src.sqlite import connect_db
 from src.stats_query_common import database_path as _path
@@ -25,6 +26,7 @@ async def get_top_artists(
     start_date: date | None = None,
     end_date: date | None = None,
     username: str | None = None,
+    artist_mode: str = "combined",
 ):
     """Return artists ranked by plays or listen time for the selected window.
 
@@ -33,6 +35,7 @@ async def get_top_artists(
     """
     return await _get_top_entity(
         entity_column="artist",
+        artist_mode=artist_mode,
         entity_id_column="artist_id",
         limit=limit,
         days=days,
@@ -147,9 +150,12 @@ async def _get_top_entity(
     end_date: date | None,
     username: str | None = None,
     entity_id_column: str | None = None,
+    artist_mode: str = "combined",
 ):
     if metric not in ("plays", "listen_time"):
         raise ValueError(f"unknown ranking metric: {metric!r}")
+
+    source, name_column, id_column = artist_query_source(artist_mode)
 
     # SQLite cannot reuse a SELECT alias elsewhere in the same SELECT list.
     if metric == "plays":
@@ -160,7 +166,7 @@ async def _get_top_entity(
     # MAX over text picks one deterministic non-empty id per entity name;
     # NULLIF keeps blank identifiers from winning over real ones.
     if entity_id_column:
-        id_expr = f"MAX(NULLIF({entity_id_column}, '')) AS entity_id, "
+        id_expr = f"MAX(NULLIF({id_column}, '')) AS entity_id, "
     else:
         id_expr = ""
 
@@ -173,15 +179,15 @@ async def _get_top_entity(
         async with db.execute(
             f"""
             SELECT
-                {entity_column} AS name,
+                {name_column} AS name,
                 {id_expr}
                 COUNT(*) AS count,
                 COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec,
                 {value_expr} AS value
-            FROM play_history
-            WHERE {entity_column} IS NOT NULL AND {entity_column} != "" AND ({pred})
-            GROUP BY {entity_column}
-            ORDER BY value DESC, {entity_column} ASC
+            FROM {source}
+            WHERE {name_column} IS NOT NULL AND {name_column} != "" AND ({pred})
+            GROUP BY {name_column}
+            ORDER BY value DESC, {name_column} ASC
             LIMIT ?
             """,
             [*params, limit],

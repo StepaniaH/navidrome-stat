@@ -64,14 +64,14 @@ def test_all_settings_selectors_use_the_shared_custom_listbox():
     script = _read(SETTINGS_JS)
     listbox = _read(LISTBOX_JS)
     assert "<select" not in html
-    for control_id in ("languageSelect", "settingsTimezoneSelect"):
+    for control_id in ("languageSelect", "settingsTimezoneSelect", "artistModeSelect"):
         assert f'id="{control_id}"' in html
         assert f"registerSettingsListbox('{control_id}'" in script
     privacy_script = _read(PRIVACY_SETTINGS_JS)
     assert 'id="userSelect"' in html
     assert "registerListbox('userSelect'" in privacy_script
-    assert html.count('aria-haspopup="listbox"') == 3
-    assert html.count('role="listbox"') == 3
+    assert html.count('aria-haspopup="listbox"') == 4
+    assert html.count('role="listbox"') == 4
     assert 'id="themeSelect"' not in html
     assert "registerSettingsListbox('themeSelect'" not in script
     assert "createSelectListbox" in script

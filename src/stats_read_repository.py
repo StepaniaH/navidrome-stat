@@ -86,6 +86,7 @@ class StatsReadRepository:
             top_artists = await self._timed(
                 "top_artists",
                 get_top_artists(
+                    artist_mode=scope.artist_mode,
                     limit=TOP_LIMIT_DEFAULT,
                     metric=scope.metric,
                     db_path=path,

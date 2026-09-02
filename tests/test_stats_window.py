@@ -468,7 +468,7 @@ def test_playback_history_uses_played_at_instead_of_import_order(db_path):
         ("/api/stats/transcoding?days=30", "get_transcoding_stats", "src.routes.stats.get_transcoding_stats", {"days": 30, "timezone_name": "UTC"}),
         ("/api/stats/hourly?days=90", "get_hourly_stats", "src.routes.stats.get_hourly_stats", {"days": 90, "timezone_name": "UTC"}),
         ("/api/stats/daily?days=90", "get_daily_stats", "src.routes.stats.get_daily_stats", {"days": 90, "timezone_name": "UTC"}),
-        ("/api/stats/top-artists?limit=10&days=30", "get_top_artists", "src.routes.stats.get_top_artists", {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays"}),
+        ("/api/stats/top-artists?limit=10&days=30", "get_top_artists", "src.routes.stats.get_top_artists", {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays", "artist_mode": "combined"}),
         ("/api/stats/top-albums?limit=10&days=30", "get_top_albums", "src.routes.stats.get_top_albums", {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays"}),
         ("/api/stats/history?limit=10&days=30", "get_playback_history", "src.routes.stats.get_playback_history", {"limit": 10, "days": 30, "timezone_name": "UTC"}),
     ],
@@ -719,7 +719,7 @@ def _username_mock_return(target):
             "/api/stats/top-artists?limit=10&days=30&username=alice",
             "get_top_artists",
             "src.routes.stats.get_top_artists",
-            {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays", "username": "alice"},
+            {"limit": 10, "days": 30, "timezone_name": "UTC", "metric": "plays", "username": "alice", "artist_mode": "combined"},
         ),
         (
             "/api/stats/top-albums?limit=10&days=30&username=alice",

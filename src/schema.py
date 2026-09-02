@@ -7,7 +7,7 @@ import aiosqlite
 from src import config
 from src.sqlite import connect_db
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 LEGACY_SOURCE_ID = "legacy"
 LEGACY_SOURCE_NAME = "Legacy environment source"
 
@@ -24,6 +24,7 @@ TEXT_COLUMNS = (
     "track_id",
     "title",
     "artist",
+    "artists",
     "album",
     "artist_id",
     "album_id",
@@ -371,6 +372,14 @@ async def _apply_migrations(db: aiosqlite.Connection, db_path: str) -> None:
             ON play_attempts(username, played_at_epoch DESC)
         """)
         await _set_schema_version(db, 13)
+
+    if version < 14:
+        for table in ("play_history", "play_attempts"):
+            async with db.execute(f"PRAGMA table_info({table})") as cursor:
+                columns = {row[1] for row in await cursor.fetchall()}
+            if "artists" not in columns:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN artists TEXT")
+        await _set_schema_version(db, 14)
 
 
 async def _encrypt_saved_credentials(db: aiosqlite.Connection, db_path: str) -> None:

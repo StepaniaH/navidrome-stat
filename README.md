@@ -30,6 +30,7 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 - Compares top artists, albums, or clients over time, across four dayparts, and against the preceding equal-length period, using either play count or recorded listening time.
 - Artist and album rankings open shareable detail views with scoped totals, average time per play, unique-track count, trends, first and latest play times, top tracks, recent plays, and prior-period rank changes. Track rows use play count and total recorded listening time; `≈`, `≥`, and `—` distinguish estimated, minimum-only, and missing duration values.
 - Client rows and relationship charts open the same scoped detail data without adding client names to shareable URLs.
+- Choose combined or separate collaborating artists in **Settings > Preferences**. Separate mode credits each artist once per play while preserving track counts, total plays, and total listening time. [Artist attribution](docs/artist-attribution.md) describes metadata support and counting rules.
 - A year-in-review page with totals, listening streaks, monthly and time-of-day charts, top lists, and URL-persisted year, server, user, and timezone scope.
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.
 - System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview, grouped contrast validation, HEX copy, unsaved-change protection, and strict per-preset JSON import or export. Appearance choices stay in the browser and apply across the dashboard, year-in-review, settings, and API reference; seven interface languages are available.
@@ -45,8 +46,9 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 
 | | |
 | --- | --- |
-| <img src="assets/screenshots/dashboard-frappe-charts.png" alt="Hourly, daily, and weekday-by-hour charts"> | <img src="assets/screenshots/dashboard-frappe-rankings.png" alt="Top artists and albums, server sources, recent plays"> |
-| <img src="assets/screenshots/dashboard-gruvbox.png" alt="The same dashboard in the Gruvbox theme"> | |
+| <img src="assets/screenshots/dashboard-frappe-charts.png" alt="Hourly, daily, and weekday-by-hour charts"> | <img src="assets/screenshots/data-relations.png" alt="Artist trends, dayparts, and period comparisons"> |
+| <img src="assets/screenshots/dashboard-frappe-rankings.png" alt="Top artists and albums with server totals"> | <img src="assets/screenshots/client-detail.png" alt="Client details with listening trends and top tracks"> |
+| <img src="assets/screenshots/theme-settings.png" alt="Theme modes, palettes, and custom colors"> | |
 
 ## Important limitations
 

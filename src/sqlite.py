@@ -5,6 +5,8 @@ from contextvars import ContextVar
 
 import aiosqlite
 
+from src.artist_credits import artist_credits
+
 SQLITE_BUSY_TIMEOUT_MS = 5_000
 _active_read_connection: ContextVar[tuple[str, aiosqlite.Connection] | None] = ContextVar(
     "active_sqlite_read_connection", default=None
@@ -24,6 +26,7 @@ async def connect_db(path: str, *, initialize: bool = False):
         path,
         timeout=SQLITE_BUSY_TIMEOUT_MS / 1_000,
     ) as db:
+        await db.create_function("artist_credits", 3, artist_credits, deterministic=True)
         await db.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
         await db.execute("PRAGMA foreign_keys = ON")
         if initialize:

@@ -29,6 +29,7 @@ export function createAppearanceSettings({ t, confirmDiscard = window.confirm })
     let themeId = null;
     let mounted = false;
     let suppressDetailsToggle = false;
+    let statusMessage = null;
 
     function createSwatch({ group, value, previewTheme, systemPreview = false }) {
         const swatch = document.createElement('label');
@@ -148,6 +149,7 @@ export function createAppearanceSettings({ t, confirmDiscard = window.confirm })
     }
 
     function setStatus(key = '', kind = '', replacements) {
+        statusMessage = { key, kind, replacements };
         const status = document.getElementById('themeCustomizationStatus');
         status.textContent = key ? t(key, replacements) : '';
         if (kind) status.dataset.kind = kind;
@@ -466,7 +468,13 @@ export function createAppearanceSettings({ t, confirmDiscard = window.confirm })
 
     return {
         apply,
-        localize: renderLabels,
+        localize() {
+            syncPickers(currentAppearance);
+            renderLabels();
+            if (statusMessage) {
+                setStatus(statusMessage.key, statusMessage.kind, statusMessage.replacements);
+            }
+        },
         mount,
     };
 }

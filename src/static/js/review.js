@@ -19,6 +19,12 @@ try {
 } catch (_error) {
     browserTimezone = null;
 }
+function resolveArtistMode() {
+    const requested = new URLSearchParams(window.location.search).get('artist_mode');
+    const mode = requested ?? readPreference('navidrome-artist-mode', 'combined');
+    return mode === 'separate' ? 'separate' : 'combined';
+}
+
 function resolveTimezone() {
     const requested = new URLSearchParams(window.location.search).get('timezone');
     if (requested) return requested === 'browser' ? (browserTimezone || 'UTC') : requested;
@@ -277,6 +283,7 @@ function updateReviewUrl() {
     const params = new URLSearchParams(window.location.search);
     params.set('year', String(currentYear));
     params.set('timezone', resolveTimezone());
+    params.set('artist_mode', resolveArtistMode());
     const query = params.toString();
     window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
 }
@@ -312,6 +319,7 @@ async function loadReview() {
     const params = new URLSearchParams({
         year: String(currentYear),
         timezone: resolveTimezone(),
+        artist_mode: resolveArtistMode(),
     });
     const { sourceId, username } = requestedScope();
     if (sourceId) params.set('source_id', sourceId);

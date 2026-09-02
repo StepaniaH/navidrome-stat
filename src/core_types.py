@@ -79,6 +79,7 @@ class PlaybackObservation:
     title: Any = None
     artist: Any = None
     artist_id: Any = None
+    artists: Any = None
     album: Any = None
     album_id: Any = None
     transcoded_content_type: Any = None
@@ -97,6 +98,7 @@ class PlaybackObservation:
             title=value.get("title"),
             artist=value.get("artist"),
             artist_id=value.get("artistId"),
+            artists=value.get("artists"),
             album=value.get("album"),
             album_id=value.get("albumId"),
             transcoded_content_type=value.get("transcodedContentType"),
@@ -123,6 +125,7 @@ class PlaybackSession(TypedDict, total=False):
     title: Any
     artist: Any
     artist_id: Any
+    artists: Any
     album: Any
     album_id: Any
     is_transcoding: int

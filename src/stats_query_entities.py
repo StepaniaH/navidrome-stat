@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
 
 import aiosqlite
 
+from src.artist_credits import artist_credits, artist_query_source
 from src.core_types import DurationQuality, classify_history_duration_quality
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
 from src.sqlite import connect_db
@@ -135,16 +137,17 @@ async def _artist_rank(
 ) -> int | None:
     pred, params = scope_predicate(scope, previous=previous)
     value_column = "play_count" if scope.metric == "plays" else "total_listen_sec"
+    source, name_column, _ = artist_query_source(scope.artist_mode)
     async with db.execute(
         f"""
         WITH aggregated AS (
             SELECT
-                artist AS name,
+                {name_column} AS name,
                 COUNT(*) AS play_count,
                 COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec
-            FROM play_history
-            WHERE artist IS NOT NULL AND artist != '' AND ({pred})
-            GROUP BY artist
+            FROM {source}
+            WHERE {name_column} IS NOT NULL AND {name_column} != '' AND ({pred})
+            GROUP BY {name_column}
         ), ranked AS (
             SELECT
                 name,
@@ -313,6 +316,12 @@ async def get_entity_detail(
     tz = resolve_timezone(scope.timezone_name)
     scope_pred, scope_params = scope_predicate(scope)
     entity_pred, entity_params = _entity_predicate(identity)
+    if identity.entity_type == "artist" and scope.artist_mode == "separate":
+        entity_pred = """EXISTS (
+            SELECT 1 FROM json_each(artist_credits(artist, artists, artist_id)) AS credit
+            WHERE json_extract(credit.value, '$.name') = ?
+        )"""
+        entity_params = [identity.name]
     where = f"({scope_pred}) AND ({entity_pred})"
     params = [*scope_params, *entity_params]
 
@@ -341,6 +350,7 @@ async def get_entity_detail(
                 title,
                 artist,
                 artist_id,
+                artists,
                 album,
                 album_id,
                 listen_duration_sec,
@@ -372,6 +382,12 @@ async def get_entity_detail(
                     candidate = row[
                         "artist_id" if identity.entity_type == "artist" else "album_id"
                     ]
+                    if identity.entity_type == "artist" and scope.artist_mode == "separate":
+                        candidate = next((
+                            credit["id"] for credit in json.loads(
+                                artist_credits(row["artist"], row["artists"], row["artist_id"])
+                            ) if credit["name"] == identity.name
+                        ), None)
                     resolved_entity_id = candidate or None
                 if identity.entity_type == "album" and resolved_artist is None:
                     resolved_artist = row["artist"] or None

@@ -223,6 +223,7 @@ class PlaybackSessionTracker:
             "title": entry.title,
             "artist": entry.artist,
             "artist_id": entry.artist_id,
+            "artists": entry.artists,
             "album": entry.album,
             "album_id": entry.album_id,
             "is_transcoding": 1 if entry.transcoded_content_type else 0,

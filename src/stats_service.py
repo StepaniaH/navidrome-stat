@@ -299,8 +299,9 @@ class StatsService:
         timezone_name: str,
         source_id: str | None = None,
         username: str | None = None,
+        artist_mode: str = "combined",
     ):
-        key = ("review", year, timezone_name, source_id, username)
+        key = ("review", year, timezone_name, source_id, username, artist_mode)
 
         async def build() -> dict:
             summary = await get_review_summary(
@@ -308,6 +309,7 @@ class StatsService:
                 timezone_name,
                 source_id=source_id,
                 username=username,
+                artist_mode=artist_mode,
             )
             servers = await list_server_options()
             summary["top_albums"] = await self._attach_album_cover_ids(

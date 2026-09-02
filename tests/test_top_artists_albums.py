@@ -132,7 +132,7 @@ async def test_api_top_artists(mock_get):
         response = await ac.get("/api/stats/top-artists")
     assert response.status_code == 200
     assert response.json() == [{"artist": "Alpha", "count": 5, "total_listen_sec": 120, "value": 5, "artist_id": None}]
-    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="plays")
+    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="plays", artist_mode="combined")
 
 
 @pytest.mark.asyncio
@@ -176,7 +176,10 @@ async def test_api_ranking_endpoint_limit_bounds(endpoint, mock_target, limit, e
             response = await ac.get(f"{endpoint}?limit={limit}")
         assert response.status_code == expected_status
         if expected_status == 200:
-            mock_get.assert_awaited_once_with(limit=limit, days=0, timezone_name="UTC", metric="plays")
+            kwargs = {"limit": limit, "days": 0, "timezone_name": "UTC", "metric": "plays"}
+            if endpoint.endswith("top-artists"):
+                kwargs["artist_mode"] = "combined"
+            mock_get.assert_awaited_once_with(**kwargs)
 
 
 @pytest.mark.asyncio

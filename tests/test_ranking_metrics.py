@@ -195,7 +195,7 @@ async def test_api_top_artists_propagates_metric_listen_time(mock_get):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/stats/top-artists?metric=listen_time")
     assert response.status_code == 200
-    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="listen_time")
+    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric="listen_time", artist_mode="combined")
 
 
 @pytest.mark.asyncio
@@ -216,7 +216,7 @@ async def test_api_top_artists_accepts_valid_metrics(mock_get, metric):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get(f"/api/stats/top-artists?metric={metric}")
     assert response.status_code == 200
-    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric=metric)
+    mock_get.assert_awaited_once_with(limit=10, days=0, timezone_name="UTC", metric=metric, artist_mode="combined")
 
 
 @pytest.mark.asyncio

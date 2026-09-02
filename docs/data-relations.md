@@ -2,7 +2,7 @@
 
 The relationship section derives chart values from the existing `play_history`
 rows. It does not generate behavioral conclusions or scores. Every request uses
-the dashboard's date, timezone, server, user, and metric scope.
+the dashboard's date, timezone, server, user, metric, and artist-attribution scope.
 
 ## Charts
 
@@ -17,7 +17,7 @@ time is selected, the section also reports the share of rows with a duration
 and the share whose duration was reported by the upstream client. Missing
 durations contribute zero seconds and still count as plays.
 
-Artist identities follow the existing name-based artist ranking. Album
+Artist identities follow the name-based artist ranking and the selected [collaboration mode](artist-attribution.md). In separate mode, artist series can overlap; `Other` and duration coverage each count an underlying recording once. Album
 identities use `(source, album_id)` when an upstream ID exists and fall back to
 `(source, album, artist)` for older rows. `Other` and unknown-client groups do
 not open a detail view because they do not identify one entity.

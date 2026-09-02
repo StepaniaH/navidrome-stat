@@ -15,6 +15,7 @@ const preferenceKeys = Object.freeze({
     language: 'navidrome-language',
     timezone: 'navidrome-timezone',
     motion: 'navidrome-motion',
+    artistMode: 'navidrome-artist-mode',
 });
 
 const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'en' });
@@ -113,6 +114,9 @@ function applyLocalPreferences() {
         motion === 'reduced' ? 'true' : 'false',
     );
     listboxes.get('languageSelect')?.setValue(i18n.getLocale());
+    listboxes.get('artistModeSelect')?.setValue(
+        readPreference(preferenceKeys.artistMode, 'combined') === 'separate' ? 'separate' : 'combined',
+    );
     listboxes.get('settingsTimezoneSelect')?.setValue(
         readPreference(preferenceKeys.timezone, 'browser'),
     );
@@ -189,6 +193,13 @@ function bindPreferenceControls() {
             i18n.setLocale(language);
             renderLocalizedState();
         },
+    });
+    registerSettingsListbox('artistModeSelect', {
+        value: readPreference(preferenceKeys.artistMode, 'combined') === 'separate' ? 'separate' : 'combined',
+        options: ['combined', 'separate'].map((value) => ({
+            value, labelKey: `preferences.artistMode.${value}`,
+        })),
+        onChange: (mode) => writePreference(preferenceKeys.artistMode, mode),
     });
     registerSettingsListbox('settingsTimezoneSelect', {
         value: readPreference(preferenceKeys.timezone, 'browser'),

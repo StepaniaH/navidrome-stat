@@ -85,7 +85,10 @@ import {
     function syncReviewLink() {
         const link = document.getElementById('reviewLink');
         if (!link) return;
-        const params = new URLSearchParams({ timezone: resolveStatsTimezone() });
+        const params = new URLSearchParams({
+            timezone: resolveStatsTimezone(),
+            artist_mode: getFilters().artistMode,
+        });
         if (selectedSourceId) params.set('source_id', selectedSourceId);
         if (selectedUsername) params.set('username', selectedUsername);
         link.href = `/review?${params.toString()}`;
@@ -124,6 +127,7 @@ import {
             sourceId: selectedSourceId,
             username: selectedUsername,
             metric: rankingMetric,
+            artistMode: getFilters().artistMode,
             timezone: resolveStatsTimezone(),
         });
     }
@@ -655,6 +659,7 @@ import {
                 username: requestState.username,
                 startDate: requestState.startDate,
                 endDate: requestState.endDate,
+                artistMode: requestState.artistMode,
             });
             const snapshotRes = await apiFetch(`/api/stats/dashboard?${query}`, {
                 signal: controller.signal,

@@ -19,7 +19,7 @@ from src.database import (
 from src.privacy_ops import export_user_data, import_user_data
 from tests.migration_fixtures import build_legacy_db
 
-CURRENT_SCHEMA_VERSION = 13
+CURRENT_SCHEMA_VERSION = 14
 
 
 @pytest.mark.asyncio

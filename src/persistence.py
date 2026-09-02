@@ -9,6 +9,7 @@ reported, and timestamps reconcile to the latest known value.
 import uuid
 
 from src import config
+from src.artist_credits import encode_artists
 from src.privacy_markers import event_is_after_cutoff, get_user_deletion_cutoff
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
 from src.sqlite import connect_db
@@ -29,7 +30,7 @@ async def save_play_session(session: dict, db_path: str | None = None):
             "played_at, username, client_name, track_id, title, artist, artist_id, "
             "album, album_id, is_transcoding, listen_duration_sec, source, source_id, "
             "source_name, session_id, duration_confidence, finalized, finalized_at, "
-            "checkpointed_at, record_id"
+            "checkpointed_at, record_id, artists"
         )
         values = (
             session.get("last_seen_at"),
@@ -52,12 +53,13 @@ async def save_play_session(session: dict, db_path: str | None = None):
             session.get("finalized_at"),
             session.get("checkpointed_at", session.get("last_seen_at")),
             session.get("record_id") or uuid.uuid4().hex,
+            encode_artists(session.get("artists")),
         )
         if session.get("session_id"):
             await db.execute(
                 f"""
                 INSERT INTO play_history ({columns})
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) WHERE session_id IS NOT NULL DO UPDATE SET
                     played_at=CASE
                         WHEN play_history.played_at IS NULL THEN excluded.played_at
@@ -73,6 +75,7 @@ async def save_play_session(session: dict, db_path: str | None = None):
                     title=excluded.title,
                     artist=excluded.artist,
                     artist_id=excluded.artist_id,
+                    artists=COALESCE(excluded.artists, play_history.artists),
                     album=excluded.album,
                     album_id=excluded.album_id,
                     is_transcoding=excluded.is_transcoding,
@@ -124,7 +127,7 @@ async def save_play_session(session: dict, db_path: str | None = None):
             await db.execute(
                 f"""
                 INSERT INTO play_history ({columns})
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )
@@ -143,7 +146,7 @@ async def save_imported_events(events: list[dict], db_path: str | None = None) -
     columns = (
         "played_at, username, client_name, track_id, title, artist, artist_id, "
         "album, album_id, is_transcoding, listen_duration_sec, source, source_id, "
-        "source_name, duration_confidence, external_event_key, record_id"
+        "source_name, duration_confidence, external_event_key, record_id, artists"
     )
     inserted = 0
     async with connect_db(path) as db:
@@ -165,7 +168,7 @@ async def save_imported_events(events: list[dict], db_path: str | None = None) -
                 cursor = await db.execute(
                     f"""
                     INSERT INTO play_history ({columns})
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(external_event_key) WHERE external_event_key IS NOT NULL
                     DO NOTHING
                     """,
@@ -187,6 +190,7 @@ async def save_imported_events(events: list[dict], db_path: str | None = None) -
                         event.get("duration_confidence", "estimated"),
                         event["external_event_key"],
                         event.get("record_id") or uuid.uuid4().hex,
+                        encode_artists(event.get("artists")),
                     ),
                 )
                 inserted += max(cursor.rowcount, 0)
@@ -205,12 +209,13 @@ async def save_play_attempt(attempt: dict, db_path: str | None = None):
             INSERT INTO play_attempts (
                 played_at, username, client_name, track_id, title, artist,
                 album, album_id, is_transcoding, duration_sec, outcome, source_id,
-                source_name, attempt_id, duration_confidence, artist_id, record_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                source_name, attempt_id, duration_confidence, artist_id, record_id, artists
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(attempt_id) WHERE attempt_id IS NOT NULL DO UPDATE SET
                 played_at=excluded.played_at,
                 duration_sec=excluded.duration_sec,
                 artist_id=excluded.artist_id,
+                artists=COALESCE(excluded.artists, play_attempts.artists),
                 album_id=excluded.album_id,
                 duration_confidence=excluded.duration_confidence
         """, (
@@ -226,5 +231,6 @@ async def save_play_attempt(attempt: dict, db_path: str | None = None):
             attempt.get("duration_confidence", "estimated"),
             attempt.get("artist_id"),
             attempt.get("record_id") or uuid.uuid4().hex,
+            encode_artists(attempt.get("artists")),
         ))
         await db.commit()

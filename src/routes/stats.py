@@ -185,6 +185,7 @@ async def api_dashboard_snapshot(
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
     username: str | None = Query(default=None, min_length=1, max_length=128),
+    artist_mode: Literal["combined", "separate"] = Query(default="combined"),
 ):
     """Return one cached historical payload; now-playing remains real-time."""
     try:
@@ -196,6 +197,7 @@ async def api_dashboard_snapshot(
             start_date=start_date,
             end_date=end_date,
             username=username,
+            artist_mode=artist_mode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -390,6 +392,7 @@ async def api_top_artists(
     metric: str = Query(default=RANKING_METRIC_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
     username: str | None = Query(default=None, min_length=1, max_length=128),
+    artist_mode: Literal["combined", "separate"] = Query(default="combined"),
 ):
     """Return top artists ranked by plays or listening time."""
     window = _validate_stats_days(days)
@@ -397,6 +400,7 @@ async def api_top_artists(
     m = _validate_ranking_metric(metric)
     return await _query_stats(
         lambda: get_top_artists(
+            artist_mode=artist_mode,
             limit=limit,
             days=window,
             timezone_name=tz,
@@ -454,6 +458,7 @@ async def api_entity_detail(
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
     username: str | None = Query(default=None, min_length=1, max_length=128),
+    artist_mode: Literal["combined", "separate"] = Query(default="combined"),
 ):
     """Return a scoped artist or album drill-down payload."""
     try:
@@ -465,6 +470,7 @@ async def api_entity_detail(
             start_date=start_date,
             end_date=end_date,
             username=username,
+            artist_mode=artist_mode,
         )
         identity = EntityIdentity.create(
             entity_type=entity_type,
@@ -507,6 +513,7 @@ async def api_data_relations(
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
     username: str | None = Query(default=None, min_length=1, max_length=128),
+    artist_mode: Literal["combined", "separate"] = Query(default="combined"),
 ):
     """Return time, daypart, and prior-period values for one dimension."""
     try:
@@ -518,6 +525,7 @@ async def api_data_relations(
             start_date=start_date,
             end_date=end_date,
             username=username,
+            artist_mode=artist_mode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -591,6 +599,7 @@ async def api_review(
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
     username: str | None = Query(default=None, min_length=1, max_length=128),
+    artist_mode: Literal["combined", "separate"] = Query(default="combined"),
 ):
     """Return the year-in-review aggregation for one local calendar year."""
     from datetime import datetime
@@ -606,5 +615,6 @@ async def api_review(
             timezone_name=tz,
             source_id=source_id,
             username=username,
+            artist_mode=artist_mode,
         )
     )

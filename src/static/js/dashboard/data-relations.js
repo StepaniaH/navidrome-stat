@@ -150,6 +150,9 @@ export function createDataRelations({
     function updateText(payload = lastPayload) {
         const metric = payload?.metric || getScope().metric;
         const scopeParts = [getWindowLabel(), metricLabel(metric)];
+        if (getDimension() === 'artist' && getScope().artistMode === 'separate') {
+            scopeParts.push(t('relations.sharedArtistPlays'));
+        }
         if (metric === 'listen_time' && payload) {
             scopeParts.push(t('relations.durationCoverage', {
                 value: formatNumber(payload.duration_coverage_pct),
