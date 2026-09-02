@@ -4,6 +4,8 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-02
+
 ### Changed
 
 - Detail track rows consistently show play count and total recorded listening time. Estimated values use `≈`, older incomplete checkpoint values use `≥`, and missing durations remain unknown instead of appearing as zero seconds.
@@ -300,7 +302,8 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.9...v0.9.0
 [0.8.9]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.8...v0.8.9
 [0.8.8]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.7...v0.8.8
