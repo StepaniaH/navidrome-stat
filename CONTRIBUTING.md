@@ -21,7 +21,7 @@ ruff check .
 pytest -q --cov=src --cov-report=term-missing --cov-fail-under=80
 ```
 
-Frontend assets and browser tests use Node.js:
+Frontend assets and browser tests require Node.js 20 or newer:
 
 ```bash
 npm ci

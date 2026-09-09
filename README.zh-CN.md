@@ -289,7 +289,7 @@ cd navidrome-stat
 docker compose up -d --build
 ```
 
-前端资源和浏览器测试使用 Node.js：
+前端资源和浏览器测试需要 Node.js 20 或更高版本：
 
 ```bash
 npm ci

@@ -289,7 +289,7 @@ cd navidrome-stat
 docker compose up -d --build
 ```
 
-Frontend assets and browser tests use Node.js:
+Frontend assets and browser tests require Node.js 20 or newer:
 
 ```bash
 npm ci
