@@ -27,4 +27,4 @@ The application does not terminate TLS. Use a trusted network or a TLS-enabled r
 
 The ListenBrainz receiver uses `LISTENBRAINZ_INGEST_TOKEN` and accepts it only in the `Authorization: Token` header. Administrator, viewer, and ingestion tokens must be different; the application refuses to start when configured credentials share a value. Use separate long, random values and avoid placing tokens in URLs or logs.
 
-Review the deployment guidance in [`README.md`](README.md) and the data-handling details in [`docs/privacy.md`](docs/privacy.md).
+Review the deployment guidance in [`docs/deployment.md`](docs/deployment.md) and the data-handling details in [`docs/privacy.md`](docs/privacy.md).

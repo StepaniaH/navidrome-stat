@@ -2,7 +2,7 @@
 
 Contributions are welcome. Before opening an issue or pull request, search the existing issues to avoid duplicates.
 
-English is used for issues, pull requests, and commit messages. User-facing documentation is bilingual, so changes to installation, configuration, or runtime behavior should update both [`README.md`](README.md) and [`README.zh-CN.md`](README.zh-CN.md).
+English is used for issues, pull requests, and commit messages. The README and core user guides are bilingual. Update the matching English and Simplified Chinese pages when installation, configuration, or runtime behavior changes; keep the READMEs focused on the overview and quick start.
 
 ## Development setup
 
@@ -32,6 +32,22 @@ npm run test:e2e
 ```
 
 `npm run test:e2e` rebuilds the bundled assets before running Playwright. Commit updated files under `src/static/vendor/` when an asset dependency, the Tailwind input, or utility classes in the dashboard HTML or JavaScript change.
+
+Run the development server after setting your local connection and authentication environment variables:
+
+```bash
+uvicorn src.main:app --host 127.0.0.1 --port 39421 --no-access-log
+```
+
+New checkouts store the database, credential key, and cover-art cache in the Git-ignored `.data/` directory. An existing root-level `navidrome_stats.db` remains in use until you move it together with its matching `secret.key` or set `DATABASE_URL`.
+
+The repository’s [docker-compose.yml](docker-compose.yml) builds the current checkout with `docker compose up -d --build`. For a published image, follow the [deployment guide](docs/deployment.md). Tests use temporary databases and synthetic data; they do not require a live Navidrome server.
+
+## Repository workflow
+
+`main` is the only long-lived branch on the upstream remote. The maintainer keeps `dev` locally, integrates completed work into `main`, and publishes releases with version tags. Contributors can open pull requests against `main` from their forks.
+
+Keep personal plans, task checklists, agent session notes, and promotional drafts outside the repository or under the Git-ignored `.local/` directory. Public documentation should describe supported usage or help contributors work on the project.
 
 ## Maintenance tools
 
@@ -66,10 +82,8 @@ Review the complete lock-file diff and rerun the backend checks after refreshing
 ## Making changes
 
 - Keep each change focused and add tests for changed behavior.
-- Update both READMEs when user-facing setup or configuration changes.
-- Update [`docs/architecture.md`](docs/architecture.md) when the system design or data flow changes.
+- Update the relevant bilingual [user guides](docs/README.md) when setup, configuration, collection, or dashboard behavior changes. Update both READMEs if the overview or quick start is affected.
 - Update [`docs/privacy.md`](docs/privacy.md) when stored data, logging, retention, export, or authentication behavior changes.
-- Update [`docs/roadmap.md`](docs/roadmap.md) only when broad project direction or a stated non-goal changes.
 - Follow [`docs/translations.md`](docs/translations.md) when adding a locale or changing localized interface keys.
 - Run `python3 scripts/check_md_links.py` after editing Markdown files.
 

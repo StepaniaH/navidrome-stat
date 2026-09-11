@@ -5,6 +5,7 @@ from pathlib import Path
 
 IGNORED_DIRECTORIES = {
     ".git",
+    ".local",
     ".venv",
     "node_modules",
     "playwright-report",

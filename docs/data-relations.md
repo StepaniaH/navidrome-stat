@@ -33,22 +33,3 @@ not open a detail view because they do not identify one entity.
 - Track rows use play count and total recorded listening time. Detail durations
   preserve whether a value was reported, estimated, a lower bound from older
   checkpoints, or unavailable.
-
-## Candidate drill-downs
-
-The remaining charts should gain click behavior only when the target contains
-additional data rather than a restatement of the selected point:
-
-1. A transcoding segment can open its daily trend, client distribution, and
-   top tracks.
-2. A weekday-and-hour cell can open client, artist, and track rankings for that
-   local-time cell.
-3. A daily point can open that date's client, artist, and album composition.
-4. An hourly bar can open its weekday distribution and client composition.
-
-Until those targets exist, the charts keep their normal cursor and tooltip
-behavior. The dashboard currently keeps one shared scope across all sections.
-If its length becomes a usability problem, a page-local Overview / Relationships
-/ Records switch is preferable to pagination because pagination would separate
-charts that share the same filters. That change should be evaluated after more
-drill-downs are implemented.

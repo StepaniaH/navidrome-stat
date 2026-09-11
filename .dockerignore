@@ -19,3 +19,6 @@ playwright-report/
 tests/
 docs/
 *.md
+
+# Local working notes and task drafts
+.local/

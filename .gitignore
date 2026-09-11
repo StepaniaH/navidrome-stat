@@ -17,3 +17,6 @@ restore-test/
 coverart-cache/
 secret.key
 .openchamber/
+
+# Local working notes and task drafts
+.local/

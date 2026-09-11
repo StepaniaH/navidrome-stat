@@ -38,7 +38,7 @@ Deleting a user discards that user's active in-memory sessions and suppresses wr
 
 The database retains a history-import checkpoint and a deletion cutoff after deletion so history and playlist imports cannot restore older records. Their keys use SHA-256 digests of the source ID and username. The history checkpoint records the next offset, completion status, failure count, and next retry time; the deletion cutoff records the UTC deletion time. Neither value contains the cleartext username or listening metadata. Removing the application database also removes these markers.
 
-SQLite uses write-ahead logging. The database file, `-wal` and `-shm` files, volume snapshots, and backups can all contain the same sensitive data. Stop the application before taking a simple file-level backup, as shown in the README.
+SQLite uses write-ahead logging. The database file, `-wal` and `-shm` files, volume snapshots, and backups can all contain the same sensitive data. Stop the application before taking a simple file-level backup, as shown in the [operations guide](operations.md#backup-and-restore).
 
 ## Browser and network behavior
 
