@@ -73,6 +73,21 @@ async def test_metrics_require_auth_when_flag_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_viewer_token_cannot_read_protected_operational_metrics(monkeypatch):
+    monkeypatch.setenv("STATS_METRICS_AUTH", "true")
+    monkeypatch.setenv("STATS_API_TOKEN", "admin-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_TOKEN", "viewer-secret")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get(
+            "/metrics",
+            headers={"Authorization": "Bearer viewer-secret"},
+        )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_metrics_stay_public_when_auth_flag_set_without_token(monkeypatch):
     monkeypatch.setenv("STATS_METRICS_AUTH", "true")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

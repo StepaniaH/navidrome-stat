@@ -270,6 +270,17 @@ class PlaybackSessionTracker:
         state = entry.state
         return isinstance(state, str) and state.lower() in TERMINAL_PLAYBACK_STATES
 
+    def _mark_unobserved_gap(
+        self,
+        session: PlaybackSession,
+        current_time: datetime,
+    ) -> bool:
+        last_active = session.get("last_active_at") or session["last_seen_at"]
+        if (current_time - last_active).total_seconds() <= self.stale_threshold_sec:
+            return False
+        session["duration_confidence"] = "lower_bound"
+        return True
+
     def _active_delta(
         self,
         session: PlaybackSession,
@@ -280,6 +291,12 @@ class PlaybackSessionTracker:
         if wall_delta <= 0:
             return 0.0
 
+        if self._mark_unobserved_gap(session, current_time):
+            # A delayed successful poll cannot prove that playback continued
+            # throughout an outage. Exclude the whole unobserved interval and
+            # retain a lower-bound marker for every later checkpoint/finalize.
+            return 0.0
+
         current_position = self._position_ms(entry)
         previous_position = session.get("last_position_ms")
         if (
@@ -287,7 +304,8 @@ class PlaybackSessionTracker:
             and current_position is not None
             and previous_position is not None
         ):
-            session["duration_confidence"] = "reported"
+            if session.get("duration_confidence") != "lower_bound":
+                session["duration_confidence"] = "reported"
             progress_ms = current_position - previous_position
             if progress_ms == 0:
                 # Position snapshots can stay unchanged between infrequent
@@ -306,7 +324,8 @@ class PlaybackSessionTracker:
                 return wall_delta
             return min(reported_delta, wall_delta)
 
-        session["duration_confidence"] = "estimated"
+        if session.get("duration_confidence") != "lower_bound":
+            session["duration_confidence"] = "estimated"
         return wall_delta
 
     async def process_poll(self, entries, current_time: datetime) -> None:
@@ -324,6 +343,8 @@ class PlaybackSessionTracker:
             if self._is_terminal_state(entry):
                 # stopped/expired end the session at once; do not linger in
                 # the pause grace window after playback actually ended.
+                if player_id in self._sessions:
+                    self._mark_unobserved_gap(self._sessions[player_id], current_time)
                 await self.finalize_session(player_id)
                 continue
 
@@ -336,6 +357,7 @@ class PlaybackSessionTracker:
                     and self._sessions[player_id]["track_id"] == track_id
                 ):
                     session = self._sessions[player_id]
+                    self._mark_unobserved_gap(session, current_time)
                     session["last_seen_at"] = current_time
                     session["paused"] = True
                 continue
@@ -359,6 +381,7 @@ class PlaybackSessionTracker:
                     session["last_seen_at"] = current_time
                     await self._maybe_commit_active_session(player_id)
                 else:
+                    self._mark_unobserved_gap(self._sessions[player_id], current_time)
                     await self.finalize_session(player_id)
                     self._sessions[player_id] = self._session_from_entry(entry, current_time)
             else:
@@ -380,4 +403,5 @@ class PlaybackSessionTracker:
         for pid in stale_players:
             if pid not in self._sessions:
                 continue
+            self._mark_unobserved_gap(self._sessions[pid], current_time)
             await self.finalize_session(pid)

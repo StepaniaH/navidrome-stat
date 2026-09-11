@@ -9,6 +9,7 @@ const databasePath = path.join(
 
 module.exports = defineConfig({
   testDir: "./tests/e2e",
+  globalTeardown: require.resolve("./tests/e2e/global-teardown.js"),
   timeout: 30_000,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,

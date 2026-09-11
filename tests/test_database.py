@@ -279,6 +279,51 @@ def test_session_checkpoint_upserts_final_duration_without_duplicate(db_path):
     assert row == (1, 120, 1, "reported")
 
 
+def test_session_upsert_never_erases_lower_bound_quality(db_path):
+    asyncio.run(init_db(db_path))
+    checkpoint = {
+        "session_id": "interrupted-session",
+        "last_seen_at": "2024-03-24T12:00:30+00:00",
+        "username": "synthetic-user",
+        "client_name": "Synthetic Player",
+        "track_id": "track-1",
+        "title": "Synthetic Song",
+        "artist": "Synthetic Artist",
+        "album": "Synthetic Album",
+        "is_transcoding": 0,
+        "duration_sec": 30,
+        "duration_confidence": "reported",
+        "finalized": False,
+    }
+    asyncio.run(save_play_session(checkpoint, db_path=db_path))
+    asyncio.run(save_play_session(
+        {
+            **checkpoint,
+            "duration_sec": 40,
+            "duration_confidence": "lower_bound",
+        },
+        db_path=db_path,
+    ))
+    asyncio.run(save_play_session(
+        {
+            **checkpoint,
+            "duration_sec": 50,
+            "duration_confidence": "reported",
+            "finalized": True,
+        },
+        db_path=db_path,
+    ))
+
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        "SELECT listen_duration_sec, duration_confidence FROM play_history "
+        "WHERE session_id = ?",
+        ("interrupted-session",),
+    ).fetchone()
+    conn.close()
+    assert row == (50, "lower_bound")
+
+
 def test_stale_checkpoint_cannot_regress_final_session(db_path):
     asyncio.run(init_db(db_path))
     final = {

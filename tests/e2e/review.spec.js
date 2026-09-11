@@ -1,15 +1,27 @@
 import { expect, test } from "@playwright/test";
 
 const REVIEW = {
+  period: "year",
   year: 2026,
+  month: null,
+  period_start: "2026-01-01",
+  period_end: "2026-12-31",
   total_plays: 486,
+  previous_total_plays: 420,
+  plays_change_pct: 15.7,
   total_listen_sec: 87200,
+  duration_quality: "estimated",
+  duration_coverage_pct: 100,
+  duration_quality_counts: { reported: 0, estimated: 486, lower_bound: 0, unknown: 0 },
+  play_source_counts: { poller: 480, song_history: 6 },
   unique_tracks: 212,
   active_days: 190,
   longest_streak_days: 14,
   first_played_at: "2026-01-02T08:00:00+01:00",
   last_played_at: "2026-08-20T22:10:00+01:00",
   biggest_month: "2026-03",
+  first_recorded_tracks: 17,
+  daily: [],
   monthly: Array.from({ length: 12 }, (_, month) => ({
     month: `2026-${String(month + 1).padStart(2, "0")}`,
     count: month === 2 ? 120 : 30,
@@ -51,7 +63,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("review page renders the yearly story", async ({ page }) => {
+test("review page renders the yearly summary", async ({ page }) => {
   await page.goto("/review");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.locator("#reviewTotalPlays")).toHaveText("486");
@@ -84,6 +96,48 @@ test("review page switches years through the selector", async ({ page }) => {
   await page.getByRole("option", { name: "2025" }).click();
   await expect(page.locator("#reviewSubtitle")).toContainText("2025");
   await expect(page).toHaveURL(/year=2025/);
+});
+
+test("review page restores a monthly review and renders daily activity", async ({ page }) => {
+  await page.unroute("**/api/stats/review*");
+  const reviewRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/stats/review")) reviewRequests.push(request.url());
+  });
+  await page.route("**/api/stats/review*", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    route.fulfill({
+      json: {
+        ...REVIEW,
+        period: "month",
+        month: Number(params.get("month")),
+        period_start: "2026-07-01",
+        period_end: "2026-07-31",
+        daily: [
+          { date: "2026-07-01", count: 3, total_listen_sec: 540 },
+          { date: "2026-07-02", count: 8, total_listen_sec: 1440 },
+        ],
+      },
+    });
+  });
+
+  await page.goto("/review?period=month&year=2026&month=7");
+  await expect(page.locator("#reviewMonthControl")).toBeVisible();
+  await expect(page.locator("#reviewSubtitle")).toContainText("2026-07");
+  await expect(page.locator("#reviewPeriodChartTitle")).toHaveText("Per day");
+  await expect(page.locator("#reviewBusiestLabel")).toHaveText("Busiest day");
+  await expect(page.locator("#reviewBiggestMonth")).toHaveText("2026-07-02");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        echarts.getInstanceByDom(document.getElementById("reviewMonthlyChart")).getOption().series[0].data,
+      ),
+    )
+    .toEqual([3, 8]);
+  await expect.poll(() => reviewRequests.some((url) => {
+    const params = new URL(url).searchParams;
+    return params.get("year") === "2026" && params.get("month") === "7";
+  })).toBe(true);
 });
 
 test("review restores and visibly labels its shared scope", async ({ page }) => {
@@ -149,6 +203,12 @@ test("review distribution charts switch between plays and listening time", async
       }),
     )
     .toBe(40000);
+});
+
+test("review shows the recorded listening total without quality annotations", async ({ page }) => {
+  await page.goto("/review");
+  await expect(page.locator("#reviewListenTime")).toHaveText("24h 13m 20s");
+  await expect(page.locator("#reviewContent")).not.toContainText("100%");
 });
 
 test("review charts redraw from the resolved theme tokens", async ({ page }) => {

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 import src.stats_service as stats_module
+from src.auth import AccessContext, bind_access_context, reset_access_context
 from src.stats_query_entities import EntityIdentity
 from src.stats_scope import StatsScope
 from src.stats_service import StatsService
@@ -281,6 +282,34 @@ async def test_dashboard_builds_through_cache(cache, service):
         "top_artists",
         "top_albums",
     }
+
+
+@pytest.mark.asyncio
+async def test_username_scoped_viewer_only_sees_servers_with_matching_history(
+    cache,
+    service,
+):
+    snapshot = {
+        "servers": [
+            {"source_id": "allowed", "source_name": "Allowed", "count": 1},
+        ],
+        "available_servers": [
+            {"id": "allowed", "display_name": "Allowed"},
+            {"id": "private", "display_name": "Private"},
+        ],
+    }
+    service._build_snapshot = AsyncMock(return_value=snapshot)
+    context_token = bind_access_context(
+        AccessContext(level="viewer", username="allowed-user")
+    )
+    try:
+        result = await service.dashboard(StatsScope.create(days=30, username="allowed-user"))
+    finally:
+        reset_access_context(context_token)
+
+    assert result["available_servers"] == [
+        {"id": "allowed", "display_name": "Allowed"}
+    ]
 
 
 @pytest.mark.asyncio

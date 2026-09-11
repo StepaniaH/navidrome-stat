@@ -115,6 +115,24 @@ async def test_retention_task_starts_when_collector_reconcile_fails(reset_runtim
 
 
 @pytest.mark.asyncio
+async def test_lifespan_rejects_shared_access_credentials_before_database_startup(
+    monkeypatch,
+):
+    import src.main as main
+
+    monkeypatch.setenv("STATS_API_TOKEN", "shared-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_TOKEN", "shared-secret")
+    initialize = AsyncMock()
+
+    with patch.object(main, "init_db", initialize):
+        with pytest.raises(RuntimeError, match="must use different values"):
+            async with lifespan(app):
+                pass
+
+    initialize.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_polling_loop_applies_backoff_on_exception(reset_runtime):
     client = AsyncMock()
     client.get_now_playing.side_effect = ConnectionError("upstream unavailable")

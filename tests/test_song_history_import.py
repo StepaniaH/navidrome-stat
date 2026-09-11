@@ -1,7 +1,7 @@
-"""getSongHistory adapter (upstream Navidrome PR #5650, unmerged).
+"""Tests for the proposed getSongHistory adapter in Navidrome PR #5650.
 
-The live endpoint does not exist yet; these tests drive the adapter through
-fakes so the pipeline is fully exercised and only flips on capability probe.
+The upstream endpoint remains unmerged, so these tests use representative
+responses without contacting a Navidrome server.
 """
 
 import asyncio
@@ -19,7 +19,7 @@ SOURCE = {
 
 def _page(entries, status="ok"):
     return {
-        "subsonic-response": {"status": status, "songHistory": {"entry": entries}}
+        "subsonic-response": {"status": status, "songHistory": {"song": entries}}
     }
 
 
@@ -29,9 +29,9 @@ class FakeHistoryClient:
         self.page_size = page_size
         self.calls = []
 
-    async def get_song_history(self, *, size, offset):
-        self.calls.append((size, offset))
-        index = offset // size if size else 0
+    async def get_song_history(self, *, count, offset):
+        self.calls.append((count, offset))
+        index = offset // count if count else 0
         return self.pages[index] if 0 <= index < len(self.pages) else _page([])
 
 
@@ -69,6 +69,40 @@ def test_error_envelope_raises():
 
     with pytest.raises(ImportSourceError):
         asyncio.run(run_song_history(client, record=_record, **SOURCE))
+
+
+@pytest.mark.parametrize(
+    "envelope",
+    [
+        {},
+        {"subsonic-response": {"status": "ok"}},
+        {"subsonic-response": {"status": "ok", "songHistory": {"entry": []}}},
+        {"subsonic-response": {"status": "ok", "songHistory": {"song": "bad"}}},
+    ],
+)
+def test_unknown_success_shape_raises_instead_of_completing_empty(envelope):
+    from src.importers.playlist_backfill import ImportSourceError
+
+    client = FakeHistoryClient([envelope])
+    with pytest.raises(ImportSourceError):
+        asyncio.run(run_song_history(client, record=_record, **SOURCE))
+
+
+def test_upstream_proposal_shape_imports_unix_second_timestamp():
+    recorded = []
+
+    async def record(events):
+        recorded.extend(events)
+        return len(events)
+
+    client = FakeHistoryClient([_page([
+        {"id": "proposal-track", "playedAt": 1_750_614_000}
+    ])])
+    result = asyncio.run(run_song_history(client, record=record, **SOURCE))
+
+    assert result["imported"] == 1
+    assert recorded[0]["track_id"] == "proposal-track"
+    assert recorded[0]["played_at"] == "2025-06-22T17:40:00+00:00"
 
 
 def test_cutoff_suppression_shares_playlist_bridge_logic():
@@ -129,8 +163,8 @@ def test_commits_each_page_and_resumes_from_persisted_offset(monkeypatch):
         def __init__(self):
             self.calls = []
 
-        async def get_song_history(self, *, size, offset):
-            self.calls.append((size, offset))
+        async def get_song_history(self, *, count, offset):
+            self.calls.append((count, offset))
             return pages[offset]
 
     recorded_pages = []

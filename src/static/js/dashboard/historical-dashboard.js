@@ -1,5 +1,10 @@
 import { createThemeTokens } from '../charts.js';
-import { coverArtUrl, escapeHtml, formatChangeText } from '../format.js';
+import {
+    coverArtUrl,
+    escapeHtml,
+    formatChangeText,
+    formatRecordedDuration,
+} from '../format.js';
 
 const WEEKDAY_MESSAGE_KEYS = Object.freeze([
     'weekday.mon', 'weekday.tue', 'weekday.wed', 'weekday.thu',
@@ -88,7 +93,10 @@ export function createHistoricalDashboard({
         }
         const transcodingRows = Array.isArray(transcoding) ? transcoding : [];
         document.getElementById('statTotalPlays').textContent = formatNumber(summary.total_plays);
-        document.getElementById('statListenTime').textContent = formatDuration(summary.total_listen_sec);
+        document.getElementById('statListenTime').textContent =
+            Number(summary.total_plays) > 0 && summary.duration_quality === 'unknown'
+                ? '—'
+                : formatRecordedDuration(summary.total_listen_sec, t);
         document.getElementById('statUniqueTracks').textContent = formatNumber(summary.unique_tracks);
         document.getElementById('statTotalPlaysChange').textContent = formatChangeText(
             summary.plays_change_pct,
@@ -110,8 +118,8 @@ export function createHistoricalDashboard({
         }
         document.getElementById('statActiveDays').textContent = avgParts.join(' · ');
 
-        const direct = transcodingRows.find((row) => !row.is_transcoding)?.count || 0;
-        const transcoded = transcodingRows.find((row) => row.is_transcoding)?.count || 0;
+        const direct = transcodingRows.find((row) => row.is_transcoding === 0)?.count || 0;
+        const transcoded = transcodingRows.find((row) => row.is_transcoding === 1)?.count || 0;
         const unique = document.getElementById('statUniqueTracks');
         if (direct + transcoded > 0) {
             unique.title = t('summary.uniqueDetails', {
@@ -208,7 +216,9 @@ export function createHistoricalDashboard({
             average.textContent = formatPreciseDuration(item.average_listen_sec);
             const transcode = document.createElement('td');
             transcode.className = 'hide-mobile';
-            const rate = Number(item.transcoding_rate_pct);
+            const rate = item.transcoding_rate_pct == null
+                ? Number.NaN
+                : Number(item.transcoding_rate_pct);
             transcode.textContent = Number.isFinite(rate) ? `${rate.toFixed(1)}%` : '—';
             row.append(name, count, total, average, transcode);
             tbody.appendChild(row);
@@ -283,7 +293,9 @@ export function createHistoricalDashboard({
         );
         if (!rows) return;
         const transformed = rows.map((item) => ({
-            name: item.is_transcoding ? t('label.transcoded') : t('label.directPlay'),
+            name: item.is_transcoding === null || item.is_transcoding === undefined
+                ? t('label.unknownTranscoding')
+                : (item.is_transcoding ? t('label.transcoded') : t('label.directPlay')),
             value: item.count,
             playsPct: Number(item.plays_pct) || 0,
             listenPct: Number(item.listen_sec_pct) || 0,
@@ -292,7 +304,7 @@ export function createHistoricalDashboard({
         transcodingChart.setOption({
             ...chartBase,
             animationDurationUpdate: 450,
-            color: [colorPalette[2], colorPalette[5]],
+            color: [colorPalette[2], colorPalette[5], colorPalette[7]],
             legend: {
                 type: 'scroll',
                 bottom: 0,
@@ -336,8 +348,9 @@ export function createHistoricalDashboard({
             }],
         });
         setPanelSummary('transcoding', t('aria.transcodingSummary', {
-            direct: formatNumber(rows.find((item) => !item.is_transcoding)?.count || 0),
-            transcoded: formatNumber(rows.find((item) => item.is_transcoding)?.count || 0),
+            direct: formatNumber(rows.find((item) => item.is_transcoding === 0)?.count || 0),
+            transcoded: formatNumber(rows.find((item) => item.is_transcoding === 1)?.count || 0),
+            unknown: formatNumber(rows.find((item) => item.is_transcoding == null)?.count || 0),
         }));
     }
 

@@ -47,6 +47,7 @@ def _session(
     username: str = "testuser",
 ):
     return {
+        "session_id": f"{username}:{track_id}:{played_at}",
         "last_seen_at": played_at,
         "username": username,
         "client_name": client,
@@ -56,6 +57,8 @@ def _session(
         "album": album,
         "is_transcoding": transcoding,
         "duration_sec": duration_sec,
+        "duration_confidence": "estimated",
+        "finalized": True,
     }
 
 
@@ -78,6 +81,60 @@ def test_get_summary_empty_database_returns_null_safe(db_path):
     assert summary["window_days"] == 30
     assert summary["average_daily_plays"] == 0.0
     assert summary["average_daily_listen_sec"] == 0.0
+    assert summary["duration_quality"] == "unknown"
+    assert summary["duration_coverage_pct"] == 0.0
+    assert summary["duration_quality_counts"] == {
+        "reported": 0,
+        "estimated": 0,
+        "lower_bound": 0,
+        "unknown": 0,
+    }
+    assert summary["play_source_counts"] == {}
+
+
+def test_get_summary_reports_duration_quality_and_play_sources(db_path):
+    asyncio.run(init_db(db_path))
+    now = _now()
+    played_at = _iso(now - timedelta(days=1))
+    rows = [
+        {
+            **_session(played_at, track_id="live"),
+            "source": "poller",
+        },
+        {
+            **_session(played_at, track_id="archive", duration_sec=45),
+            "source": "import",
+            "duration_confidence": "reported",
+        },
+        {
+            **_session(played_at, track_id="history"),
+            "source": "song_history",
+            "session_id": None,
+            "duration_sec": None,
+        },
+    ]
+    for row in rows:
+        asyncio.run(save_play_session(row, db_path=db_path))
+
+    summary = asyncio.run(get_summary(days=7, db_path=db_path))
+
+    assert summary["total_plays"] == 3
+    assert summary["total_listen_sec"] == 75
+    assert summary["duration_quality"] == "lower_bound"
+    assert summary["duration_coverage_pct"] == pytest.approx(66.67)
+    assert summary["duration_quality_counts"] == {
+        "reported": 1,
+        "estimated": 1,
+        "lower_bound": 0,
+        "unknown": 1,
+    }
+    assert summary["play_source_counts"] == {
+        "poller": 1,
+        "import": 1,
+        "song_history": 1,
+    }
+    assert summary["listen_change_pct"] is None
+    assert summary["listen_change_reason"] == "incomplete_duration"
 
 
 def test_get_summary_finite_window_comparison_metrics(db_path):

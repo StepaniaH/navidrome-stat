@@ -10,7 +10,11 @@ from typing import Literal
 import aiosqlite
 
 from src.artist_credits import artist_credits, artist_query_source
-from src.core_types import DurationQuality, classify_history_duration_quality
+from src.core_types import (
+    DurationQuality,
+    classify_history_duration_quality,
+    combine_duration_qualities,
+)
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
 from src.sqlite import connect_db
 from src.stats_query_common import database_path as _path
@@ -115,17 +119,6 @@ def _row_duration_quality(row: aiosqlite.Row) -> DurationQuality:
         finalized=row["finalized"],
         duration_confidence=row["duration_confidence"],
     )
-
-
-def _combined_duration_quality(qualities: set[DurationQuality]) -> DurationQuality:
-    """Combine row-level duration quality without overstating precision."""
-    if not qualities or qualities == {"unknown"}:
-        return "unknown"
-    if "unknown" in qualities or "lower_bound" in qualities:
-        return "lower_bound"
-    if "estimated" in qualities:
-        return "estimated"
-    return "reported"
 
 
 async def _artist_rank(
@@ -482,10 +475,10 @@ async def get_entity_detail(
         bucket["duration_quality"] = (
             "reported"
             if int(bucket["play_count"]) == 0
-            else _combined_duration_quality(qualities)
+            else combine_duration_qualities(qualities)
         )
     for track in track_totals.values():
-        track["duration_quality"] = _combined_duration_quality(
+        track["duration_quality"] = combine_duration_qualities(
             track.pop("_duration_qualities")
         )
 
@@ -513,7 +506,7 @@ async def get_entity_detail(
         "metric": scope.metric,
         "total_plays": total_plays,
         "total_listen_sec": total_listen_sec,
-        "duration_quality": _combined_duration_quality(duration_qualities),
+        "duration_quality": combine_duration_qualities(duration_qualities),
         "unique_tracks": len(track_totals),
         "average_listen_sec": round(total_listen_sec / total_plays, 2) if total_plays else 0,
         "first_played_at": first_played_at,

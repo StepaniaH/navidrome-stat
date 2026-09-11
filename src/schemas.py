@@ -90,7 +90,16 @@ class SummaryStat(BaseModel):
     # Null when the previous value is zero or all history is selected.
     plays_change_pct: Optional[float] = None
     listen_change_pct: Optional[float] = None
+    listen_change_reason: Literal[
+        "available", "all_history", "no_previous_data", "incomplete_duration"
+    ] = "all_history"
     window_days: Optional[int] = None
+    duration_quality: DurationQuality = "unknown"
+    duration_coverage_pct: float = 0.0
+    duration_quality_counts: dict[DurationQuality, int] = Field(default_factory=dict)
+    play_source_counts: dict[str, int] = Field(default_factory=dict)
+    previous_duration_quality: Optional[DurationQuality] = None
+    previous_duration_coverage_pct: Optional[float] = None
 
 
 class HourlyStat(BaseModel):
@@ -313,6 +322,9 @@ class LoginRequest(BaseModel):
 
 class AuthStatusResponse(BaseModel):
     auth_required: bool
+    access_level: Optional[Literal["admin", "viewer"]] = None
+    source_id: Optional[str] = None
+    username: Optional[str] = None
 
 
 class PrivacySettingsResponse(BaseModel):
@@ -515,6 +527,12 @@ class ReviewMonthBucket(BaseModel):
     total_listen_sec: int = 0
 
 
+class ReviewDayBucket(BaseModel):
+    date: str
+    count: int
+    total_listen_sec: int = 0
+
+
 class ReviewHourBucket(BaseModel):
     hour: int
     count: int
@@ -539,19 +557,31 @@ class ReviewTopItem(BaseModel):
 
 
 class ReviewResponse(BaseModel):
+    period: Literal["year", "month"] = "year"
     year: int
+    month: Optional[int] = None
+    period_start: Optional[str] = None
+    period_end: Optional[str] = None
     timezone: str = TIMEZONE_DEFAULT
     source_id: Optional[str] = None
     username: Optional[str] = None
     total_plays: int
+    previous_total_plays: int = 0
+    plays_change_pct: Optional[float] = None
     total_listen_sec: int
+    duration_quality: DurationQuality = "unknown"
+    duration_coverage_pct: float = 0.0
+    duration_quality_counts: dict[DurationQuality, int] = Field(default_factory=dict)
+    play_source_counts: dict[str, int] = Field(default_factory=dict)
     unique_tracks: int
+    first_recorded_tracks: int = 0
     active_days: int
     longest_streak_days: int
     first_played_at: Optional[str] = None
     last_played_at: Optional[str] = None
     biggest_month: Optional[str] = None
     monthly: list[ReviewMonthBucket]
+    daily: list[ReviewDayBucket] = Field(default_factory=list)
     hourly: list[ReviewHourBucket]
     weekday: list[ReviewWeekdayBucket]
     top_artists: list[ReviewTopItem]

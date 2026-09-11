@@ -7,6 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
+from src.auth import current_access_context, enforce_stats_scope
 from src.collectors import active_now_playing
 from src.coverart import cover_art_service
 from src.database import (
@@ -150,10 +151,16 @@ def _date_range_kwargs(
 
 
 @router.get("/api/stats/users", response_model=UsersResponse)
-async def api_stat_users():
+async def api_stat_users(
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
+):
     """Return usernames present in listening history for filtering."""
     async def fetch() -> UsersResponse:
-        return UsersResponse(users=await list_usernames())
+        users = await list_usernames(source_id=source_id)
+        access = current_access_context()
+        if access.level == "viewer" and access.username is not None:
+            users = [name for name in users if name == access.username]
+        return UsersResponse(users=users)
 
     return await _query_stats(fetch)
 
@@ -165,6 +172,18 @@ async def api_cover_art(
     size: int = Query(default=300, ge=32, le=600),
 ):
     """Proxy one cover art image from the owning Navidrome server."""
+    access = current_access_context()
+    if access.level == "viewer" and access.username is not None:
+        try:
+            users = await list_usernames(source_id=source_id)
+        except Exception as exc:
+            logger.error("Cover art authorization query failed")
+            raise HTTPException(
+                status_code=503,
+                detail="Stats temporarily unavailable",
+            ) from exc
+        if access.username not in users:
+            raise HTTPException(status_code=403, detail="Forbidden")
     result = await cover_art_service.load(source_id, id, size)
     if result is None:
         raise HTTPException(status_code=404, detail="Cover art not available")
@@ -293,13 +312,17 @@ async def api_source_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return formal play counts grouped by provenance source."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
     return await _query_stats(
         lambda: get_source_stats(
-            days=window, timezone_name=tz, **_source_kwargs(source_id)
+            days=window,
+            timezone_name=tz,
+            **_source_kwargs(source_id),
+            **_user_kwargs(username),
         )
     )
 
@@ -309,11 +332,19 @@ async def api_server_stats(
     days: int = Query(default=STATS_DAYS_ALL, ge=0, le=STATS_DAYS_MAX),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Return formal play totals grouped by configured server identity."""
     window = _validate_stats_days(days)
     tz = _validate_stats_timezone(timezone)
-    return await _query_stats(lambda: get_server_stats(days=window, timezone_name=tz, source_id=source_id))
+    return await _query_stats(
+        lambda: get_server_stats(
+            days=window,
+            timezone_name=tz,
+            source_id=source_id,
+            username=username,
+        )
+    )
 
 
 @router.get("/api/stats/hourly", response_model=list[HourlyStat])
@@ -488,16 +519,19 @@ async def api_entity_detail(
 async def api_client_detail(payload: ClientDetailRequest):
     """Return client drill-down data without placing its name in the URL."""
     try:
+        source_id, username = enforce_stats_scope(payload.source_id, payload.username)
         scope = StatsScope.create(
             days=payload.days,
             timezone_name=payload.timezone,
             metric=payload.metric,
-            source_id=payload.source_id,
+            source_id=source_id,
             start_date=payload.start_date,
             end_date=payload.end_date,
-            username=payload.username,
+            username=username,
         )
         identity = EntityIdentity.create(entity_type="client", name=payload.name)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Forbidden") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return await _query_stats(lambda: stats_service.entity_detail(scope, identity))
@@ -535,6 +569,7 @@ async def api_data_relations(
 @router.get("/api/stats/now-playing", response_model=list[NowPlayingItem])
 async def api_now_playing(
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
 ):
     """Endpoint for currently active playback sessions (in-memory, no DB access)."""
     try:
@@ -542,6 +577,8 @@ async def api_now_playing(
         items: list[NowPlayingItem] = []
         for session in active_now_playing():
             if source_id and session.get("source_id") != source_id:
+                continue
+            if username and session.get("username") != username:
                 continue
             first_seen_at = session.get("first_seen_at")
             seconds_elapsed = 0
@@ -596,12 +633,13 @@ async def api_playback_history(
 @router.get("/api/stats/review", response_model=ReviewResponse)
 async def api_review(
     year: int = Query(default=0, ge=0, le=9999),
+    month: int | None = Query(default=None, ge=1, le=12),
     timezone: str = Query(default=TIMEZONE_DEFAULT),
     source_id: str | None = Query(default=None, min_length=1, max_length=128),
     username: str | None = Query(default=None, min_length=1, max_length=128),
     artist_mode: Literal["combined", "separate"] = Query(default="combined"),
 ):
-    """Return the year-in-review aggregation for one local calendar year."""
+    """Return a calendar-year or calendar-month listening review."""
     from datetime import datetime
 
     tz = _validate_stats_timezone(timezone)
@@ -616,5 +654,6 @@ async def api_review(
             source_id=source_id,
             username=username,
             artist_mode=artist_mode,
+            month=month,
         )
     )

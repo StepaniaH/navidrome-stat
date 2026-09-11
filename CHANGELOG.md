@@ -4,6 +4,30 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-09-11
+
+### Added
+
+- Listening Review can show a calendar month or year, compare play counts with the previous period, and list tracks first recorded in the selected period.
+- An optional read-only token can be restricted to one server, one username, or both.
+- An optional ListenBrainz-compatible endpoint can receive scrobbles from Navidrome.
+
+### Changed
+
+- The experimental `getSongHistory` importer follows [upstream PR #5650](https://github.com/navidrome/navidrome/pull/5650)'s current `count`/`offset` and `songHistory.song` contract and treats unknown response shapes as retryable import failures.
+- Imported history leaves listening duration and transcoding status unset when the source does not provide them.
+- Dashboard and Listening Review totals use the stored duration without estimate or minimum prefixes. Non-zero seconds are retained, missing duration uses an em dash, and unavailable duration comparisons are omitted.
+
+### Fixed
+
+- Successful playback observations separated by an outage no longer turn the unobserved interval into continuous listening time. Recovered sessions retain a lower-bound quality marker through later checkpoints.
+- Username-scoped viewers no longer receive unrelated server options or cover art from sources with no matching history. Protected operational metrics require an administrator token.
+- ListenBrainz submissions with different recording or release identifiers are no longer treated as duplicate retries.
+
+### Security
+
+- Administrator, viewer, and ListenBrainz ingestion tokens must use different values. Invalid combinations stop the application during startup.
+
 ## [0.9.2] - 2026-09-02
 
 ### Added

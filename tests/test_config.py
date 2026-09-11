@@ -56,6 +56,7 @@ COLLECTOR_ENV_CONTRACT = {
     "POLL_INTERVAL": (10, 5, 300),
     "MAX_POLL_BACKOFF_SEC": (60, 1, 3600),
     "PLAY_THRESHOLD_SEC": (30, 1, 3600),
+    "MAX_INFERRED_INTERVAL_SEC": (30, 1, 3600),
     "PAUSE_GRACE_SEC": (30, 0, 3600),
     "CHECKPOINT_INTERVAL_SEC": (60, 10, 3600),
 }
@@ -68,6 +69,12 @@ def test_collector_constants_match_the_declared_env_contract():
     for name, (default, mn, mx) in COLLECTOR_ENV_CONTRACT.items():
         contract = f'"{name}", default={default}, min_value={mn}, max_value={mx}'
         assert contract in collectors_source, name
+
+
+def test_active_interval_limit_tolerates_normal_poll_timing():
+    from src.collectors import ACTIVE_INTERVAL_LIMIT_SEC, POLL_INTERVAL
+
+    assert ACTIVE_INTERVAL_LIMIT_SEC >= POLL_INTERVAL * 2
 
 
 def test_env_flag_defaults_and_truthy_values(monkeypatch):
