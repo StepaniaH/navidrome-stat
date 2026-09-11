@@ -1,13 +1,20 @@
 <div align="center">
 
+<h1>
+  <picture>
+    <source media="(max-width: 600px)" srcset="assets/banner-en-compact.png">
+    <img src="assets/banner-en.png" alt="Navidrome Stat — self-hosted listening history, monthly and yearly reviews" width="950">
+  </picture>
+</h1>
+
+<p>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.svg">
-  <img src="assets/icon.svg" alt="Navidrome Stat" width="140">
+  <img src="assets/icon.svg" alt="Navidrome Stat icon" width="42">
 </picture>
-
-# Navidrome Stat
-
+&nbsp;
 <a href="https://www.producthunt.com/products/navidrome-stat/launches/navidrome-stat?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-navidrome-stat" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1207528&amp;theme=dark&amp;t=1787616376509"><img alt="Navidrome Stat - A self-hosted service track and display your Navidrome usage | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1207528&amp;theme=light&amp;t=1787616376509"></picture></a>
+</p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Docker Hub](https://img.shields.io/docker/v/stepaniah/navidrome-statistic/latest?label=Docker&logo=docker&logoColor=white)](https://hub.docker.com/r/stepaniah/navidrome-statistic)
