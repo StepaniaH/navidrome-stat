@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Mapping, TypedDict
@@ -30,6 +31,21 @@ def classify_history_duration_quality(
     if duration_confidence == "reported":
         return "reported"
     return "estimated"
+
+
+def combine_duration_qualities(
+    qualities: Iterable[DurationQuality],
+) -> DurationQuality:
+    """Combine row-level claims without overstating an aggregate duration."""
+
+    observed = set(qualities)
+    if not observed or observed == {"unknown"}:
+        return "unknown"
+    if "unknown" in observed or "lower_bound" in observed:
+        return "lower_bound"
+    if "estimated" in observed:
+        return "estimated"
+    return "reported"
 
 
 @dataclass(frozen=True, slots=True)

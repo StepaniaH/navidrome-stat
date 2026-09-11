@@ -54,9 +54,11 @@ class NavidromeClient:
         """Return the full playlist envelope (smart-playlist backfill source)."""
         return await self._get_json("getPlaylist", id=playlist_id)
 
-    async def get_song_history(self, *, size: int, offset: int):
+    async def get_song_history(self, *, count: int, offset: int):
         """Return one getSongHistory page (endpoint proposed upstream, PR #5650)."""
-        return await self._get_json("getSongHistory", size=str(size), offset=str(offset))
+        return await self._get_json(
+            "getSongHistory", count=str(count), offset=str(offset)
+        )
 
     async def get_cover_art(
         self,
@@ -137,10 +139,20 @@ class NavidromeClient:
     async def supports_song_history(self) -> bool:
         """Probe the proposed OpenSubsonic getSongHistory endpoint."""
         try:
-            data = await self._get_json("getSongHistory", size="1")
+            data = await self._get_json("getSongHistory", count="1")
         except (httpx.HTTPError, ValueError, TypeError, RuntimeError):
             return False
-        return self.response_is_ok(data)
+        if not self.response_is_ok(data):
+            return False
+        response = data["subsonic-response"]
+        history = response.get("songHistory")
+        if not isinstance(history, dict):
+            return False
+        if not history:
+            # The proposal uses `omitempty`, so an empty page can omit `song`.
+            return True
+        songs = history.get("song")
+        return isinstance(songs, (dict, list))
 
     @staticmethod
     def response_is_ok(data) -> bool:

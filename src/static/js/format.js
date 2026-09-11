@@ -96,3 +96,11 @@ export function formatPreciseDuration(seconds, t) {
     if (minutes > 0) return t('duration.minutesSeconds', { minutes, seconds: secs });
     return t('duration.seconds', { seconds: secs });
 }
+
+/** Localized stored duration, retaining non-zero seconds without trailing zeroes. */
+export function formatRecordedDuration(seconds, t) {
+    const total = Math.max(0, Math.round(Number(seconds) || 0));
+    return total >= 60 && total % 60 !== 0
+        ? formatPreciseDuration(total, t)
+        : formatDuration(total, t);
+}

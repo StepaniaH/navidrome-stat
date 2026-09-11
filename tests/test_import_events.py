@@ -20,9 +20,9 @@ SOURCE_KWARGS = {
 def _assert_event_shape(event):
     assert event["username"] == "alice"
     assert event["client_name"] is None
-    assert event["is_transcoding"] == 0
+    assert event["is_transcoding"] is None
     assert event["listen_duration_sec"] is None
-    assert event["duration_confidence"] == "estimated"
+    assert event["duration_confidence"] == "unknown"
     assert event["source_id"] == "srv-1"
     assert event["source_name"] == "Home"
     for key in (

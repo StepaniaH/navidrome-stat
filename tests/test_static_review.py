@@ -1,4 +1,4 @@
-"""Source-level checks for the Year in Review page."""
+"""Source-level checks for the Listening Review page."""
 
 from pathlib import Path
 
@@ -67,6 +67,33 @@ def test_review_distribution_charts_support_metric_toggle():
     toggle = js[js.index("function setReviewMetric") :]
     assert "aria-pressed" in toggle
     assert "renderCharts(lastReview)" in js
+
+
+def test_review_displays_recorded_duration_without_quality_copy():
+    js = _read(REVIEW_JS)
+    html = _read(REVIEW_HTML)
+    assert 'id="reviewQuality"' not in html
+    assert "review.duration_quality === 'unknown'" in js
+    assert "review.duration_coverage_pct" not in js
+    assert "review.play_source_counts" not in js
+    assert "`≥ ${formatted}`" not in js
+    assert "`≈ ${formatted}`" not in js
+
+
+def test_review_uses_plain_summary_copy_and_hides_unavailable_comparison():
+    js = _read(REVIEW_JS)
+    locales = ROOT / "src" / "static" / "js" / "i18n" / "locales"
+    all_copy = "\n".join(path.read_text(encoding="utf-8") for path in locales.glob("*.js"))
+    assert "review.noPrevious" not in all_copy
+    assert "listening story" not in all_copy.lower()
+    assert "收听故事" not in all_copy
+    assert "收聽故事" not in all_copy
+    assert "Hörstory" not in all_copy
+    assert "historia de escucha" not in all_copy.lower()
+    assert "histoire d’écoute" not in all_copy.lower()
+    assert "リスニングストーリー" not in all_copy
+    comparison = js[js.index("setText('reviewPlayChange'") : js.index("setText('reviewStreak'")]
+    assert ": '');" in comparison
 
 
 def test_review_restores_shareable_scope_and_avoids_stale_responses():

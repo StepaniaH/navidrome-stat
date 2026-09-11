@@ -72,7 +72,12 @@ const snapshot = {
     previous_total_listen_sec: 120,
     plays_change_pct: 50,
     listen_change_pct: 54.17,
+    listen_change_reason: "available",
     window_days: 30,
+    duration_quality: "estimated",
+    duration_coverage_pct: 100,
+    duration_quality_counts: { reported: 0, estimated: 3, lower_bound: 0, unknown: 0 },
+    play_source_counts: { poller: 3 },
   },
   players: [{
     client_name: "Synthetic Player",
@@ -344,6 +349,7 @@ test.beforeEach(async ({ page }) => {
 test("renders synthetic statistics without executing metadata", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#statTotalPlays")).toHaveText("3");
+  await expect(page.locator("#statListenTime")).toHaveText("3m 5s");
   await expect(page.locator("#historyTable")).toContainText(
     "<img src=x onerror=window.__injected=true>",
   );
@@ -363,6 +369,33 @@ test("renders synthetic statistics without executing metadata", async ({ page })
   expect(await page.evaluate(() => window.__injected)).toBeUndefined();
   await page.locator("#statsSourceButton").click();
   await expect(page.locator(".stats-source-option")).toHaveCount(2);
+});
+
+test("shows a plain listening total and silently omits unavailable comparison", async ({ page }) => {
+  await page.route("**/api/stats/dashboard*", (route) => route.fulfill({
+    json: {
+      ...snapshot,
+      summary: {
+        ...snapshot.summary,
+        duration_quality: "lower_bound",
+        duration_coverage_pct: 66.67,
+        duration_quality_counts: {
+          reported: 0,
+          estimated: 2,
+          lower_bound: 0,
+          unknown: 1,
+        },
+        listen_change_pct: null,
+        listen_change_reason: "incomplete_duration",
+      },
+    },
+  }));
+
+  await page.goto("/");
+  await expect(page.locator("#statListenTime")).toHaveText("3m 5s");
+  await expect(page.locator("#statListenTimeChange")).toBeEmpty();
+  await expect(page.locator("#statListenTimeQuality")).toHaveCount(0);
+  await expect(page.locator("#statTotalPlaysEvidence")).toHaveCount(0);
 });
 
 test("cross analysis charts share dimension, metric, and URL state", async ({ page }) => {
@@ -715,7 +748,7 @@ test("server filter is encoded into historical and realtime requests", async ({
     requests.some((url) => url.includes("source_id=server-1")),
   ).toBe(true);
   await expect(page.locator("#reviewLink")).toHaveAttribute("href", /source_id=server-1/);
-  await expect(page.locator("#reviewLink")).toHaveAttribute("title", "Year in Review");
+  await expect(page.locator("#reviewLink")).toHaveAttribute("title", "Listening Review");
 });
 
 test("shared timezone and mobile history columns are restored", async ({ page }) => {
@@ -756,6 +789,32 @@ test("history column menu stays usable when history is empty", async ({ page }) 
 
   await options.nth(2).click();
   await expect(page.locator("#historyColumnsPanel")).toBeVisible();
+});
+
+test("fixed viewer scope is visible in requests but not editable", async ({ page }) => {
+  const dashboardRequests = [];
+  await page.unroute("**/api/auth/status");
+  await page.route("**/api/auth/status", (route) => route.fulfill({
+    json: {
+      auth_required: true,
+      access_level: "viewer",
+      source_id: "server-1",
+      username: "synthetic-user",
+    },
+  }));
+  page.on("request", (request) => {
+    if (request.url().includes("/api/stats/dashboard")) dashboardRequests.push(request.url());
+  });
+
+  await page.goto("/");
+  await expect(page.locator("#settingsLink")).toBeHidden();
+  await expect(page.locator("#statsSourceControl")).toBeHidden();
+  await expect(page.locator("#statsUserControl")).toBeHidden();
+  await expect.poll(() => dashboardRequests.some((url) => {
+    const params = new URL(url).searchParams;
+    return params.get("source_id") === "server-1"
+      && params.get("username") === "synthetic-user";
+  })).toBe(true);
 });
 
 test("playback accounting details load only when opened", async ({ page }) => {

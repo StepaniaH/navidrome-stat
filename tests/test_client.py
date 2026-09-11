@@ -152,7 +152,7 @@ async def test_song_history_probe_detects_available_endpoint():
         password="synthetic-password",
     )
     client._get_json = AsyncMock(return_value={
-        "subsonic-response": {"status": "ok", "songHistory": {"entry": []}},
+        "subsonic-response": {"status": "ok", "songHistory": {"song": []}},
     })
     assert await client.supports_song_history() is True
     await client.close()
@@ -202,10 +202,27 @@ async def test_get_song_history_page_passes_pagination_params():
         password="synthetic-password",
     )
     envelope = {
-        "subsonic-response": {"status": "ok", "songHistory": {"entry": []}}
+        "subsonic-response": {"status": "ok", "songHistory": {"song": []}}
     }
     client._get_json = AsyncMock(return_value=envelope)
-    page = await client.get_song_history(size=200, offset=400)
+    page = await client.get_song_history(count=200, offset=400)
     assert page == envelope
-    client._get_json.assert_awaited_once_with("getSongHistory", size="200", offset="400")
+    client._get_json.assert_awaited_once_with(
+        "getSongHistory", count="200", offset="400"
+    )
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_song_history_probe_rejects_an_unknown_ok_shape():
+    client = NavidromeClient(
+        url="http://navidrome.example.invalid",
+        user="synthetic-user",
+        password="synthetic-password",
+    )
+    client._get_json = AsyncMock(return_value={
+        "subsonic-response": {"status": "ok", "songHistory": {"entry": []}},
+    })
+
+    assert await client.supports_song_history() is False
     await client.close()

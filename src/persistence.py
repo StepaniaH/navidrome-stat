@@ -2,8 +2,8 @@
 
 ``save_play_session`` implements a monotonic upsert protocol: checkpoint
 retries and final updates reuse the session ID so repeated saves never add
-duplicate plays. Duration only grows, confidence escalates from estimated to
-reported, and timestamps reconcile to the latest known value.
+duplicate plays. Duration only grows, lower-bound status is never erased,
+and timestamps reconcile to the latest known value.
 """
 
 import uuid
@@ -87,6 +87,9 @@ async def save_play_session(session: dict, db_path: str | None = None):
                     source_id=excluded.source_id,
                     source_name=excluded.source_name,
                     duration_confidence=CASE
+                        WHEN play_history.duration_confidence = 'lower_bound'
+                            OR excluded.duration_confidence = 'lower_bound'
+                            THEN 'lower_bound'
                         WHEN play_history.duration_confidence = 'reported'
                             OR excluded.duration_confidence = 'reported'
                             THEN 'reported'
@@ -182,7 +185,11 @@ async def save_imported_events(events: list[dict], db_path: str | None = None) -
                         event.get("artist_id"),
                         event.get("album"),
                         event.get("album_id"),
-                        int(bool(event.get("is_transcoding", 0))),
+                        (
+                            None
+                            if event.get("is_transcoding") is None
+                            else int(bool(event.get("is_transcoding")))
+                        ),
                         event.get("listen_duration_sec"),
                         event.get("source", "backfill"),
                         event.get("source_id"),

@@ -1,10 +1,56 @@
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs
 
 import pytest
+from fastapi import Request
 from httpx import ASGITransport, AsyncClient
 
-from src.auth import login_rate_limiter
-from src.main import app
+from src.auth import AccessContext, login_rate_limiter, validate_auth_configuration
+from src.main import _apply_viewer_query_scope, app
+
+
+def test_authentication_credentials_must_be_distinct(monkeypatch):
+    monkeypatch.setenv("STATS_API_TOKEN", "shared-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_TOKEN", "shared-secret")
+
+    with pytest.raises(RuntimeError, match="must use different values"):
+        validate_auth_configuration()
+
+
+def test_ingestion_credential_must_not_match_dashboard_credentials(monkeypatch):
+    monkeypatch.setenv("STATS_API_TOKEN", "admin-secret")
+
+    with pytest.raises(RuntimeError, match="must use different values"):
+        validate_auth_configuration("admin-secret")
+
+
+def test_cover_art_scope_does_not_add_username_to_the_url():
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/api/coverart",
+        "raw_path": b"/api/coverart",
+        "query_string": b"source_id=allowed-source&id=cover-id",
+        "headers": [],
+        "client": ("127.0.0.1", 1234),
+        "server": ("test", 80),
+        "root_path": "",
+    }
+    request = Request(scope)
+
+    assert _apply_viewer_query_scope(
+        request,
+        AccessContext(
+            level="viewer",
+            source_id="allowed-source",
+            username="private-listener",
+        ),
+    )
+    params = parse_qs(request.scope["query_string"].decode())
+    assert params["source_id"] == ["allowed-source"]
+    assert "username" not in params
 
 
 @pytest.mark.asyncio
@@ -151,8 +197,114 @@ async def test_auth_status_reports_requirement():
             enabled = await ac.get("/api/auth/status")
         with patch("src.auth.get_stats_api_token", return_value=None):
             disabled = await ac.get("/api/auth/status")
-    assert enabled.json() == {"auth_required": True}
-    assert disabled.json() == {"auth_required": False}
+    assert enabled.json() == {
+        "auth_required": True,
+        "access_level": None,
+        "source_id": None,
+        "username": None,
+    }
+    assert disabled.json() == {
+        "auth_required": False,
+        "access_level": "admin",
+        "source_id": None,
+        "username": None,
+    }
+
+
+@pytest.mark.asyncio
+@patch("src.routes.stats.get_player_stats", new_callable=AsyncMock)
+async def test_read_only_token_can_read_stats_but_cannot_manage(mock_get_stats, monkeypatch):
+    mock_get_stats.return_value = []
+    monkeypatch.setenv("STATS_API_TOKEN", "admin-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_TOKEN", "viewer-secret")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        stats = await ac.get(
+            "/api/stats/players",
+            headers={"Authorization": "Bearer viewer-secret"},
+        )
+        settings = await ac.get(
+            "/api/privacy/settings",
+            headers={"Authorization": "Bearer viewer-secret"},
+        )
+        servers = await ac.post(
+            "/api/servers",
+            headers={"Authorization": "Bearer viewer-secret"},
+            json={},
+        )
+    assert stats.status_code == 200
+    assert settings.status_code == 403
+    assert servers.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_read_only_token_can_follow_review_trailing_slash_redirect(monkeypatch):
+    monkeypatch.setenv("STATS_API_TOKEN", "admin-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_TOKEN", "viewer-secret")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get(
+            "/review/",
+            headers={"Authorization": "Bearer viewer-secret"},
+        )
+    assert response.status_code == 307
+    assert response.headers["location"] == "http://test/review"
+
+
+@pytest.mark.asyncio
+@patch("src.routes.stats.get_player_stats", new_callable=AsyncMock)
+async def test_read_only_scope_is_injected_and_scope_escape_is_forbidden(
+    mock_get_stats,
+    monkeypatch,
+):
+    mock_get_stats.return_value = []
+    monkeypatch.setenv("STATS_API_TOKEN", "admin-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_TOKEN", "viewer-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_SOURCE_ID", "allowed-source")
+    monkeypatch.setenv("STATS_READ_ONLY_USERNAME", "allowed-user")
+    headers = {"Authorization": "Bearer viewer-secret"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        allowed = await ac.get("/api/stats/players", headers=headers)
+        denied = await ac.get(
+            "/api/stats/players?username=other-user",
+            headers=headers,
+        )
+    assert allowed.status_code == 200
+    assert mock_get_stats.await_args.kwargs["source_id"] == "allowed-source"
+    assert mock_get_stats.await_args.kwargs["username"] == "allowed-user"
+    assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_read_only_scope_rejects_conflicting_client_detail_body(monkeypatch):
+    monkeypatch.setenv("STATS_API_TOKEN", "admin-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_TOKEN", "viewer-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_SOURCE_ID", "allowed-source")
+    monkeypatch.setenv("STATS_READ_ONLY_USERNAME", "allowed-user")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post(
+            "/api/stats/client-detail",
+            headers={"Authorization": "Bearer viewer-secret"},
+            json={
+                "name": "Web",
+                "source_id": "other-source",
+                "username": "other-user",
+            },
+        )
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Forbidden"}
+
+
+@pytest.mark.asyncio
+async def test_read_only_login_creates_scoped_viewer_session(monkeypatch):
+    monkeypatch.setenv("STATS_API_TOKEN", "admin-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_TOKEN", "viewer-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_USERNAME", "listener")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        login = await ac.post("/api/auth/login", json={"token": "viewer-secret"})
+        status = await ac.get("/api/auth/status")
+    assert login.status_code == 200
+    assert login.json()["access_level"] == "viewer"
+    assert status.json()["access_level"] == "viewer"
+    assert status.json()["username"] == "listener"
 
 
 @pytest.mark.asyncio

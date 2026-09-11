@@ -70,6 +70,7 @@ Review the complete lock-file diff and rerun the backend checks after refreshing
 - Update [`docs/architecture.md`](docs/architecture.md) when the system design or data flow changes.
 - Update [`docs/privacy.md`](docs/privacy.md) when stored data, logging, retention, export, or authentication behavior changes.
 - Update [`docs/roadmap.md`](docs/roadmap.md) only when broad project direction or a stated non-goal changes.
+- Follow [`docs/translations.md`](docs/translations.md) when adding a locale or changing localized interface keys.
 - Run `python3 scripts/check_md_links.py` after editing Markdown files.
 
 ## Privacy

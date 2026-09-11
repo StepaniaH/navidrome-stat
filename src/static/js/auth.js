@@ -94,8 +94,10 @@ export function createLoginController({
             throw error;
         });
         if (!response.ok) throw new Error('invalid token');
+        const auth = await response.json();
         hide();
-        await onAuthenticated();
+        await onAuthenticated(auth);
+        return auth;
     }
 
     function bind() {

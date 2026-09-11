@@ -35,6 +35,7 @@ import {
     let nowPlayingRefreshTimer = null;
     let hasLoadedOnce = false;
     let authRequired = false;
+    let accessLevel = null;
     const initialFilters = getFilters();
     let statsDays = initialFilters.days;
     let customStartDate = initialFilters.startDate;
@@ -132,7 +133,25 @@ import {
         });
     }
 
-    async function refreshAfterLogin() {
+    function applyAccessStatus(status = {}) {
+        accessLevel = status.access_level || accessLevel;
+        const viewer = accessLevel === 'viewer';
+        document.getElementById('settingsLink')?.classList.toggle('hidden', viewer);
+        if (viewer && status.source_id) selectedSourceId = String(status.source_id);
+        if (viewer && status.username) selectedUsername = String(status.username);
+        document.getElementById('statsSourceControl')?.classList.toggle(
+            'hidden',
+            viewer && Boolean(status.source_id),
+        );
+        document.getElementById('statsUserControl')?.classList.toggle(
+            'hidden',
+            viewer && Boolean(status.username),
+        );
+        if (viewer) persistFilters();
+    }
+
+    async function refreshAfterLogin(status) {
+        applyAccessStatus(status);
         applyAppVersion();
         await Promise.all([
             Promise.allSettled([fetchUserOptions(), fetchDashboardDiagnostics()]),
@@ -937,6 +956,7 @@ import {
             if (statusRes.ok) {
                 const statusData = await statusRes.json();
                 authRequired = Boolean(statusData.auth_required);
+                applyAccessStatus(statusData);
             }
         } catch (error) {
             if (error instanceof UnauthorizedError) return;

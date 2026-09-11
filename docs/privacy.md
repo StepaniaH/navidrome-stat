@@ -22,7 +22,7 @@ These fields can reveal personal listening habits when combined, even when the m
 
 Credentials supplied through `NAVIDROME_URL`, `NAVIDROME_USER`, and `NAVIDROME_PASS` remain in the process environment and memory. Credentials saved from **Settings > Connections** or through the compatible fallback `/api/source/config` endpoint are encrypted at rest with AES-256-GCM. The per-installation key file, `secret.key`, is stored beside the SQLite database and must be backed up with it; restoring the database without that key leaves saved passwords unavailable until they are entered again.
 
-The settings APIs return configured URLs and usernames to authorized sessions, but never return saved passwords. Connection tests and `/api/diagnostics` return stable failure categories rather than upstream exception text. The diagnostics response contains aggregate connection, collector, and history counts but omits URLs, usernames, passwords, source IDs, and playback metadata; it is protected whenever `STATS_API_TOKEN` is configured. Protect the database, Docker volume, `.env` file, and backups as credentials.
+The settings APIs return configured URLs and usernames to administrator sessions, but never return saved passwords. Connection tests and `/api/diagnostics` return stable failure categories rather than upstream exception text. The diagnostics response contains aggregate connection, collector, and history counts but omits URLs, usernames, passwords, source IDs, and playback metadata; it is protected whenever either dashboard token is configured and is unavailable to viewer sessions. Protect the database, Docker volume, `.env` file, and backups as credentials.
 
 Subsonic authentication uses token and salt query parameters. The application avoids logging upstream request URLs, but reverse proxies, network tools, and the Navidrome server may have their own access logs. Configure those systems so authentication query parameters are not retained or shared.
 
@@ -50,15 +50,21 @@ Frontend assets are served by the application. Normal dashboard use does not loa
 
 Client detail views are not shareable URLs. The browser sends the client name in a POST body and keeps that detail state out of browser history and query strings. Client names remain visible in authorized dashboard responses and on-screen charts because they are part of the stored listening data described above.
 
-Navidrome Stat has one shared authorization level. Anyone with `STATS_API_TOKEN` can view all stored listening data and configured connection identities, change settings and connections, and use export, import, retention, and deletion controls. There are no separate viewer and administrator roles. Do not distribute the token as a read-only credential; use an access-controlled reverse proxy if deployments need that separation.
+`STATS_API_TOKEN` grants administrator access to all stored listening data and configured connection identities, settings and connections, and export, import, retention, and deletion controls. `STATS_READ_ONLY_TOKEN` grants a viewer session access to the dashboard, Listening Review, and related cover art. Viewer sessions cannot open settings or invoke connection, source, retention, privacy, deletion, OpenAPI, or protected metrics routes.
 
-Without `STATS_API_TOKEN`, dashboard data and all application APIs, including administrative and deletion operations, are available to anyone who can reach the service. The application does not provide TLS; use a trusted network or an HTTPS reverse proxy with appropriate access control.
+Operators may bind all viewer sessions to a single stored source and/or username with `STATS_READ_ONLY_SOURCE_ID` and `STATS_READ_ONLY_USERNAME`. The backend applies that scope to statistics queries and rejects conflicting query parameters or POST bodies. A username restriction also removes server options with no matching history and prevents cover-art requests to those sources. The fixed username is not added to cover-art URLs. Fixed controls are hidden in the browser, but enforcement does not depend on the frontend.
+
+Administrator, viewer, and ListenBrainz ingestion tokens must use separate random values. The application validates this at startup and stops before opening the database when two configured tokens match.
+
+Without either dashboard token, dashboard data and all application APIs, including administrative and deletion operations, are available to anyone who can reach the service. The application does not provide TLS; use a trusted network or an HTTPS reverse proxy with appropriate access control.
+
+The ListenBrainz-compatible receiver is disabled unless both `LISTENBRAINZ_INGEST_TOKEN` and `LISTENBRAINZ_INGEST_USERNAME` are configured. It accepts the token in the `Authorization` header and checks it before reading the request body. Permanent submissions store the configured username and source plus track metadata and timestamps; `playing_now` messages are not stored. Listening duration and transcoding status remain unset. Exact retries are deduplicated by source, username, timestamp, recording, and release identity. Other collection methods keep separate records.
 
 ## Operator checklist
 
 - Tell affected users what listening activity is collected and why.
-- Set `STATS_API_TOKEN` or equivalent proxy authentication when access is not limited to a trusted network.
-- Give the shared token only to people who may change settings and delete data.
+- Set `STATS_API_TOKEN` and, when needed, a distinct `STATS_READ_ONLY_TOKEN` when access is not limited to a trusted network.
+- Give the administrator token only to people who may change settings and delete data; bind viewer scope when a viewer should see only one server or user.
 - Restrict access to `.env`, SQLite files, Docker volumes, exports, and backups.
 - Review proxy and Navidrome logs for authentication query parameters.
 - Choose a retention period and backup policy appropriate for the deployment.

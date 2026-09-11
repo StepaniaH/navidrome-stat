@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Year in Review · Navidrome Stat</title>
+    <title>Listening Review · Navidrome Stat</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <script src="/static/vendor/echarts.min.js"></script>
     <script type="module" src="/static/localization.js"></script>
@@ -22,9 +22,13 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
                         </svg>
                     </a>
-                    <h1 class="dashboard-title" data-i18n="review.title">Year in Review</h1>
+                    <h1 class="dashboard-title" data-i18n="review.title">Listening Review</h1>
                 </div>
                 <div class="dashboard-filters">
+                    <div id="reviewPeriodControl" class="review-period-control" role="group" aria-label="Review period" data-i18n-attr="aria-label:review.periodSelector">
+                        <button type="button" data-review-period="year" data-i18n="review.periodYear">Year</button>
+                        <button type="button" data-review-period="month" data-i18n="review.periodMonth">Month</button>
+                    </div>
                     <div class="filter-control window" id="reviewYearControl">
                         <button id="reviewYearButton" type="button" class="filter-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="reviewYearMenu">
                             <svg class="filter-trigger-icon window" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3M5 11h14M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>
@@ -36,11 +40,21 @@
                         </button>
                         <div id="reviewYearMenu" class="filter-popover hidden" role="listbox" aria-label="Year" data-i18n-attr="aria-label:review.year"></div>
                     </div>
+                    <div id="reviewMonthControl" class="filter-control window hidden">
+                        <button id="reviewMonthButton" type="button" class="filter-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="reviewMonthMenu">
+                            <span class="filter-trigger-copy">
+                                <span class="visually-hidden" data-i18n="review.monthSelector">Select month</span>
+                                <span id="reviewMonthButtonLabel" class="filter-trigger-value"></span>
+                            </span>
+                            <svg class="filter-trigger-chevron" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div id="reviewMonthMenu" class="filter-popover hidden" role="listbox" aria-label="Month" data-i18n-attr="aria-label:review.month"></div>
+                    </div>
                 </div>
             </div>
         </header>
 
-        <main class="review-main" aria-label="Year in review page" data-i18n-attr="aria-label:review.aria.page">
+        <main class="review-main" aria-label="Listening review page" data-i18n-attr="aria-label:review.aria.page">
             <p id="reviewSubtitle" class="review-subtitle"></p>
             <p id="reviewScope" class="review-subtitle"></p>
 
@@ -49,7 +63,7 @@
             </section>
 
             <section id="reviewEmpty" class="review-empty hidden">
-                <p data-i18n="review.emptyYear">No plays were recorded for this year yet.</p>
+                <p id="reviewEmptyMessage" data-i18n="review.emptyYear">No plays were recorded for this year yet.</p>
             </section>
 
             <section id="reviewContent" class="hidden">
@@ -57,6 +71,7 @@
                     <div class="review-stat-card">
                         <span class="review-stat-label" data-i18n="review.totalPlays">Total plays</span>
                         <span id="reviewTotalPlays" class="review-stat-value">0</span>
+                        <span id="reviewPlayChange" class="review-stat-detail"></span>
                     </div>
                     <div class="review-stat-card">
                         <span class="review-stat-label" data-i18n="review.listenTime">Listening time</span>
@@ -71,12 +86,12 @@
                         <span id="reviewUniqueTracks" class="review-stat-value">0</span>
                     </div>
                 </div>
-
                 <div class="review-facts">
                     <span><span class="review-fact-label" data-i18n="review.longestStreak">Longest streak</span> <span id="reviewStreak" class="review-fact-value"></span></span>
                     <span><span class="review-fact-label" data-i18n="review.firstPlay">First play</span> <span id="reviewFirstPlay" class="review-fact-value"></span></span>
                     <span><span class="review-fact-label" data-i18n="review.lastPlay">Latest play</span> <span id="reviewLastPlay" class="review-fact-value"></span></span>
-                    <span><span class="review-fact-label" data-i18n="review.biggestMonth">Busiest month</span> <span id="reviewBiggestMonth" class="review-fact-value"></span></span>
+                    <span><span id="reviewBusiestLabel" class="review-fact-label" data-i18n="review.biggestMonth">Busiest month</span> <span id="reviewBiggestMonth" class="review-fact-value"></span></span>
+                    <span><span class="review-fact-label" data-i18n="review.firstRecordedTracks">First recorded tracks</span> <span id="reviewFirstRecordedTracks" class="review-fact-value"></span></span>
                 </div>
 
                 <div class="review-metric-row">
@@ -90,7 +105,7 @@
                 </div>
 
                 <div class="review-chart-card review-chart-wide">
-                    <h2 class="review-chart-title" data-i18n="review.monthly">Plays per month</h2>
+                    <h2 id="reviewPeriodChartTitle" class="review-chart-title" data-i18n="review.monthly">Plays per month</h2>
                     <div id="reviewMonthlyChart" class="review-chart review-chart-tall" role="img" aria-label="Monthly plays bar chart" aria-describedby="reviewMonthlySummary" data-i18n-attr="aria-label:review.aria.monthlyChart"></div>
                     <p id="reviewMonthlySummary" class="visually-hidden"></p>
                 </div>
@@ -125,7 +140,7 @@
             </section>
 
             <section id="reviewError" class="review-empty hidden" role="alert">
-                <p data-i18n="review.error">Could not build the year in review. Please try again.</p>
+                <p data-i18n="review.error">Could not load the listening review. Please try again.</p>
                 <button id="reviewRetryButton" type="button" class="review-retry-button" data-i18n="review.retry">Retry</button>
             </section>
         </main>

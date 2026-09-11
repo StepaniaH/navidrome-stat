@@ -48,6 +48,12 @@ PLAY_THRESHOLD_SEC = env_int(
     "PLAY_THRESHOLD_SEC", default=30, min_value=1, max_value=3600
 )
 PAUSE_GRACE_SEC = env_int("PAUSE_GRACE_SEC", default=30, min_value=0, max_value=3600)
+MAX_INFERRED_INTERVAL_SEC = env_int(
+    "MAX_INFERRED_INTERVAL_SEC", default=30, min_value=1, max_value=3600
+)
+# A healthy poll includes request latency in addition to POLL_INTERVAL. Ensure
+# the inference limit accommodates normal custom polling schedules.
+ACTIVE_INTERVAL_LIMIT_SEC = max(MAX_INFERRED_INTERVAL_SEC, POLL_INTERVAL * 2)
 CHECKPOINT_INTERVAL_SEC = env_int(
     "CHECKPOINT_INTERVAL_SEC", default=60, min_value=10, max_value=3600
 )
@@ -62,6 +68,7 @@ def _record_source_session(session: dict, source_id: str, source_name: str) -> N
 session_tracker = PlaybackSessionTracker(
     stats_service.record_session,
     play_threshold_sec=PLAY_THRESHOLD_SEC,
+    stale_threshold_sec=ACTIVE_INTERVAL_LIMIT_SEC,
     pause_grace_sec=PAUSE_GRACE_SEC,
     checkpoint_interval_sec=CHECKPOINT_INTERVAL_SEC,
     save_attempt=stats_service.record_attempt,
@@ -285,6 +292,7 @@ def _tracker_for_server(server: dict) -> PlaybackSessionTracker:
     return PlaybackSessionTracker(
         lambda session: _record_source_session(session, sid, name),
         play_threshold_sec=PLAY_THRESHOLD_SEC,
+        stale_threshold_sec=ACTIVE_INTERVAL_LIMIT_SEC,
         pause_grace_sec=PAUSE_GRACE_SEC,
         save_attempt=lambda attempt: stats_service.record_attempt(
             {**attempt, "source_id": sid, "source_name": name}

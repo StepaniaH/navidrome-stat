@@ -1,6 +1,6 @@
 # Artist attribution
 
-**Settings > Preferences > Collaborating artists** controls artist attribution in rankings, artist details, relationship charts, and year-in-review. The choice is saved in the browser. Shared dashboard and review URLs carry `artist_mode=combined` or `artist_mode=separate`; an explicit URL value takes precedence over the browser preference.
+**Settings > Preferences > Collaborating artists** controls artist attribution in rankings, artist details, relationship charts, and Listening Review. The choice is saved in the browser. Shared dashboard and review URLs carry `artist_mode=combined` or `artist_mode=separate`; an explicit URL value takes precedence over the browser preference.
 
 | Mode | One play credited to Alpha and Beta |
 | --- | --- |

@@ -5,11 +5,12 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from src.auth import (
     SESSION_COOKIE_NAME,
+    authorization_context,
     is_auth_enabled,
     login_rate_limiter,
     session_cookie_params,
     session_cookie_value,
-    verify_login_token,
+    verify_login_access,
 )
 from src.collectors import active_now_playing, build_readiness_report
 from src.connection_diagnostics import build_connection_diagnostics
@@ -33,14 +34,20 @@ async def health():
 
 
 @router.get("/api/auth/status", response_model=AuthStatusResponse)
-async def auth_status():
+async def auth_status(request: Request):
     """Reports whether dashboard/API access requires authentication."""
-    return {"auth_required": is_auth_enabled()}
+    access = authorization_context(request)
+    return {
+        "auth_required": is_auth_enabled(),
+        "access_level": access.level if access else None,
+        "source_id": access.source_id if access else None,
+        "username": access.username if access else None,
+    }
 
 
 @router.post("/api/auth/login")
 async def auth_login(body: LoginRequest, request: Request):
-    """Creates a browser session when STATS_API_TOKEN is configured."""
+    """Create an administrator or viewer browser session."""
     if not is_auth_enabled():
         raise HTTPException(status_code=404, detail="Authentication is not enabled")
     retry_after = login_rate_limiter.check(request)
@@ -50,14 +57,22 @@ async def auth_login(body: LoginRequest, request: Request):
             detail="Too many login attempts",
             headers={"Retry-After": str(retry_after)},
         )
-    if not verify_login_token(body.token):
+    access = verify_login_access(body.token)
+    if access is None:
         login_rate_limiter.record_failure(request)
         raise HTTPException(status_code=401, detail="Unauthorized")
     login_rate_limiter.clear(request)
-    response = JSONResponse({"status": "ok"})
+    response = JSONResponse(
+        {
+            "status": "ok",
+            "access_level": access.level,
+            "source_id": access.source_id,
+            "username": access.username,
+        }
+    )
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
-        value=session_cookie_value(),
+        value=session_cookie_value(access.level),
         max_age=60 * 60 * 24 * 30,
         **session_cookie_params(),
     )

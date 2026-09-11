@@ -7,6 +7,7 @@ import {
   escapeHtml,
   formatChangeText,
   formatPreciseDuration,
+  formatRecordedDuration,
   validateCustomRange,
 } from "../../src/static/js/format.js";
 
@@ -43,6 +44,24 @@ test("formatPreciseDuration keeps seconds and rounds once", () => {
   assert.equal(formatPreciseDuration(219.2, t), "3m 39s");
   assert.equal(formatPreciseDuration(3599.6, t), "1h 0m 0s");
   assert.equal(formatPreciseDuration(-5, t), "0s");
+});
+
+test("formatRecordedDuration keeps non-zero seconds without trailing zeroes", () => {
+  const messages = {
+    "duration.hours": "{hours}h {minutes}m",
+    "duration.hoursMinutesSeconds": "{hours}h {minutes}m {seconds}s",
+    "duration.minutes": "{minutes}m",
+    "duration.minutesSeconds": "{minutes}m {seconds}s",
+    "duration.seconds": "{seconds}s",
+  };
+  const t = (key, values) => Object.entries(values).reduce(
+    (text, [name, value]) => text.replace(`{${name}}`, value),
+    messages[key],
+  );
+
+  assert.equal(formatRecordedDuration(87200, t), "24h 13m 20s");
+  assert.equal(formatRecordedDuration(180, t), "3m");
+  assert.equal(formatRecordedDuration(20, t), "20s");
 });
 
 test("buildStatsQuery omits empty source and custom ranges", () => {

@@ -270,3 +270,28 @@ async def test_cover_art_endpoint_validates_params(isolated_db):
         )
     assert missing.status_code == 422
     assert bad_size.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_username_scoped_viewer_cannot_proxy_art_from_another_source(
+    isolated_db,
+    monkeypatch,
+):
+    await init_db(isolated_db)
+    import src.routes.stats as stats_routes
+
+    load = AsyncMock(return_value=(b"\x89PNG fake", "image/png"))
+    monkeypatch.setattr(stats_routes.cover_art_service, "load", load)
+    monkeypatch.setenv("STATS_API_TOKEN", "admin-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_TOKEN", "viewer-secret")
+    monkeypatch.setenv("STATS_READ_ONLY_USERNAME", "allowed-user")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get(
+            "/api/coverart",
+            params={"source_id": "private-source", "id": "album-id"},
+            headers={"Authorization": "Bearer viewer-secret"},
+        )
+
+    assert response.status_code == 403
+    load.assert_not_awaited()

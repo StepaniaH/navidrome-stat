@@ -21,7 +21,7 @@
 
 Navidrome Stat 汇总 Navidrome 上报的播放活动，并通过一个仪表盘统一展示。无论使用 Subsonic 兼容客户端、浏览器、手机、电脑，还是连接多个 Navidrome 服务器，都可以得到一致的统计视图，无需每个客户端单独实现统计功能。
 
-服务通过轮询 `getNowPlaying`、在内存中追踪收听会话、将结果保存到 SQLite，并提供完整的本地网页界面。
+服务通过轮询 `getNowPlaying`（也可选择接收 ListenBrainz 兼容推送），把规范化结果保存到 SQLite，并提供完整的本地网页界面。
 
 ## 功能
 
@@ -30,16 +30,17 @@ Navidrome Stat 汇总 Navidrome 上报的播放活动，并通过一个仪表盘
 - 按播放次数或已记录的收听时长，对比热门艺人、专辑或客户端的时间趋势、四个时段分布，以及当前与等长上周期的数据。
 - 艺人和专辑排行可打开可分享的详情视图，展示当前范围内的总量、平均单次收听、曲目数、趋势、首次与最近播放时间、热门曲目、最近播放和上周期排名变化。单曲条目统一使用“播放次数 · 累计记录时长”；`≈`、`≥` 和 `—` 分别表示估算值、只能确认的下限和未记录时长。
 - 客户端表格与关系图可打开同一统计范围内的客户端详情，但不会把客户端名称写入可分享 URL。
-- 年度回顾页面：全年总量、连续收听天数、逐月与时段分布、热门榜单，以及保存在 URL 中的年份、服务器、用户和时区范围。
+- 月度/年度收听回顾：总量、连续收听天数、逐日/逐月与时段分布、上周期对比、本周期首次入库曲目、热门榜单，以及保存在 URL 中的统计范围。
 - 播放历史、排行与正在播放显示封面图（经认证的本地缓存代理）。
-- 外观支持跟随系统、深色和浅色三种模式，以及 9 个配色家族、18 个具体变体；每个家族均有对应的深浅色方案。高级设置可在当前浏览器中实时预览并微调每个预设的六项核心颜色，按文字用途汇总对比度检查、复制 HEX 色值、保护未保存的预览，并以严格的单预设 JSON 格式导入或导出。外观选择会同步应用于统计页、年度回顾、设置和 API 文档；另提供七种界面语言。
+- 外观支持跟随系统、深色和浅色三种模式，以及 9 个配色家族、18 个具体变体；每个家族均有对应的深浅色方案。高级设置可在当前浏览器中实时预览并微调每个预设的六项核心颜色，按文字用途汇总对比度检查、复制 HEX 色值、保护未保存的预览，并以严格的单预设 JSON 格式导入或导出。外观选择会同步应用于统计页、收听回顾、设置和 API 文档；另提供七种界面语言。
 - 在**设置 > 偏好设置**中选择合作歌手合并或分别显示。分别显示时每位歌手各计一次播放，歌曲数量、总播放次数和总收听时长保持不变。元数据支持范围及计数规则见[艺人归属说明](docs/artist-attribution.md)。
-- 仪表盘筛选条件、艺人和专辑详情与年度回顾范围均保存在 URL 中，刷新不丢失、链接可分享。
+- 仪表盘筛选条件、艺人和专辑详情与收听回顾范围均保存在 URL 中，刷新不丢失、链接可分享。
 - 最近播放表格在桌面端和移动端均支持自定义显示列，按浏览器保存偏好，并可按需查看未计入播放次数的短会话详情。
 - 支持自定义播放阈值与暂停宽限期、持久化会话检查点，并在上游支持时使用 OpenSubsonic 播放进度。
 - 支持按服务器筛选、带首次使用引导和脱敏故障诊断的连接管理、保留策略，以及按用户导出、导入和删除 JSON 数据。
-- 仪表盘与年度回顾均支持按用户和服务器筛选；年度回顾图表可在播放次数与收听时长之间切换。
-- 可为仪表盘数据和接口启用 token 认证。
+- 仪表盘与收听回顾均支持按用户和服务器筛选；回顾图表可在播放次数与收听时长之间切换。
+- 支持管理员与只读查看者两类 token；查看者可由后端固定到某个服务器和/或用户名。
+- 可接收 Navidrome 发出的 ListenBrainz 兼容 scrobble。
 - 固定并自托管前端资源；发布的容器以非 root 用户运行。
 
 ## 截图
@@ -81,9 +82,14 @@ NAVIDROME_URL=https://navidrome.example.invalid
 NAVIDROME_USER=example_user
 NAVIDROME_PASS=<navidrome-password>
 STATS_API_TOKEN=<long-random-token>
+# 可选的只读凭据与固定范围：
+# STATS_READ_ONLY_TOKEN=<different-long-random-token>
+# STATS_READ_ONLY_SOURCE_ID=server-id
+# STATS_READ_ONLY_USERNAME=example_user
 
 POLL_INTERVAL=10
 PLAY_THRESHOLD_SEC=30
+MAX_INFERRED_INTERVAL_SEC=30
 PAUSE_GRACE_SEC=30
 ```
 
@@ -110,9 +116,15 @@ services:
       NAVIDROME_USER: ${NAVIDROME_USER}
       NAVIDROME_PASS: ${NAVIDROME_PASS}
       STATS_API_TOKEN: ${STATS_API_TOKEN}
+      STATS_READ_ONLY_TOKEN: ${STATS_READ_ONLY_TOKEN:-}
+      STATS_READ_ONLY_SOURCE_ID: ${STATS_READ_ONLY_SOURCE_ID:-}
+      STATS_READ_ONLY_USERNAME: ${STATS_READ_ONLY_USERNAME:-}
+      LISTENBRAINZ_INGEST_TOKEN: ${LISTENBRAINZ_INGEST_TOKEN:-}
+      LISTENBRAINZ_INGEST_USERNAME: ${LISTENBRAINZ_INGEST_USERNAME:-}
       DATABASE_URL: /data/navidrome_stats.db
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
       PLAY_THRESHOLD_SEC: ${PLAY_THRESHOLD_SEC:-30}
+      MAX_INFERRED_INTERVAL_SEC: ${MAX_INFERRED_INTERVAL_SEC:-30}
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
       CHECKPOINT_INTERVAL_SEC: ${CHECKPOINT_INTERVAL_SEC:-60}
       SAVE_RETRY_ATTEMPTS: ${SAVE_RETRY_ATTEMPTS:-3}
@@ -144,7 +156,7 @@ docker compose up -d
 docker compose ps
 ```
 
-打开 `http://localhost:39421`。配置 `STATS_API_TOKEN` 后，在登录界面输入该 token；浏览器保存的是 HttpOnly 会话 Cookie，而不是 token 本身。
+打开 `http://localhost:39421`。配置管理员或查看者 token 后，在登录界面输入对应 token；浏览器保存的是带角色的 HttpOnly 会话 Cookie，而不是 token 本身。
 
 `/health` 用于检查进程是否存活。`/health/ready` 还会检查数据库、采集器、上游轮询与播放记录持久化。上游或数据库故障可能使就绪状态降级或未就绪，但进程仍保持存活。
 
@@ -157,12 +169,16 @@ docker compose ps
 | `NAVIDROME_PASS` | 无 | 回退 Subsonic 连接使用的密码。 |
 | `DATABASE_URL` | `.data/navidrome_stats.db` | 新本地检出默认使用的 SQLite 文件路径；若根目录已有 `navidrome_stats.db`，仍会继续使用。Docker Compose 设置为 `/data/navidrome_stats.db`。虽然名称中包含 URL，但不支持其他数据库。 |
 | `STATS_API_TOKEN` | 空 | 设置后保护仪表盘数据、应用接口和 OpenAPI 路由。 |
-| `STATS_METRICS_AUTH` | `false` | 本项与 `STATS_API_TOKEN` 同时设置时，`/metrics` 需要认证。 |
+| `STATS_READ_ONLY_TOKEN` | 空 | 启用只读查看凭据，可查看仪表盘/回顾，但不能打开设置或调用管理接口；必须与其他 token 使用不同值。 |
+| `STATS_READ_ONLY_SOURCE_ID` | 空 | 查看者会话的可选固定服务器范围，由后端强制执行。 |
+| `STATS_READ_ONLY_USERNAME` | 空 | 查看者会话的可选固定用户名范围，由后端强制执行。 |
+| `STATS_METRICS_AUTH` | `false` | 启用后，`/metrics` 需要管理员认证。 |
 | `STATS_QUERY_BUDGET_MS` | `250` | `/metrics` 使用的每个仪表盘子查询预算，限制在 10–60000 毫秒；用于监控查询性能回归，不会自动启用汇总表。 |
 | `COVER_ART_RESPONSE_MAX_BYTES` | `10485760` | 封面代理接受的上游单响应大小上限，限制在 65536–67108864 字节。 |
 | `OPENAPI_ENABLED` | `true` | 设为 `false` 时移除 `/docs`、`/redoc` 和 `/openapi.json`。 |
 | `POLL_INTERVAL` | `10` | 轮询间隔，限制在 5–300 秒。 |
 | `PLAY_THRESHOLD_SEC` | `30` | 计为一次播放所需的有效播放秒数，限制在 1–3600。 |
+| `MAX_INFERRED_INTERVAL_SEC` | `30` | 可推断为连续收听的两次成功活跃观察最大间隔，限制在 1–3600 秒；为容纳正常请求耗时，实际值不会低于 `POLL_INTERVAL` 的两倍。更长的未观察缺口不增加时长，并把保存总量标记为下限。 |
 | `PAUSE_GRACE_SEC` | `30` | 在内存中保留暂停或暂时消失会话的秒数，限制在 0–3600。 |
 | `CHECKPOINT_INTERVAL_SEC` | `60` | 活跃会话持久化检查点的刷新间隔，限制在 10–3600 秒。 |
 | `SAVE_RETRY_ATTEMPTS` | `3` | 会话数据库写入尝试次数，限制在 1–10。 |
@@ -171,12 +187,16 @@ docker compose ps
 | `BACKFILL_CUTOFF_MARGIN_SEC` | `60` | 导入前从实时轮询覆盖边界回退的安全边距，限制在 0–3600 秒。 |
 | `RETENTION_MAINTENANCE_SEC` | `86400` | 自动执行保留期清理的间隔，限制在 60–604800 秒。 |
 | `SESSION_COOKIE_SECURE` | `false` | 为登录 Cookie 添加 Secure 标记；用户通过 HTTPS 访问时应启用。 |
+| `LISTENBRAINZ_INGEST_TOKEN` | 空 | 与 `LISTENBRAINZ_INGEST_USERNAME` 同时设置时启用 ListenBrainz 兼容接收器；必须与管理员和查看者 token 使用不同值。 |
+| `LISTENBRAINZ_INGEST_USERNAME` | 空 | 接收器写入记录所归属的用户名。 |
+| `LISTENBRAINZ_INGEST_SOURCE_ID` | `listenbrainz` | 接收器记录及去重所用的稳定来源标识。 |
+| `LISTENBRAINZ_INGEST_SOURCE_NAME` | `ListenBrainz receiver` | 接收器记录的展示名称。 |
 
-环境变量在应用启动时解析。修改后需重启容器。
+环境变量在应用启动时解析。管理员、查看者或采集 token 使用相同值时，应用将拒绝启动。修改后需重启容器。
 
 ## 播放计数方式
 
-当累计有效播放时长达到 `PLAY_THRESHOLD_SEC` 时，一首曲目计为一次播放。暂停或暂时消失的时间不计入时长。达到阈值时会创建检查点，之后的检查点与会话结算只更新同一条数据库记录，不会重复增加播放次数。
+当累计有效播放时长达到 `PLAY_THRESHOLD_SEC` 时，一首曲目计为一次播放。暂停或暂时消失的时间不计入时长；超过 `MAX_INFERRED_INTERVAL_SEC` 的间隔视为未观察缺口，不增加收听时长，并把保存时长标记为下限。达到阈值时会创建检查点，之后的检查点与会话结算只更新同一条数据库记录，不会重复增加播放次数。
 
 服务器声明支持 OpenSubsonic `playbackReport` 扩展时，媒体位置和播放状态可提高时长统计质量；其他服务器继续使用常规轮询。未达到播放阈值便结束的会话会单独记录为播放尝试。
 
@@ -184,9 +204,15 @@ docker compose ps
 
 ## 恢复安装前的收听历史
 
-可选：在已保存的服务器连接上填写一个 Navidrome 智能播放列表（`.nsp`，如「最近播放」）。服务会通过公开的 `getPlaylist` API 定期读取它，并按每首曲目的最后播放时间导入一条估算播放记录。重复运行绝不产生重复行，实时轮询已覆盖的收听会被跳过，且只导入安装前真实发生过的播放——playCount 暗示的更早次数不会被虚构。到设置页对相应连接填写播放列表 ID 即可启用。
+可选：在已保存的服务器连接上填写一个 Navidrome 智能播放列表（`.nsp`，如「最近播放」）。服务会通过公开的 `getPlaylist` API 定期读取它，并按每首曲目的最后播放时间导入一条记录，其实际收听时长与转码状态保持未知。重复运行绝不产生重复行，实时轮询已覆盖的收听会被跳过，且只导入安装前真实发生过的播放——playCount 暗示的更早次数不会被虚构。到设置页对相应连接填写播放列表 ID 即可启用。
 
 详细原理见[架构说明](docs/architecture.md)。
+
+## 从 Navidrome 推送采集
+
+要采集 Navidrome 发出的 scrobble，请设置 `LISTENBRAINZ_INGEST_TOKEN` 与 `LISTENBRAINZ_INGEST_USERNAME`，重启 Navidrome Stat，再把 Navidrome 的 [`ListenBrainz.BaseURL`](https://www.navidrome.org/docs/usage/features/scrobbling/)（或 `ND_LISTENBRAINZ_BASEURL`）指向 `http://navidrome-stat:39421/1/`，并在该 Navidrome 用户的 ListenBrainz 设置中填入采集 token。请求使用标准的 `Authorization: Token` 请求头认证。接收器保存 `single` 与 `import` 提交；`playing_now` 只校验、不保存。
+
+完全相同的重试会按来源、用户名、时间戳、录音与发行标识去重。轮询、播放列表回填、历史导入和该接口收到的记录彼此独立。同一用户不应同时启用多种实时采集方式，除非预期得到多份记录。
 
 ## 日常运维
 
@@ -204,7 +230,7 @@ docker compose logs -f --tail=100 navidrome-stat
 | --- | --- |
 | `/health` 正常，但 `/health/ready` 显示降级或未就绪 | 查看 `/health/ready` 中的数据库、采集器、上游与持久化检查；确认至少有一个配置完整且已启用的连接、数据目录可写，并检查容器到 Navidrome 的网络连接。 |
 | 已保存的连接没有采集播放活动 | 打开“设置 > 连接”，按诊断结果排查认证、TLS、超时、网络或采集器问题。确认连接已启用；如问题仍存在，再检查 `docker compose logs`。 |
-| 反复出现登录页或 API 返回 `401` | 输入当前的 `STATS_API_TOKEN`。通过 HTTPS 访问时设置 `SESSION_COOKIE_SECURE=true`；使用普通 HTTP 时保持为 `false`。 |
+| 反复出现登录页或 API 返回 `401`/`403` | 输入当前管理员或查看者 token。查看者访问设置或其他服务器/用户时返回 `403` 属于预期行为。通过 HTTPS 访问时设置 `SESSION_COOKIE_SECURE=true`；普通 HTTP 保持为 `false`。 |
 | SQLite 无法打开或写入 | 确认 `DATABASE_URL` 指向已挂载的数据卷，并确认 UID 和 GID `1000:1000` 对目录和数据库文件具有写权限。 |
 
 ### 更新
@@ -255,8 +281,10 @@ docker compose run --rm --no-deps \
 
 ## 安全与隐私
 
-- 未设置 `STATS_API_TOKEN` 时，仪表盘数据和接口允许匿名访问，只应在可信网络中使用。
-- `STATS_API_TOKEN` 只有一个共享权限级别：持有者既能查看数据，也能修改连接和设置，并执行导入、保留期清理或删除操作；它不是只读用户账号。
+- 两种仪表盘 token 均未设置时，仪表盘数据和管理接口允许匿名访问，只应在可信网络中使用。
+- `STATS_API_TOKEN` 授予管理员权限；`STATS_READ_ONLY_TOKEN` 只能读取统计、回顾和相关封面，后端会拒绝设置、连接、导入、保留期、删除、OpenAPI、受保护指标及越界请求。
+- 查看者的固定服务器/用户名范围由后端强制执行。按用户名限制后，只会返回包含该用户历史的服务器选项和封面。
+- 管理员、查看者与 ListenBrainz 采集 token 必须使用不同值。
 - `/health` 与 `/health/ready` 始终公开。`/metrics` 默认公开；设置 token 并启用 `STATS_METRICS_AUTH=true` 后可要求认证。
 - `/metrics` 除轮询与持久化健康外，还包含仪表盘构建/缓存、固定子查询耗时与预算超限、SQLite busy 重试、导入耗时和封面缓存指标。
 - 启用认证后，仪表盘静态文件仍可加载，但数据请求需要授权。

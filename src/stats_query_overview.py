@@ -4,6 +4,11 @@ from datetime import date
 
 import aiosqlite
 
+from src.core_types import (
+    DurationQuality,
+    classify_history_duration_quality,
+    combine_duration_qualities,
+)
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
 from src.sqlite import connect_db
 from src.stats_query_common import database_path as _path
@@ -18,14 +23,19 @@ from src.windows import (
 )
 
 
-async def list_usernames(db_path: str | None = None) -> list[str]:
+async def list_usernames(
+    db_path: str | None = None,
+    source_id: str | None = None,
+) -> list[str]:
     """Return usernames seen in play history, case-insensitively ordered."""
     path = _path(db_path)
+    pred, params = _source_predicate("1=1", [], source_id)
     async with connect_db(path) as db:
         async with db.execute(
             "SELECT DISTINCT username FROM play_history "
-            "WHERE username IS NOT NULL AND username != '' "
-            "ORDER BY username COLLATE NOCASE"
+            f"WHERE ({pred}) AND username IS NOT NULL AND username != '' "
+            "ORDER BY username COLLATE NOCASE",
+            params,
         ) as cursor:
             return [row[0] for row in await cursor.fetchall()]
 
@@ -181,7 +191,9 @@ async def get_player_stats(
                 client_name,
                 COUNT(*) AS count,
                 COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec,
-                COALESCE(SUM(CASE WHEN is_transcoding = 1 THEN 1 ELSE 0 END), 0) AS transcoded_count
+                COALESCE(SUM(CASE WHEN is_transcoding = 1 THEN 1 ELSE 0 END), 0) AS transcoded_count,
+                COALESCE(SUM(CASE WHEN is_transcoding IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    AS known_transcoding_count
             FROM play_history
             WHERE {pred}
             GROUP BY client_name
@@ -196,8 +208,13 @@ async def get_player_stats(
         count = int(row["count"] or 0)
         total_listen_sec = int(row["total_listen_sec"] or 0)
         transcoded_count = int(row["transcoded_count"] or 0)
+        known_transcoding_count = int(row["known_transcoding_count"] or 0)
         average_listen_sec = round(total_listen_sec / count, 2) if count > 0 else 0.0
-        transcoding_rate_pct = round((transcoded_count / count) * 100, 2) if count > 0 else 0.0
+        transcoding_rate_pct = (
+            round((transcoded_count / known_transcoding_count) * 100, 2)
+            if known_transcoding_count > 0
+            else None
+        )
         out.append(
             {
                 "client_name": row["client_name"],
@@ -294,6 +311,13 @@ async def get_summary(
     cur_pred, cur_params = _source_predicate(cur_pred, cur_params, source_id)
     cur_pred, cur_params = _username_predicate(cur_pred, cur_params, username)
     local_dates: set[date] = set()
+    duration_quality_counts: dict[DurationQuality, int] = {
+        "reported": 0,
+        "estimated": 0,
+        "lower_bound": 0,
+        "unknown": 0,
+    }
+    play_source_counts: dict[str, int] = {}
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -315,7 +339,12 @@ async def get_summary(
 
         async with db.execute(
             f"""
-            SELECT played_at AS played_at
+            SELECT played_at,
+                   listen_duration_sec,
+                   COALESCE(source, 'poller') AS source,
+                   session_id,
+                   COALESCE(finalized, 1) AS finalized,
+                   COALESCE(duration_confidence, 'estimated') AS duration_confidence
             FROM play_history
             WHERE {cur_pred}
             """,
@@ -325,11 +354,32 @@ async def get_summary(
                 local = _played_at_to_local_date(current["played_at"], tz)
                 if local is not None:
                     local_dates.add(local)
+                quality = classify_history_duration_quality(
+                    listen_duration_sec=current["listen_duration_sec"],
+                    source=current["source"],
+                    session_id=current["session_id"],
+                    finalized=current["finalized"],
+                    duration_confidence=current["duration_confidence"],
+                )
+                duration_quality_counts[quality] += 1
+                play_source = str(current["source"] or "poller")
+                play_source_counts[play_source] = (
+                    play_source_counts.get(play_source, 0) + 1
+                )
 
         total_plays = int(row["total_plays"] or 0)
         total_listen_sec = int(row["total_listen_sec"] or 0)
         unique_tracks = int(row["unique_tracks"] or 0)
         client_count = int(row["client_count"] or 0)
+        duration_count = total_plays - duration_quality_counts["unknown"]
+        duration_coverage_pct = (
+            round(duration_count / total_plays * 100, 2) if total_plays else 0.0
+        )
+        duration_quality = combine_duration_qualities(
+            quality
+            for quality, count in duration_quality_counts.items()
+            if count > 0
+        )
 
         active_days = len(local_dates)
 
@@ -339,6 +389,9 @@ async def get_summary(
         listen_change_pct: float | None = None
         avg_daily_plays: float | None
         avg_daily_listen_sec: float | None
+        previous_duration_quality: DurationQuality | None = None
+        previous_duration_coverage_pct: float | None = None
+        listen_change_reason = "all_history"
 
         is_custom_window = start_date is not None and end_date is not None
         if days <= 0 and not is_custom_window:
@@ -370,7 +423,21 @@ async def get_summary(
                 f"""
                 SELECT
                     COUNT(*) AS p_plays,
-                    COALESCE(SUM(listen_duration_sec), 0) AS p_listen_sec
+                    COALESCE(SUM(listen_duration_sec), 0) AS p_listen_sec,
+                    COUNT(listen_duration_sec) AS p_duration_count,
+                    COALESCE(SUM(CASE
+                        WHEN listen_duration_sec IS NOT NULL AND (
+                            duration_confidence = 'lower_bound'
+                            OR (
+                                COALESCE(source, 'poller') = 'poller'
+                                AND (session_id IS NULL OR COALESCE(finalized, 1) = 0)
+                            )
+                        ) THEN 1 ELSE 0 END), 0) AS p_lower_bound_count,
+                    COALESCE(SUM(CASE
+                        WHEN listen_duration_sec IS NOT NULL
+                         AND COALESCE(source, 'poller') != 'poller'
+                         AND duration_confidence = 'reported'
+                        THEN 1 ELSE 0 END), 0) AS p_reported_count
                 FROM play_history
                 WHERE {prev_pred}
                 """,
@@ -379,17 +446,53 @@ async def get_summary(
                 prow = await cursor.fetchone()
             previous_total_plays = int(prow["p_plays"] or 0)
             previous_total_listen_sec = int(prow["p_listen_sec"] or 0)
+            previous_duration_count = int(prow["p_duration_count"] or 0)
+            previous_lower_bound_count = int(prow["p_lower_bound_count"] or 0)
+            previous_reported_count = int(prow["p_reported_count"] or 0)
+            previous_duration_coverage_pct = (
+                round(previous_duration_count / previous_total_plays * 100, 2)
+                if previous_total_plays
+                else 0.0
+            )
+            previous_qualities: set[DurationQuality] = set()
+            if previous_duration_count < previous_total_plays:
+                previous_qualities.add("unknown")
+            if previous_lower_bound_count:
+                previous_qualities.add("lower_bound")
+            if previous_reported_count:
+                previous_qualities.add("reported")
+            previous_estimated_count = (
+                previous_duration_count
+                - previous_lower_bound_count
+                - previous_reported_count
+            )
+            if previous_estimated_count > 0:
+                previous_qualities.add("estimated")
+            previous_duration_quality = combine_duration_qualities(previous_qualities)
             if previous_total_plays:
                 plays_change_pct = round(
                     (total_plays - previous_total_plays) / previous_total_plays * 100, 2
                 )
-            if previous_total_listen_sec:
+            current_duration_incomplete = total_plays > 0 and duration_quality in {
+                "lower_bound",
+                "unknown",
+            }
+            previous_duration_incomplete = (
+                previous_total_plays > 0
+                and previous_duration_quality in {"lower_bound", "unknown"}
+            )
+            if current_duration_incomplete or previous_duration_incomplete:
+                listen_change_reason = "incomplete_duration"
+            elif previous_total_listen_sec:
                 listen_change_pct = round(
                     (total_listen_sec - previous_total_listen_sec)
                     / previous_total_listen_sec
                     * 100,
                     2,
                 )
+                listen_change_reason = "available"
+            else:
+                listen_change_reason = "no_previous_data"
 
         return {
             "total_plays": total_plays,
@@ -403,9 +506,16 @@ async def get_summary(
             "previous_total_listen_sec": previous_total_listen_sec,
             "plays_change_pct": plays_change_pct,
             "listen_change_pct": listen_change_pct,
+            "listen_change_reason": listen_change_reason,
             "window_days": (
                 (end_date - start_date).days + 1
                 if is_custom_window
                 else (days if days > 0 else None)
             ),
+            "duration_quality": duration_quality,
+            "duration_coverage_pct": duration_coverage_pct,
+            "duration_quality_counts": duration_quality_counts,
+            "play_source_counts": play_source_counts,
+            "previous_duration_quality": previous_duration_quality,
+            "previous_duration_coverage_pct": previous_duration_coverage_pct,
         }

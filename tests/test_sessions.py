@@ -125,6 +125,9 @@ async def test_track_change_updates_early_checkpoint_with_final_duration(tracker
 
     await tracker.process_poll([_entry(track_id="t1")], t0)
     await tracker.process_poll([_entry(track_id="t1")], t1)
+    await tracker.process_poll(
+        [_entry(track_id="t1")], t1 + timedelta(seconds=30)
+    )
     await tracker.process_poll([_entry(track_id="t1")], t2)
     await tracker.process_poll(
         [_entry(track_id="t2", title="Song 2")],
@@ -378,6 +381,101 @@ async def test_periodic_checkpoint_refresh_does_not_duplicate_identity(save_mock
     assert refreshed["duration_sec"] == 90
     assert refreshed["finalized"] is False
     assert tracker._sessions["p1"]["committed"] is True
+
+
+@pytest.mark.asyncio
+async def test_long_unobserved_gap_adds_no_duration_and_marks_lower_bound():
+    save = AsyncMock()
+    tracker = PlaybackSessionTracker(
+        save,
+        play_threshold_sec=5,
+        stale_threshold_sec=30,
+    )
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    await tracker.process_poll([_entry()], t0)
+    await tracker.process_poll([_entry()], t0 + timedelta(seconds=10))
+    await tracker.process_poll([_entry()], t0 + timedelta(seconds=600))
+    await tracker.finalize_session("p1")
+
+    final = save.await_args_list[-1].args[0]
+    assert final["duration_sec"] == 10
+    assert final["duration_confidence"] == "lower_bound"
+
+
+@pytest.mark.asyncio
+async def test_lower_bound_quality_survives_later_regular_observations():
+    save = AsyncMock()
+    tracker = PlaybackSessionTracker(
+        save,
+        play_threshold_sec=5,
+        stale_threshold_sec=30,
+        supports_playback_report=True,
+    )
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    await tracker.process_poll(
+        [{**_entry(), "state": "playing", "positionMs": 0}], t0
+    )
+    await tracker.process_poll(
+        [{**_entry(), "state": "playing", "positionMs": 10_000}],
+        t0 + timedelta(seconds=10),
+    )
+    await tracker.process_poll(
+        [{**_entry(), "state": "playing", "positionMs": 600_000}],
+        t0 + timedelta(seconds=600),
+    )
+    await tracker.process_poll(
+        [{**_entry(), "state": "playing", "positionMs": 610_000}],
+        t0 + timedelta(seconds=610),
+    )
+    await tracker.finalize_session("p1")
+
+    final = save.await_args_list[-1].args[0]
+    assert final["duration_sec"] == 20
+    assert final["duration_confidence"] == "lower_bound"
+
+
+@pytest.mark.asyncio
+async def test_track_change_after_unobserved_gap_marks_previous_session_lower_bound():
+    save = AsyncMock()
+    tracker = PlaybackSessionTracker(
+        save,
+        play_threshold_sec=5,
+        stale_threshold_sec=30,
+    )
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    await tracker.process_poll([_entry(track_id="t1")], t0)
+    await tracker.process_poll([_entry(track_id="t1")], t0 + timedelta(seconds=10))
+    await tracker.process_poll(
+        [_entry(track_id="t2")],
+        t0 + timedelta(seconds=600),
+    )
+
+    final = save.await_args_list[-1].args[0]
+    assert final["track_id"] == "t1"
+    assert final["duration_sec"] == 10
+    assert final["duration_confidence"] == "lower_bound"
+
+
+@pytest.mark.asyncio
+async def test_disappearance_after_unobserved_gap_marks_session_lower_bound():
+    save = AsyncMock()
+    tracker = PlaybackSessionTracker(
+        save,
+        play_threshold_sec=5,
+        stale_threshold_sec=30,
+    )
+    t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    await tracker.process_poll([_entry()], t0)
+    await tracker.process_poll([_entry()], t0 + timedelta(seconds=10))
+    await tracker.process_poll([], t0 + timedelta(seconds=600))
+
+    final = save.await_args_list[-1].args[0]
+    assert final["duration_sec"] == 10
+    assert final["duration_confidence"] == "lower_bound"
 
 
 @pytest.mark.asyncio

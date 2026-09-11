@@ -1,4 +1,4 @@
-"""Year-in-review aggregation."""
+"""Listening Review aggregation."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -66,6 +66,10 @@ async def test_review_totals_and_buckets(seeded_db, isolated_db):
     assert review["year"] == year
     assert review["total_plays"] == 4
     assert review["total_listen_sec"] == 4 * 200
+    assert review["duration_quality"] == "estimated"
+    assert review["duration_coverage_pct"] == 100.0
+    assert review["duration_quality_counts"]["estimated"] == 4
+    assert review["play_source_counts"] == {"poller": 4}
     assert review["unique_tracks"] == 2
     assert review["active_days"] == 4
     assert review["longest_streak_days"] == 3
@@ -130,6 +134,45 @@ async def test_review_empty_year(isolated_db):
     assert review["longest_streak_days"] == 0
     assert review["first_played_at"] is None
     assert review["top_tracks"] == []
+
+
+@pytest.mark.asyncio
+async def test_month_review_uses_calendar_bounds_and_previous_month(
+    seeded_db,
+    isolated_db,
+):
+    await save_play_session(
+        session(35, 12, track="june-track", title="June Song"),
+        isolated_db,
+    )
+    review = await get_review_summary(
+        seeded_db,
+        "UTC",
+        db_path=isolated_db,
+        month=7,
+    )
+    assert review["period"] == "month"
+    assert review["month"] == 7
+    assert review["period_start"] == "2024-07-01"
+    assert review["period_end"] == "2024-07-31"
+    assert review["total_plays"] == 4
+    assert review["previous_total_plays"] == 1
+    assert review["plays_change_pct"] == 300.0
+    assert len(review["daily"]) == 31
+    assert sum(day["count"] for day in review["daily"]) == 4
+    assert review["first_recorded_tracks"] == 2
+
+
+@pytest.mark.asyncio
+async def test_review_endpoint_accepts_month(seeded_db, isolated_db):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            "/api/stats/review",
+            params={"year": seeded_db, "month": 7, "timezone": "UTC"},
+        )
+    assert response.status_code == 200
+    assert response.json()["period"] == "month"
+    assert response.json()["month"] == 7
 
 
 @pytest.mark.asyncio

@@ -9,22 +9,31 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from urllib.parse import parse_qsl, urlencode
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from src import collectors
-from src.auth import is_auth_enabled, is_authorized
+from src.auth import (
+    AccessContext,
+    authorization_context,
+    bind_access_context,
+    is_auth_enabled,
+    reset_access_context,
+    validate_auth_configuration,
+)
 from src.config import env_flag
 from src.database import init_db
+from src.listenbrainz_ingest import load_ingest_config
 from src.privacy_ops import IMPORT_MAX_PAYLOAD_BYTES
 from src.request_limits import PrivacyImportBodyLimitMiddleware
 from src.retention import (
     retention_maintenance_loop,
     run_startup_retention_purge,
 )
-from src.routes import privacy, servers, stats, system
+from src.routes import listenbrainz, privacy, servers, stats, system
 from src.runtime_state import runtime_state
 from src.version import APP_VERSION, PROJECT_NAME
 
@@ -37,6 +46,8 @@ OPENAPI_ENABLED = env_flag("OPENAPI_ENABLED", default=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ingest_config = load_ingest_config()
+    validate_auth_configuration(ingest_config.token if ingest_config else None)
     logger.info("Initializing database...")
     await init_db()
     await run_startup_retention_purge()
@@ -77,12 +88,19 @@ app = FastAPI(
 )
 
 ALWAYS_AUTH_EXEMPT_PATHS = frozenset(
-    {"/health", "/health/ready", "/api/auth/login", "/api/auth/status"}
+    {
+        "/health",
+        "/health/ready",
+        "/api/auth/login",
+        "/api/auth/status",
+        "/1/submit-listens",
+        "/1/validate-token",
+    }
 )
 
 
 def _metrics_require_auth() -> bool:
-    """Return True when /metrics should follow STATS_API_TOKEN."""
+    """Return True when /metrics should follow dashboard authentication."""
     return env_flag("STATS_METRICS_AUTH", default=False)
 
 
@@ -92,6 +110,43 @@ def _is_auth_exempt(path: str) -> bool:
     if path == "/metrics":
         return not _metrics_require_auth()
     return False
+
+
+def _viewer_path_allowed(request: Request) -> bool:
+    """Limit viewer requests to read-only statistics endpoints."""
+
+    path = request.url.path
+    if path in {"/", "/review", "/review/", "/api/about", "/api/auth/logout"}:
+        return True
+    if path.startswith("/static/"):
+        return True
+    if path == "/api/stats/client-detail":
+        return request.method == "POST"
+    if path.startswith("/api/stats/") or path == "/api/coverart":
+        return request.method in {"GET", "HEAD"}
+    return False
+
+
+def _apply_viewer_query_scope(request: Request, access: AccessContext) -> bool:
+    """Inject fixed viewer filters; return False for an attempted scope escape."""
+
+    path = request.url.path
+    if not (path.startswith("/api/stats/") or path == "/api/coverart"):
+        return True
+    pairs = parse_qsl(request.scope.get("query_string", b"").decode(), keep_blank_values=True)
+    constraints = {"source_id": access.source_id}
+    if path != "/api/coverart":
+        constraints["username"] = access.username
+    for name, required in constraints.items():
+        if required is None:
+            continue
+        values = [value for key, value in pairs if key == name]
+        if values and any(value != required for value in values):
+            return False
+        pairs = [(key, value) for key, value in pairs if key != name]
+        pairs.append((name, required))
+    request.scope["query_string"] = urlencode(pairs, doseq=True).encode()
+    return True
 
 
 def _with_security_headers(response: Response) -> Response:
@@ -125,13 +180,27 @@ app.add_middleware(
 @app.middleware("http")
 async def stats_auth_middleware(request: Request, call_next):
     if not is_auth_enabled():
-        return await call_next(request)
+        context_token = bind_access_context(AccessContext(level="admin"))
+        try:
+            return await call_next(request)
+        finally:
+            reset_access_context(context_token)
 
     path = request.url.path
     if _is_auth_exempt(path):
         return await call_next(request)
-    if is_authorized(request):
-        return await call_next(request)
+    access = authorization_context(request)
+    if access is not None:
+        if access.level == "viewer":
+            if not _viewer_path_allowed(request):
+                return JSONResponse({"detail": "Forbidden"}, status_code=403)
+            if not _apply_viewer_query_scope(request, access):
+                return JSONResponse({"detail": "Forbidden"}, status_code=403)
+        context_token = bind_access_context(access)
+        try:
+            return await call_next(request)
+        finally:
+            reset_access_context(context_token)
     if path in ("/docs", "/redoc", "/openapi.json"):
         if not OPENAPI_ENABLED:
             return await call_next(request)
@@ -197,6 +266,7 @@ app.include_router(system.router)
 app.include_router(stats.router)
 app.include_router(privacy.router)
 app.include_router(servers.router)
+app.include_router(listenbrainz.router)
 
 
 if __name__ == "__main__":

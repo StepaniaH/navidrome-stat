@@ -14,6 +14,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from weakref import WeakKeyDictionary
 
+from src.auth import current_access_context
 from src.config import env_int
 from src.coverart import cover_art_service
 from src.dashboard_cache import DashboardSnapshotCache, dashboard_snapshot_cache
@@ -249,7 +250,28 @@ class StatsService:
             finally:
                 runtime_state.record_dashboard_build(time.perf_counter() - started)
 
-        return await self._cache.get_or_create(("dashboard", scope), build)
+        snapshot = await self._cache.get_or_create(("dashboard", scope), build)
+        access = current_access_context()
+        if access.level != "viewer":
+            return snapshot
+        if access.source_id is not None:
+            visible_source_ids = {access.source_id}
+        elif access.username is not None:
+            visible_source_ids = {
+                server.get("source_id")
+                for server in snapshot["servers"]
+                if server.get("source_id")
+            }
+        else:
+            return snapshot
+        return {
+            **snapshot,
+            "available_servers": [
+                server
+                for server in snapshot["available_servers"]
+                if server.get("id") in visible_source_ids
+            ],
+        }
 
     async def entity_detail(
         self,
@@ -300,8 +322,9 @@ class StatsService:
         source_id: str | None = None,
         username: str | None = None,
         artist_mode: str = "combined",
+        month: int | None = None,
     ):
-        key = ("review", year, timezone_name, source_id, username, artist_mode)
+        key = ("review", year, month, timezone_name, source_id, username, artist_mode)
 
         async def build() -> dict:
             summary = await get_review_summary(
@@ -310,6 +333,7 @@ class StatsService:
                 source_id=source_id,
                 username=username,
                 artist_mode=artist_mode,
+                month=month,
             )
             servers = await list_server_options()
             summary["top_albums"] = await self._attach_album_cover_ids(

@@ -640,6 +640,7 @@
             color: var(--app-dim);
             transition: background 150ms ease, color 150ms ease, transform 150ms ease;
         }
+        .header-icon-button.hidden { display: none; }
         .header-icon-button svg { width: 0.9375rem; height: 0.9375rem; }
         .header-icon-button:hover { background: var(--app-field); color: var(--app-text); }
         .header-icon-button:active { transform: translateY(1px); }
@@ -1123,6 +1124,27 @@
         .review-subtitle { color: var(--app-muted); font-size: 0.9rem; margin: 0.25rem 0 1rem; }
         .review-metric-row { display: flex; justify-content: flex-end; margin-bottom: 0.75rem; }
         #reviewYearMenu { max-height: min(22rem, calc(100vh - 8rem)); overflow-y: auto; }
+        .review-period-control {
+            display: inline-flex;
+            padding: 3px;
+            border: 1px solid var(--app-border);
+            border-radius: 10px;
+            background: var(--app-field);
+        }
+        .review-period-control button {
+            border: 0;
+            border-radius: 7px;
+            padding: 7px 11px;
+            color: var(--app-muted);
+            background: transparent;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+        .review-period-control button[aria-pressed="true"] {
+            color: white;
+            background: var(--app-accent);
+        }
+        #reviewMonthMenu { max-height: min(22rem, calc(100vh - 8rem)); overflow-y: auto; }
 
         .review-hero {
             display: grid;
@@ -1149,6 +1171,7 @@
         }
 
         .review-stat-value { color: var(--app-text); font-size: 1.4rem; font-weight: 600; }
+        .review-stat-detail { color: var(--app-dim); font-size: 0.72rem; min-height: 1em; }
 
         .review-facts {
             display: flex;

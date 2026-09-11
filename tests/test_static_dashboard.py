@@ -539,6 +539,12 @@ def test_update_summary_populates_change_badges(source):
     assert block.count("compareLabel: compareLabel()") == 2
     assert "summary.active_days" in block
     assert "summary.average_daily_plays" in block
+    assert "statTotalPlaysEvidence" not in block
+    assert "statListenTimeQuality" not in block
+    assert "summary.listen_change_reason" not in block
+    assert "duration_coverage_pct" not in block
+    assert "`≥ ${formatted}`" not in source
+    assert "`≈ ${formatted}`" not in source
     # No innerHTML/outerHTML mutation in summary rendering.
     assert "innerHTML" not in block
     assert "outerHTML" not in block

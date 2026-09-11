@@ -21,7 +21,7 @@
 
 Navidrome Stat collects playback activity reported by Navidrome and presents it in one dashboard. It provides a consistent view across Subsonic-compatible clients, browsers, phones, computers, and multiple Navidrome servers without requiring every client to implement its own statistics.
 
-The service polls `getNowPlaying`, tracks listening sessions in memory, stores results in SQLite, and serves a self-contained web interface.
+The service polls `getNowPlaying`, can optionally receive ListenBrainz-compatible pushes, stores normalized results in SQLite, and serves a self-contained web interface.
 
 ## Features
 
@@ -31,15 +31,16 @@ The service polls `getNowPlaying`, tracks listening sessions in memory, stores r
 - Artist and album rankings open shareable detail views with scoped totals, average time per play, unique-track count, trends, first and latest play times, top tracks, recent plays, and prior-period rank changes. Track rows use play count and total recorded listening time; `≈`, `≥`, and `—` distinguish estimated, minimum-only, and missing duration values.
 - Client rows and relationship charts open the same scoped detail data without adding client names to shareable URLs.
 - Choose combined or separate collaborating artists in **Settings > Preferences**. Separate mode credits each artist once per play while preserving track counts, total plays, and total listening time. [Artist attribution](docs/artist-attribution.md) describes metadata support and counting rules.
-- A year-in-review page with totals, listening streaks, monthly and time-of-day charts, top lists, and URL-persisted year, server, user, and timezone scope.
+- A monthly or yearly Listening Review with totals, listening streaks, daily/monthly and time-of-day charts, previous-period comparison, first-recorded tracks, top lists, and URL-persisted scope.
 - Cover art for history, rankings, and now playing through a cached, authenticated proxy.
-- System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview, grouped contrast validation, HEX copy, unsaved-change protection, and strict per-preset JSON import or export. Appearance choices stay in the browser and apply across the dashboard, year-in-review, settings, and API reference; seven interface languages are available.
-- Dashboard filters, artist and album details, and year-in-review scope persist in the URL, so views survive reloads and can be shared as links.
+- System, dark, and light appearance modes combine with nine palette families and 18 concrete variants, with a matching light and dark treatment for every family. Advanced settings can locally adjust six core colors of each preset with live preview, grouped contrast validation, HEX copy, unsaved-change protection, and strict per-preset JSON import or export. Appearance choices stay in the browser and apply across the dashboard, Listening Review, settings, and API reference; seven interface languages are available.
+- Dashboard filters, artist and album details, and Listening Review scope persist in the URL, so views survive reloads and can be shared as links.
 - The recent-plays table has configurable column visibility on desktop and mobile, saved per browser, plus on-demand details about sessions that ended before they counted as plays.
 - Uses configurable play and pause thresholds, durable session checkpoints, and OpenSubsonic playback progress when available.
 - Supports per-server filtering, connection management with first-use guidance and redacted failure diagnosis, retention settings, and per-user JSON export, import, and deletion.
-- Filter the dashboard and year-in-review by user as well as server; the review charts switch between play counts and listening time.
-- Offers optional token authentication for dashboard data and APIs.
+- Filter the dashboard and Listening Review by user as well as server; review charts switch between play counts and listening time.
+- Offers separate administrator and read-only viewer tokens; viewer access can be fixed to one server and/or username and is enforced by the backend.
+- Can receive ListenBrainz-compatible scrobbles from Navidrome.
 - Serves pinned frontend assets locally and runs as a non-root user in the published container.
 
 ## Screenshots
@@ -81,9 +82,14 @@ NAVIDROME_URL=https://navidrome.example.invalid
 NAVIDROME_USER=example_user
 NAVIDROME_PASS=<navidrome-password>
 STATS_API_TOKEN=<long-random-token>
+# Optional read-only dashboard credential and fixed scope:
+# STATS_READ_ONLY_TOKEN=<different-long-random-token>
+# STATS_READ_ONLY_SOURCE_ID=server-id
+# STATS_READ_ONLY_USERNAME=example_user
 
 POLL_INTERVAL=10
 PLAY_THRESHOLD_SEC=30
+MAX_INFERRED_INTERVAL_SEC=30
 PAUSE_GRACE_SEC=30
 ```
 
@@ -110,9 +116,15 @@ services:
       NAVIDROME_USER: ${NAVIDROME_USER}
       NAVIDROME_PASS: ${NAVIDROME_PASS}
       STATS_API_TOKEN: ${STATS_API_TOKEN}
+      STATS_READ_ONLY_TOKEN: ${STATS_READ_ONLY_TOKEN:-}
+      STATS_READ_ONLY_SOURCE_ID: ${STATS_READ_ONLY_SOURCE_ID:-}
+      STATS_READ_ONLY_USERNAME: ${STATS_READ_ONLY_USERNAME:-}
+      LISTENBRAINZ_INGEST_TOKEN: ${LISTENBRAINZ_INGEST_TOKEN:-}
+      LISTENBRAINZ_INGEST_USERNAME: ${LISTENBRAINZ_INGEST_USERNAME:-}
       DATABASE_URL: /data/navidrome_stats.db
       POLL_INTERVAL: ${POLL_INTERVAL:-10}
       PLAY_THRESHOLD_SEC: ${PLAY_THRESHOLD_SEC:-30}
+      MAX_INFERRED_INTERVAL_SEC: ${MAX_INFERRED_INTERVAL_SEC:-30}
       PAUSE_GRACE_SEC: ${PAUSE_GRACE_SEC:-30}
       CHECKPOINT_INTERVAL_SEC: ${CHECKPOINT_INTERVAL_SEC:-60}
       SAVE_RETRY_ATTEMPTS: ${SAVE_RETRY_ATTEMPTS:-3}
@@ -144,7 +156,7 @@ docker compose up -d
 docker compose ps
 ```
 
-Open `http://localhost:39421`. When `STATS_API_TOKEN` is configured, enter it in the login screen; the browser stores an HttpOnly session cookie rather than the token itself.
+Open `http://localhost:39421`. When an administrator or viewer token is configured, enter it in the login screen; the browser stores an HttpOnly role-specific session cookie rather than the token itself.
 
 `/health` reports process liveness. `/health/ready` also checks the database, collectors, upstream polling, and durable playback writes. An upstream or database failure can therefore make readiness degraded or not ready while the process remains healthy.
 
@@ -157,12 +169,16 @@ Open `http://localhost:39421`. When `STATS_API_TOKEN` is configured, enter it in
 | `NAVIDROME_PASS` | None | Password for the fallback Subsonic connection. |
 | `DATABASE_URL` | `.data/navidrome_stats.db` | SQLite file path for new local checkouts; an existing root-level `navidrome_stats.db` is still detected. Docker Compose sets `/data/navidrome_stats.db`. Despite the name, this is not a general database URL. |
 | `STATS_API_TOKEN` | Empty | Protects dashboard data, application APIs, and OpenAPI routes when set. |
-| `STATS_METRICS_AUTH` | `false` | Requires authentication for `/metrics` when both this option and `STATS_API_TOKEN` are set. |
+| `STATS_READ_ONLY_TOKEN` | Empty | Enables a viewer credential that can read dashboard/review data but cannot open settings or call administrative APIs. It must differ from every other configured token. |
+| `STATS_READ_ONLY_SOURCE_ID` | Empty | Optional backend-enforced server scope for viewer sessions. |
+| `STATS_READ_ONLY_USERNAME` | Empty | Optional backend-enforced username scope for viewer sessions. |
+| `STATS_METRICS_AUTH` | `false` | Requires administrator authentication for `/metrics` when enabled. |
 | `STATS_QUERY_BUDGET_MS` | `250` | Per-section Dashboard query budget used by `/metrics`, limited to 10–60000 ms. It tracks performance regressions; it does not enable rollups. |
 | `COVER_ART_RESPONSE_MAX_BYTES` | `10485760` | Maximum upstream cover-art response accepted by the proxy, limited to 65536–67108864 bytes. |
 | `OPENAPI_ENABLED` | `true` | Set to `false` to remove `/docs`, `/redoc`, and `/openapi.json`. |
 | `POLL_INTERVAL` | `10` | Poll interval in seconds, limited to 5–300. |
 | `PLAY_THRESHOLD_SEC` | `30` | Active playback seconds required to count a play, limited to 1–3600. |
+| `MAX_INFERRED_INTERVAL_SEC` | `30` | Largest interval between successful active observations that may count as continuous listening, limited to 1–3600 seconds. The effective value is at least twice `POLL_INTERVAL` to tolerate normal request timing. Longer unobserved gaps add no duration and mark the saved total as a lower bound. |
 | `PAUSE_GRACE_SEC` | `30` | Seconds to retain a paused or missing session, limited to 0–3600. |
 | `CHECKPOINT_INTERVAL_SEC` | `60` | Refresh interval for durable active-session checkpoints, limited to 10–3600 seconds. |
 | `SAVE_RETRY_ATTEMPTS` | `3` | Database save attempts for a session, limited to 1–10. |
@@ -171,12 +187,16 @@ Open `http://localhost:39421`. When `STATS_API_TOKEN` is configured, enter it in
 | `BACKFILL_CUTOFF_MARGIN_SEC` | `60` | Safety margin subtracted from live-poller coverage before importing, limited to 0–3600 seconds. |
 | `RETENTION_MAINTENANCE_SEC` | `86400` | Automatic retention cleanup interval, limited to 60–604800 seconds. |
 | `SESSION_COOKIE_SECURE` | `false` | Marks the login cookie Secure; enable it when users access the service through HTTPS. |
+| `LISTENBRAINZ_INGEST_TOKEN` | Empty | Enables the ListenBrainz-compatible receiver when set together with `LISTENBRAINZ_INGEST_USERNAME`. It must differ from the administrator and viewer tokens. |
+| `LISTENBRAINZ_INGEST_USERNAME` | Empty | Username assigned to listens accepted by the receiver. |
+| `LISTENBRAINZ_INGEST_SOURCE_ID` | `listenbrainz` | Stable source identity used for receiver records and deduplication. |
+| `LISTENBRAINZ_INGEST_SOURCE_NAME` | `ListenBrainz receiver` | Display name for receiver records. |
 
-Environment variables are parsed when the application starts. Restart the container after changing them.
+Environment variables are parsed when the application starts. The application refuses to start if administrator, viewer, or ingestion tokens share a value. Restart the container after changing them.
 
 ## How plays are counted
 
-A track counts once its accumulated active playback time reaches `PLAY_THRESHOLD_SEC`. Paused and missing intervals are excluded. Reaching the threshold creates a checkpoint; later checkpoints and session finalization update the same database row instead of adding another play.
+A track counts once its accumulated active playback time reaches `PLAY_THRESHOLD_SEC`. Paused and missing intervals are excluded. An interval longer than `MAX_INFERRED_INTERVAL_SEC` is treated as an unobserved gap, adds no listening time, and leaves the saved duration marked as a lower bound. Reaching the threshold creates a checkpoint; later checkpoints and session finalization update the same database row instead of adding another play.
 
 When a server advertises the OpenSubsonic `playbackReport` extension, position and playback-state fields improve duration accounting. Other servers continue to work through regular polling. Sessions that end below the play threshold are stored separately as playback attempts.
 
@@ -184,9 +204,15 @@ The Recent Plays information control reports these below-threshold sessions as a
 
 ## Recovering pre-install history
 
-Optionally, a saved connection can watch a Navidrome smart playlist (an `.nsp` such as "Recently Played"). On each check the service reads that playlist through the public `getPlaylist` API and stores one estimated play per track from its last-played timestamp. Re-runs never duplicate rows, listens already covered by live polling are skipped, and only plays that actually happened before installation are imported — older repeats implied by a track's play count are never invented. Configure the playlist ID per connection on the settings page.
+Optionally, a saved connection can watch a Navidrome smart playlist (an `.nsp` such as "Recently Played"). On each check the service reads that playlist through the public `getPlaylist` API and stores one timestamped play per track with unknown listened duration and transcoding state. Re-runs never duplicate rows, listens already covered by live polling are skipped, and only plays that actually happened before installation are imported — older repeats implied by a track's play count are never invented. Configure the playlist ID per connection on the settings page.
 
 More detail is available in [Architecture](docs/architecture.md).
+
+## Push collection from Navidrome
+
+To collect scrobbles sent by Navidrome, set `LISTENBRAINZ_INGEST_TOKEN` and `LISTENBRAINZ_INGEST_USERNAME`, restart Navidrome Stat, and set Navidrome's [`ListenBrainz.BaseURL`](https://www.navidrome.org/docs/usage/features/scrobbling/) (or `ND_LISTENBRAINZ_BASEURL`) to `http://navidrome-stat:39421/1/`. Enter the ingestion token in that Navidrome user's ListenBrainz settings. Requests authenticate with the standard `Authorization: Token` header. The receiver stores `single` and `import` submissions; it validates but does not store `playing_now` submissions.
+
+Exact retries are deduplicated using the source, username, timestamp, recording, and release identity. Records received through polling, playlist backfill, history import, and this endpoint remain separate. Do not enable more than one live collection method for the same user unless separate records are expected.
 
 ## Operations
 
@@ -204,7 +230,7 @@ The published container disables request access logs so dashboard filters, usern
 | --- | --- |
 | `/health` is healthy but `/health/ready` is degraded or not ready | Inspect the database, collector, upstream, and persistence checks in `/health/ready`. Confirm that at least one complete connection is enabled, the data directory is writable, and the container can reach Navidrome. |
 | A saved connection does not collect playback | Open **Settings > Connections** and follow the diagnosis for authentication, TLS, timeout, network, or collector failures. Confirm the connection is enabled, then inspect `docker compose logs` if the issue remains. |
-| Login repeats or API requests return `401` | Enter the current `STATS_API_TOKEN`. Behind HTTPS, set `SESSION_COOKIE_SECURE=true`; leave it `false` when accessing the service over plain HTTP. |
+| Login repeats or API requests return `401`/`403` | Enter the current administrator or viewer token. A `403` for settings or a different server/user is expected for viewers. Behind HTTPS, set `SESSION_COOKIE_SECURE=true`; leave it `false` over plain HTTP. |
 | SQLite cannot be opened or written | Confirm that `DATABASE_URL` points inside the mounted data volume and that UID and GID `1000:1000` can write the directory and database files. |
 
 ### Update
@@ -255,8 +281,10 @@ To restore production, stop the service, preserve the current volume, extract th
 
 ## Security and privacy
 
-- Without `STATS_API_TOKEN`, dashboard data and APIs are anonymous. Use this only on a trusted network.
-- `STATS_API_TOKEN` grants one shared authorization level for viewing data, changing connections and settings, and running import, retention, or deletion operations. It is not a read-only user account.
+- Without either dashboard token, dashboard data and administrative APIs are anonymous. Use this only on a trusted network.
+- `STATS_API_TOKEN` grants administrator access. `STATS_READ_ONLY_TOKEN` grants statistics, review, and related cover-art access; the backend rejects settings, connection, import, retention, deletion, OpenAPI, protected metrics, and out-of-scope requests.
+- A fixed viewer source/username scope is enforced by the backend. Username-scoped viewers receive server options and cover art only for sources containing that user's history.
+- Administrator, viewer, and ListenBrainz ingestion tokens must use different values.
 - `/health` and `/health/ready` remain public. `/metrics` is public by default unless `STATS_METRICS_AUTH=true` is used with a token.
 - `/metrics` includes polling and persistence health plus Dashboard build/cache, fixed-section query timing and budget violations, SQLite busy retry, import-duration, and cover-art cache metrics.
 - Static dashboard files remain loadable when authentication is enabled; their data requests require authorization.
