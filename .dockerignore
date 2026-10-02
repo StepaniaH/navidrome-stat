@@ -13,6 +13,12 @@ restore-test/
 .git/
 .gitignore
 .pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.openchamber/
+.DS_Store
 node_modules/
 test-results/
 playwright-report/

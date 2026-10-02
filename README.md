@@ -42,6 +42,8 @@ Navidrome Stat collects activity reported to your Navidrome server and stores it
 
 ## Screenshots
 
+Screenshots use synthetic demo data.
+
 | | |
 | --- | --- |
 | <img src="assets/screenshots/dashboard-frappe-charts.png" alt="Hourly, daily, and weekday-by-hour charts"> | <img src="assets/screenshots/data-relations.png" alt="Artist trends, dayparts, and period comparisons"> |
@@ -50,7 +52,7 @@ Navidrome Stat collects activity reported to your Navidrome server and stores it
 
 ## Quick start
 
-You need Docker Compose v2 and a Navidrome account accessible from the container. The example uses the current stable release, [v0.9.3](https://github.com/StepaniaH/navidrome-stat/releases/tag/v0.9.3).
+You need Docker Compose v2 and a Navidrome account accessible from the container. The example uses the current stable release, [v0.9.4](https://github.com/StepaniaH/navidrome-stat/releases/tag/v0.9.4).
 
 Create a directory containing these two files. In `.env`, replace the example values and choose a long, random dashboard token:
 
@@ -66,7 +68,7 @@ Save the following as `compose.yaml`:
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.3
+    image: stepaniah/navidrome-statistic:v0.9.4
     container_name: navidrome-stat
     ports:
       - "39421:39421"

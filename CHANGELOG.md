@@ -4,6 +4,26 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-10-02
+
+### Added
+
+- A maintenance command previews and fills missing artist credits in older Navidrome records using song details from the original source.
+
+### Fixed
+
+- Polling retrieves missing artist lists from song details and updates existing sessions when artist metadata arrives later, so separate artist attribution can use the full list without duplicating plays ([#40](https://github.com/StepaniaH/navidrome-stat/issues/40)).
+- ListenBrainz submissions preserve separate artist names and corresponding IDs instead of discarding collaboration metadata.
+
+### Changed
+
+- Updated Uvicorn to 0.54.0 and Ruff to 0.16.9.
+- Documentation screenshots now use synthetic listening data.
+
+### Security
+
+- Excluded local development screenshots, coverage reports, and lint caches from the container build context.
+
 ## [0.9.3] - 2026-09-11
 
 ### Added

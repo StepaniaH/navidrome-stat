@@ -35,6 +35,8 @@ Navidrome Stat 采集上报到 Navidrome 服务器的播放活动，将记录保
 
 ## 截图
 
+截图使用合成示例数据。
+
 | | |
 | --- | --- |
 | <img src="assets/screenshots/dashboard-frappe-charts.png" alt="小时、每日与星期 × 小时图表"> | <img src="assets/screenshots/data-relations.png" alt="艺人趋势、时段分布与周期对比"> |
@@ -43,7 +45,7 @@ Navidrome Stat 采集上报到 Navidrome 服务器的播放活动，将记录保
 
 ## 快速开始
 
-需要 Docker Compose v2，以及容器能够访问的 Navidrome 账号。示例使用当前稳定版 [v0.9.3](https://github.com/StepaniaH/navidrome-stat/releases/tag/v0.9.3)。
+需要 Docker Compose v2，以及容器能够访问的 Navidrome 账号。示例使用当前稳定版 [v0.9.4](https://github.com/StepaniaH/navidrome-stat/releases/tag/v0.9.4)。
 
 新建一个目录，在其中保存下面两个文件。先创建 `.env`，替换示例值，并为仪表盘设置一个足够长的随机 token：
 
@@ -59,7 +61,7 @@ STATS_API_TOKEN=replace-with-a-long-random-token
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.3
+    image: stepaniah/navidrome-statistic:v0.9.4
     container_name: navidrome-stat
     ports:
       - "39421:39421"

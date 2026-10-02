@@ -41,12 +41,12 @@ To aggregate multiple servers, add each connection from **Settings > Connections
 
 ## 3. Create `compose.yaml`
 
-The example pins the current stable release, `v0.9.3`. The `latest` tag follows stable releases.
+The example pins the current stable release, `v0.9.4`. The `latest` tag follows stable releases.
 
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.3
+    image: stepaniah/navidrome-statistic:v0.9.4
     container_name: navidrome-stat
     user: "1000:1000"
     ports:

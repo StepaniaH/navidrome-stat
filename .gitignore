@@ -1,6 +1,10 @@
 .venv/
 .coverage
+.coverage.*
 htmlcov/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
 __pycache__/
 *.db
 *.db-*
