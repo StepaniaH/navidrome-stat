@@ -155,4 +155,5 @@ class PlaybackSession(TypedDict, total=False):
     checkpointed_at: str
     committed: bool
     last_checkpoint_duration_sec: float
+    artist_metadata_changed: bool
     discarded: bool

@@ -75,6 +75,67 @@ async def test_session_captures_artist_id(tracker, save_mock):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["playing", "paused", "stopped"])
+async def test_late_artist_credits_refresh_checkpoint_in_all_playback_states(state):
+    saved = []
+
+    async def save(payload):
+        saved.append(dict(payload))
+
+    tracker = PlaybackSessionTracker(save, supports_playback_report=True)
+    t0 = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
+    await tracker.process_poll(_entry(), t0)
+    await tracker.process_poll(_entry(), t0 + timedelta(seconds=30))
+    assert len(saved) == 1
+    credits = [{"name": "Alpha", "id": "a"}, {"name": "Beta", "id": "b"}]
+    await tracker.process_poll(
+        {**_entry(), "state": state, "artists": credits},
+        t0 + timedelta(seconds=35),
+    )
+    assert len(saved) == 2
+    assert saved[-1]["artists"] == credits
+    assert saved[-1]["session_id"] == saved[0]["session_id"]
+    if state != "stopped":
+        await tracker.process_poll(
+            {**_entry(), "artists": [{"name": ""}]},
+            t0 + timedelta(seconds=40),
+        )
+        await tracker.finalize_all()
+        assert saved[-1]["artists"] == credits
+
+
+@pytest.mark.asyncio
+async def test_late_artist_credits_are_saved_on_short_play():
+    attempts = AsyncMock()
+    tracker = PlaybackSessionTracker(AsyncMock(), save_attempt=attempts)
+    t0 = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
+    await tracker.process_poll(_entry(), t0)
+    credits = [{"name": "Alpha", "id": "a"}, {"name": "Beta", "id": "b"}]
+    await tracker.process_poll(
+        {**_entry(), "artists": credits}, t0 + timedelta(seconds=5),
+    )
+    await tracker.finalize_all()
+    assert attempts.await_args.args[0]["artists"] == credits
+
+
+@pytest.mark.asyncio
+async def test_failed_artist_update_retries_even_when_the_next_poll_omits_metadata():
+    save = AsyncMock(side_effect=[None, RuntimeError("synthetic failure"), None])
+    tracker = PlaybackSessionTracker(save)
+    t0 = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
+    await tracker.process_poll(_entry(), t0)
+    await tracker.process_poll(_entry(), t0 + timedelta(seconds=30))
+    credits = [{"name": "Alpha", "id": "a"}, {"name": "Beta", "id": "b"}]
+    with pytest.raises(PlaybackPersistenceError):
+        await tracker.process_poll(
+            {**_entry(), "artists": credits}, t0 + timedelta(seconds=35),
+        )
+    await tracker.process_poll(_entry(), t0 + timedelta(seconds=40))
+    assert save.await_count == 3
+    assert save.await_args.args[0]["artists"] == credits
+
+
+@pytest.mark.asyncio
 async def test_session_captures_album_id(tracker, save_mock):
     t0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     t1 = t0 + timedelta(seconds=PLAY_THRESHOLD_SEC)

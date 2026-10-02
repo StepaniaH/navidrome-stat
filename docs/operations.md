@@ -21,7 +21,7 @@ The published container disables request access logs so dashboard filters, usern
 
 ## Update
 
-For a pinned deployment, first change the image tag in `compose.yaml` to the desired release, then run the commands below. Leaving `v0.9.3` unchanged keeps that version; `latest` follows the newest stable release.
+For a pinned deployment, first change the image tag in `compose.yaml` to the desired release, then run the commands below. Leaving `v0.9.4` unchanged keeps that version; `latest` follows the newest stable release.
 
 ```bash
 docker compose pull
@@ -66,6 +66,37 @@ docker compose run --rm --no-deps \
 ```
 
 To restore production, stop the service, preserve the current volume, extract the verified archive into an empty replacement volume, and ensure UID and GID `1000:1000` can write the restored files. Start the pinned application version, verify `/health/ready`, and test a saved connection. If the archive has no `secret.key`, re-enter saved passwords in Settings. Never merge an archive into a running or non-empty data volume.
+
+## Fill missing artist metadata
+
+Older polling, playlist, native-history, and short-play records may have a Navidrome track ID but no separate artist list. The maintenance command queries `getSong` for one source and fills only missing lists. Existing credits, full display names, record IDs, timestamps, play counts, and durations are preserved. ListenBrainz records are excluded because their recording IDs are not Navidrome song IDs.
+
+Use the saved connection's `source_id` from a source-filtered dashboard URL, or `legacy` for the environment-based connection. The connection must still point to the same music library. Run a preview using the application's environment and database:
+
+```bash
+python -m src.artist_backfill --source-id SOURCE_ID --limit 100
+```
+
+In Docker, run the same preview with `docker compose exec navidrome-stat python -m src.artist_backfill --source-id SOURCE_ID --limit 100`.
+
+The JSON output lists proposed credits, affected history and short-play row counts, and the number of unresolved tracks. It contains music metadata and should be treated as listening data. The preview makes no history changes. A missing song, unavailable API, or empty artist list leaves that track unresolved.
+
+After reviewing the preview, [back up the data volume](#backup-and-restore) and stop the application. Apply the same source and page:
+
+```bash
+python -m src.artist_backfill --source-id SOURCE_ID --limit 100 --apply
+```
+
+For Docker, stop the service and use a one-off container sharing its configured volume:
+
+```bash
+docker compose stop navidrome-stat
+docker compose run --rm --no-deps navidrome-stat \
+  python -m src.artist_backfill --source-id SOURCE_ID --limit 100 --apply
+docker compose start navidrome-stat
+```
+
+Applying fetches current metadata again; the output includes actual update counts. Restart the application after local execution too, so statistics use fresh caches. Use `--database PATH` to select an existing database explicitly. Each run checks at most `--limit` distinct tracks (default 100, maximum 1000). When `next_after_track_id` is non-null, pass that value with `--after-track-id` for the next page, previewing it before applying. This also advances past unresolved tracks; rerun from the beginning after correcting their upstream tags. Repeated application does not add records or overwrite credits already present.
 
 ## Security and privacy
 

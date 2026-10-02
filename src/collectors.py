@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 import anyio
 
+from src.artist_metadata import ArtistMetadataResolver
 from src.client import NavidromeClient
 from src.collector_manager import CollectorManager as BaseCollectorManager
 from src.config import env_int
@@ -200,6 +201,7 @@ async def polling_loop(client: NavidromeClient):
 
 async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSessionTracker):
     logger.info("Starting polling loop with interval: %s seconds", POLL_INTERVAL)
+    artist_metadata = ArtistMetadataResolver(client)
     consecutive_failures = 0
     try:
         playback_report = await client.supports_playback_report()
@@ -245,6 +247,7 @@ async def polling_loop_for_tracker(client: NavidromeClient, tracker: PlaybackSes
                 )
             else:
                 entries = NavidromeClient.now_playing_entries(data)
+                entries = await artist_metadata.enrich_entries(entries)
                 try:
                     await tracker.process_poll(entries, current_time)
                 except PlaybackPersistenceError as exc:

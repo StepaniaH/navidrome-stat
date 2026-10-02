@@ -50,6 +50,10 @@ class NavidromeClient:
     async def get_now_playing(self):
         return await self._get_json("getNowPlaying")
 
+    async def get_song(self, song_id: str):
+        """Return song details, including OpenSubsonic artist credits when available."""
+        return await self._get_json("getSong", id=song_id)
+
     async def get_playlist(self, playlist_id: str):
         """Return the full playlist envelope (smart-playlist backfill source)."""
         return await self._get_json("getPlaylist", id=playlist_id)

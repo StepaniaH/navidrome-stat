@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Awaitable, Callable
 
+from src.artist_credits import normalize_artists
 from src.config import env_int
 from src.core_types import PlaybackObservation, PlaybackSession
 
@@ -164,6 +165,7 @@ class PlaybackSessionTracker:
         if session.get("committed") and (
             last_checkpoint is not None
             and duration - last_checkpoint < self.checkpoint_interval_sec
+            and not session.get("artist_metadata_changed")
         ):
             return
 
@@ -171,6 +173,7 @@ class PlaybackSessionTracker:
         # Mark the checkpoint only after persistence so failures remain retryable.
         session["committed"] = True
         session["last_checkpoint_duration_sec"] = duration
+        session["artist_metadata_changed"] = False
 
     async def finalize_all(self) -> None:
         errors: list[Exception] = []
@@ -223,7 +226,7 @@ class PlaybackSessionTracker:
             "title": entry.title,
             "artist": entry.artist,
             "artist_id": entry.artist_id,
-            "artists": entry.artists,
+            "artists": normalize_artists(entry.artists) or None,
             "album": entry.album,
             "album_id": entry.album_id,
             "is_transcoding": 1 if entry.transcoded_content_type else 0,
@@ -340,6 +343,13 @@ class PlaybackSessionTracker:
             player_id = str(player_id_raw)
             track_id = entry.track_id
 
+            session = self._sessions.get(player_id)
+            if session is not None and session["track_id"] == track_id:
+                artists = normalize_artists(entry.artists)
+                if artists and artists != session.get("artists"):
+                    session["artists"] = artists
+                    session["artist_metadata_changed"] = True
+
             if self._is_terminal_state(entry):
                 # stopped/expired end the session at once; do not linger in
                 # the pause grace window after playback actually ended.
@@ -360,6 +370,8 @@ class PlaybackSessionTracker:
                     self._mark_unobserved_gap(session, current_time)
                     session["last_seen_at"] = current_time
                     session["paused"] = True
+                    if session.get("artist_metadata_changed"):
+                        await self._maybe_commit_active_session(player_id)
                 continue
 
             actively_seen_player_ids.add(player_id)

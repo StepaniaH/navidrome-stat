@@ -8,6 +8,65 @@ import pytest
 from src.collectors import polling_loop_for_tracker
 from src.database import init_db, save_play_session
 from src.sessions import PlaybackPersistenceError, PlaybackSessionTracker
+from src.stats_query_rankings import get_top_artists
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("metadata_source", ["song", "later_poll"])
+async def test_polling_recovers_artist_credits_without_adding_plays(
+    db_path, monkeypatch, metadata_source,
+):
+    await init_db(db_path)
+
+    async def save(payload):
+        await save_play_session(payload, db_path=db_path)
+
+    tracker = PlaybackSessionTracker(save, play_threshold_sec=5)
+    credits = [{"name": "Alpha", "id": "a"}, {"name": "Beta", "id": "b"}]
+    entry = {
+        "playerId": "synthetic-player",
+        "id": "duet",
+        "username": "listener",
+        "artist": "Alpha with Beta and Band",
+        "title": "Synthetic Duet",
+    }
+    client = AsyncMock()
+    client.supports_playback_report.return_value = False
+    client.supports_song_history.return_value = False
+    client.get_song.return_value = {"subsonic-response": {
+        "status": "ok", "song": {
+            "id": "duet", "artists": credits if metadata_source == "song" else None,
+        },
+    }}
+    client.get_now_playing.side_effect = [
+        {"subsonic-response": {"status": "ok", "nowPlaying": {"entry": [entry]}}},
+        {"subsonic-response": {"status": "ok", "nowPlaying": {"entry": [{
+            **entry, **({"artists": credits} if metadata_source == "later_poll" else {}),
+        }]}}},
+    ]
+    t0 = datetime(2026, 8, 15, 12, tzinfo=timezone.utc)
+    fake_datetime = MagicMock()
+    fake_datetime.now.side_effect = [t0, t0 + timedelta(seconds=10)]
+    monkeypatch.setattr("src.collectors.datetime", fake_datetime)
+    polls = 0
+
+    async def stop_after_second_poll(_seconds):
+        nonlocal polls
+        polls += 1
+        if polls == 2:
+            raise asyncio.CancelledError()
+
+    monkeypatch.setattr("src.collectors.asyncio.sleep", stop_after_second_poll)
+    with pytest.raises(asyncio.CancelledError):
+        await polling_loop_for_tracker(client, tracker)
+
+    artists = await get_top_artists(db_path=db_path, artist_mode="separate")
+    assert [(row["artist"], row["count"]) for row in artists] == [("Alpha", 1), ("Beta", 1)]
+    with sqlite3.connect(db_path) as db:
+        assert db.execute(
+            "SELECT COUNT(*), artist, listen_duration_sec FROM play_history"
+        ).fetchone() == (1, "Alpha with Beta and Band", 10)
+    client.get_song.assert_awaited_once_with("duet")
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,8 @@ from httpx import ASGITransport, AsyncClient
 from src.database import init_db
 from src.listenbrainz_ingest import ListenBrainzIngestConfig, parse_submission
 from src.main import app
+from src.persistence import save_imported_events
+from src.stats_query_rankings import get_top_artists
 
 
 def _payload(timestamp: int = 1_788_937_200) -> dict:
@@ -50,6 +52,43 @@ def test_listenbrainz_normalization_keeps_unknown_fields_unknown():
     assert event["listen_duration_sec"] is None
     assert event["duration_confidence"] == "unknown"
     assert event["is_transcoding"] is None
+
+
+@pytest.mark.asyncio
+async def test_submitted_artist_names_reach_rankings_without_duplicate_plays(db_path):
+    await init_db(db_path)
+    payload = _payload()
+    metadata = payload["payload"][0]["track_metadata"]
+    metadata["artist_name"] = "Alpha with Beta and Band"
+    metadata["additional_info"].update(
+        artist_names=["Alpha", "Beta"], artist_mbids=["a", "b"],
+    )
+    event = parse_submission(payload, _config()).events[0]
+    assert await save_imported_events([event], db_path) == 1
+    assert await save_imported_events([event], db_path) == 0
+    artists = await get_top_artists(db_path=db_path, artist_mode="separate")
+    assert [(row["artist"], row["count"]) for row in artists] == [("Alpha", 1), ("Beta", 1)]
+    assert event["artists"] == [{"name": "Alpha", "id": "a"}, {"name": "Beta", "id": "b"}]
+    with sqlite3.connect(db_path) as db:
+        assert db.execute("SELECT COUNT(*), artist FROM play_history").fetchone() == (
+            1, "Alpha with Beta and Band",
+        )
+
+
+@pytest.mark.parametrize("names, mbids, expected", [
+    (["Alpha", "Beta"], ["a"], [{"name": "Alpha", "id": None}, {"name": "Beta", "id": None}]),
+    (["Alpha", "Beta"], ["", "b"], [{"name": "Alpha", "id": None}, {"name": "Beta", "id": "b"}]),
+    ([None, " Beta ", "Beta"], ["a", "b", "b"], [{"name": "Beta", "id": "b"}]),
+    (["Earth, Wind & Fire"], [], [{"name": "Earth, Wind & Fire", "id": None}]),
+    ([" ", 123, {"name": "Alpha"}], ["a", "b", "c"], None),
+    ("Alpha; Beta", ["a", "b"], None),
+])
+def test_artist_names_validate_before_deduplication(names, mbids, expected):
+    payload = _payload()
+    payload["payload"][0]["track_metadata"]["additional_info"].update(
+        artist_names=names, artist_mbids=mbids,
+    )
+    assert parse_submission(payload, _config()).events[0]["artists"] == expected
 
 
 def test_distinct_recording_ids_do_not_share_a_deduplication_key():

@@ -15,7 +15,13 @@ The relationship charts use the same attribution as the artist ranking and detai
 
 New playback sessions and supported history imports preserve the [OpenSubsonic `artists` array](https://opensubsonic.netlify.app/docs/responses/child/), including artist names and IDs. Explicit metadata takes precedence over punctuation in a display name. The original artist text remains available for combined mode and track labels.
 
+When `getNowPlaying` omits a valid artist list, the collector requests it from `getSong` using the track ID. Each source has its own bounded in-memory cache. Successful lookups are cached for six hours, missing metadata for five minutes, and failed requests for 30 seconds. Each poll starts at most four lookups in parallel with a two-second timeout. Playback collection continues if a lookup fails or the server provides no artist list. A valid list received later updates the same playback session, including an already saved checkpoint or a short-play attempt.
+
+The ListenBrainz-compatible receiver preserves `additional_info.artist_names` and pairs names with `artist_mbids` when both arrays have the same length. Missing or mismatched IDs do not prevent names from being stored. The receiver does not query MusicBrainz or use ListenBrainz's server-generated `mbid_mapping` as submission metadata.
+
 Older records can use semicolons, spaced slashes (`Alpha / Beta`), and `feat.` or `ft.` credits. Commas, ampersands, and unspaced slashes remain part of a name, preserving names such as `Earth, Wind & Fire`, `Simon & Garfunkel`, and `AC/DC`. Existing records without structured metadata or these separators retain their original artist credit. Changing the preference does not rewrite history or fetch missing artist metadata.
+
+For older Navidrome records with a saved track ID, use the [artist metadata backfill command](operations.md#fill-missing-artist-metadata) to preview and fill missing lists. If Navidrome's song details also lack separate names, attribution remains unchanged; phrases such as `with`, `and Band`, or `•` are not sufficient evidence to identify individual artists.
 
 ## Storage and API
 

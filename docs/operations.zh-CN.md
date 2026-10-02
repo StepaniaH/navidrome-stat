@@ -21,7 +21,7 @@ docker compose logs -f --tail=100 navidrome-stat
 
 ## 更新
 
-更新固定版本时，先在 `compose.yaml` 中把镜像标签改为目标版本，再执行下面的命令。保持 `v0.9.3` 不变会继续运行 v0.9.3；`latest` 则跟随最新稳定版。
+更新固定版本时，先在 `compose.yaml` 中把镜像标签改为目标版本，再执行下面的命令。保持 `v0.9.4` 不变会继续运行 v0.9.4；`latest` 则跟随最新稳定版。
 
 ```bash
 docker compose pull
@@ -66,6 +66,37 @@ docker compose run --rm --no-deps \
 ```
 
 恢复生产环境时，应停止服务、保留当前数据卷、把已验证的归档解压到空的替代卷，并确认 UID 和 GID `1000:1000` 可写恢复后的文件。使用原先固定的应用版本启动，验证 `/health/ready` 并测试已保存的连接。若归档中没有 `secret.key`，需要在设置页重新输入密码。不要把归档合并到正在使用或已有内容的数据卷中。
+
+## 补齐艺人名单
+
+旧的轮询、播放列表回填、原生历史和短播放记录可能保存了 Navidrome 曲目 ID，却没有独立艺人名单。维护命令会通过指定来源的 `getSong` 查询并补齐缺失名单，保留已有名单、完整署名、记录 ID、时间戳、播放次数和时长。ListenBrainz 记录不参与补齐，因为它使用的录音 ID 不是 Navidrome 曲目 ID。
+
+从按来源筛选后的仪表盘 URL 中取得已保存连接的 `source_id`；环境变量连接使用 `legacy`。连接必须仍指向原来的音乐库。使用应用的运行环境和数据库先执行预览：
+
+```bash
+python -m src.artist_backfill --source-id SOURCE_ID --limit 100
+```
+
+Docker 部署可使用 `docker compose exec navidrome-stat python -m src.artist_backfill --source-id SOURCE_ID --limit 100` 预览。
+
+JSON 输出包含拟补入的艺人名单、涉及的历史和短播放记录数，以及未能取得名单的曲目数。输出含有音乐元数据，应按收听数据处理。预览不修改历史；曲目不存在、接口不可用或名单为空时，该曲目保持未补齐状态。
+
+审查预览后，[备份数据卷](#备份与恢复)并停止应用，再对相同来源和分页执行写入：
+
+```bash
+python -m src.artist_backfill --source-id SOURCE_ID --limit 100 --apply
+```
+
+Docker 部署先停止服务，再使用共享其配置数据卷的临时容器：
+
+```bash
+docker compose stop navidrome-stat
+docker compose run --rm --no-deps navidrome-stat \
+  python -m src.artist_backfill --source-id SOURCE_ID --limit 100 --apply
+docker compose start navidrome-stat
+```
+
+写入时会重新查询当前元数据，并输出实际更新数。本地运行后也需重启应用，使统计缓存重新读取数据。可用 `--database PATH` 明确选择现有数据库。每次最多检查 `--limit` 首不同曲目，默认 100、上限 1000；输出的 `next_after_track_id` 非空时，将其传给下一页的 `--after-track-id`，同样先预览再写入。该分页方式可以跳过无法补齐的曲目；修正上游标签后，可从头重新检查。重复执行不会增加记录或覆盖已有名单。
 
 ## 安全与隐私
 

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+from src.artist_credits import normalize_artists
+
 LISTENBRAINZ_MAX_PAYLOAD_BYTES = 10_240_000
 LISTENBRAINZ_MAX_LISTENS = 1_000
 LISTENBRAINZ_MIN_TIMESTAMP = 1_033_430_400
@@ -95,6 +97,19 @@ def _track_identity(artist: str, title: str, additional: dict[str, Any]) -> str:
     return f"listenbrainz:{digest[:32]}"
 
 
+def _submitted_artists(additional: dict[str, Any]) -> list[dict]:
+    names = additional.get("artist_names")
+    if not isinstance(names, list):
+        return []
+    mbids = additional.get("artist_mbids")
+    # Pair before filtering so an invalid name cannot shift the remaining IDs.
+    paired = isinstance(mbids, list) and len(mbids) == len(names)
+    return normalize_artists([
+        {"name": name, "id": mbids[index] if paired else None}
+        for index, name in enumerate(names[:64])
+    ])
+
+
 def _event_key(
     *,
     config: ListenBrainzIngestConfig,
@@ -148,8 +163,9 @@ def _parse_event(
         max_length=256,
     )
     artist_mbids = additional.get("artist_mbids")
+    artists = _submitted_artists(additional)
     artist_id = None
-    if isinstance(artist_mbids, list) and artist_mbids:
+    if isinstance(artist_mbids, list) and len(artist_mbids) == 1 and len(artists) <= 1:
         artist_id = _optional_text(artist_mbids[0], max_length=128)
     track_id = _track_identity(artist, title, additional)
     album_id = _optional_text(additional.get("release_mbid"), max_length=128)
@@ -173,7 +189,7 @@ def _parse_event(
         "title": title,
         "artist": artist,
         "artist_id": artist_id,
-        "artists": None,
+        "artists": artists or None,
         "album": album,
         "album_id": album_id,
         # ListenBrainz confirms a play, not its actual listened duration or

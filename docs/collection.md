@@ -12,6 +12,12 @@ When a server advertises the OpenSubsonic `playbackReport` extension, position a
 
 The Recent Plays information control reports these below-threshold sessions as a share of tracked playback attempts. Pre-install backfill and native-history imports are excluded because they do not represent live sessions collected by the application; records restored from a Navidrome Stat privacy archive retain their original accounting role.
 
+## Collaborating artists
+
+The collector preserves Navidrome's separate artist names and IDs. When `getNowPlaying` lacks the list, it looks up `getSong` and caches the result per source. Failed or incomplete lookups leave playback collection running. Metadata received later updates the same session, without adding a play. The ListenBrainz receiver also preserves submitted `additional_info.artist_names`, with matching `artist_mbids` when available.
+
+Choose **Settings > Preferences > Collaborating artists > Separate** to credit each listed artist. Overall plays and listening time still count each recording once, while history labels keep the full credit. The service cannot infer missing names reliably from words such as `with` or punctuation such as `•`; Navidrome must supply the artist list. See [artist attribution](artist-attribution.md) and [filling missing metadata in older records](operations.md#fill-missing-artist-metadata).
+
 ## Recovering pre-install history
 
 Optionally, a saved connection can watch a Navidrome smart playlist (an `.nsp` such as "Recently Played"). On each check the service reads that playlist through the public `getPlaylist` API and stores one timestamped play per track with unknown listened duration and transcoding state. Re-runs never duplicate rows, listens already covered by live polling are skipped, and only plays that actually happened before installation are imported — older repeats implied by a track's play count are never invented. Configure the playlist ID per connection on the settings page.
