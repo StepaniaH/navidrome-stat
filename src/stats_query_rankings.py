@@ -69,59 +69,58 @@ async def get_top_albums(
     pred, params = _window_predicate(days, timezone_name, start_date, end_date)
     pred, params = _source_predicate(pred, params, source_id)
     pred, params = _username_predicate(pred, params, username)
+    # Resolve display metadata only after aggregation, using the epoch index.
+    # The username constraint must also apply to equal-time metadata candidates.
+    latest_user_pred, latest_user_params = _username_predicate(
+        "1=1", [], username, column="ph.username",
+    )
     async with connect_db(path) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
-            WITH album_rows AS (
+            WITH aggregated AS (
                 SELECT
-                    id,
-                    played_at,
-                    played_at_epoch,
-                    album,
-                    artist,
-                    NULLIF(album_id, '') AS album_id,
                     COALESCE(source_id, ?) AS normalized_source_id,
                     CASE
                         WHEN NULLIF(album_id, '') IS NOT NULL
                             THEN 'id:' || album_id
                         ELSE 'legacy:' || album || char(31) || COALESCE(artist, '')
                     END AS album_key,
-                    COALESCE(listen_duration_sec, 0) AS listen_duration_sec
+                    COUNT(*) AS play_count,
+                    COALESCE(SUM(listen_duration_sec), 0) AS total_listen_sec,
+                    MAX(played_at_epoch) AS latest_played_at_epoch
                 FROM play_history
                 WHERE album IS NOT NULL AND album != '' AND ({pred})
-            ), aggregated AS (
-                SELECT
-                    normalized_source_id,
-                    album_key,
-                    COUNT(*) AS play_count,
-                    SUM(listen_duration_sec) AS total_listen_sec,
-                    MAX(played_at_epoch) AS latest_played_at_epoch
-                FROM album_rows
                 GROUP BY normalized_source_id, album_key
             ), latest AS (
-                SELECT aggregated.*, MAX(album_rows.id) AS latest_id
+                SELECT aggregated.*, MAX(ph.id) AS latest_id
                 FROM aggregated
-                JOIN album_rows
-                  ON album_rows.normalized_source_id = aggregated.normalized_source_id
-                 AND album_rows.album_key = aggregated.album_key
-                 AND album_rows.played_at_epoch IS aggregated.latest_played_at_epoch
+                JOIN play_history ph
+                  ON ph.played_at_epoch IS aggregated.latest_played_at_epoch
+                 AND COALESCE(ph.source_id, ?) = aggregated.normalized_source_id
+                 AND CASE
+                       WHEN NULLIF(ph.album_id, '') IS NOT NULL
+                           THEN 'id:' || ph.album_id
+                       ELSE 'legacy:' || ph.album || char(31) || COALESCE(ph.artist, '')
+                     END = aggregated.album_key
+                 AND ph.album IS NOT NULL AND ph.album != ''
+                 AND ({latest_user_pred})
                 GROUP BY aggregated.normalized_source_id, aggregated.album_key
             )
             SELECT
-                album_rows.album,
-                album_rows.artist,
-                album_rows.album_id,
+                ph.album,
+                ph.artist,
+                NULLIF(ph.album_id, '') AS album_id,
                 latest.normalized_source_id AS source_id,
                 latest.play_count AS count,
                 latest.total_listen_sec,
                 latest.{value_column} AS value
             FROM latest
-            JOIN album_rows ON album_rows.id = latest.latest_id
+            JOIN play_history ph ON ph.id = latest.latest_id
             ORDER BY value DESC, album ASC, artist ASC, source_id ASC
             LIMIT ?
             """,
-            [LEGACY_SOURCE_ID, *params, limit],
+            [LEGACY_SOURCE_ID, *params, LEGACY_SOURCE_ID, *latest_user_params, limit],
         ) as cursor:
             rows = await cursor.fetchall()
     return [

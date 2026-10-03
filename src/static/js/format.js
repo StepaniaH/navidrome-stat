@@ -73,6 +73,28 @@ export function coverArtUrl({ sourceId, id, size = 300 }) {
     return `/api/coverart?${params.toString()}`;
 }
 
+/** Resolve a legacy album cover only when its image is loaded. */
+export function albumCoverUrl({ sourceId, album, artist = '', size = 300 }) {
+    const params = new URLSearchParams({ source_id: sourceId, album, size: String(size) });
+    if (artist) params.set('artist', artist);
+    return `/api/stats/album-cover?${params}`;
+}
+
+/** Open an artist or source-qualified album within the selected statistics scope. */
+export function entityDetailUrl({ type, name, id = '', sourceId = '', artist = '' }, scope) {
+    if (!['artist', 'album'].includes(type) || !name || name.length > 512
+        || (type === 'album' && !sourceId) || sourceId.length > 128
+        || id.length > 128 || artist.length > 512) return null;
+    const params = new URLSearchParams(buildStatsScopeQuery(scope));
+    if (scope.artistMode) params.set('artist_mode', scope.artistMode);
+    params.set('entity_type', type);
+    params.set('entity_name', name);
+    if (id) params.set('entity_id', id);
+    if (sourceId) params.set('entity_source_id', sourceId);
+    if (artist) params.set('entity_artist', artist);
+    return `/?${params}`;
+}
+
 /** Localized listening duration (hours/minutes/seconds buckets). */
 export function formatDuration(seconds, t) {
     const total = Number(seconds) || 0;

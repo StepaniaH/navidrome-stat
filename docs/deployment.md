@@ -41,12 +41,12 @@ To aggregate multiple servers, add each connection from **Settings > Connections
 
 ## 3. Create `compose.yaml`
 
-The example pins the current stable release, `v0.9.4`. The `latest` tag follows stable releases.
+The example pins the current stable release, `v0.9.5`. The `latest` tag follows stable releases.
 
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.4
+    image: stepaniah/navidrome-statistic:v0.9.5
     container_name: navidrome-stat
     user: "1000:1000"
     ports:
@@ -105,7 +105,7 @@ Open `http://localhost:39421`. When an administrator or viewer token is configur
 ## Runtime requirements
 
 - Run a single Navidrome Stat instance for a set of sources. Multiple instances polling the same sources can double-count plays.
-- Active sessions are held in one process. Multi-worker Uvicorn deployments are not supported.
+- Active sessions are held in one process. Multi-worker Uvicorn deployments are not supported. A process lock beside the database rejects a second instance before database recovery or collection starts. The operating system releases the lock after shutdown or a crash; the `.lock` file is intentionally retained. Do not remove or replace it while the service is running. Use one local database volume per instance; this is not distributed coordination for network filesystems.
 - Listening records in SQLite are stored unencrypted; saved server credentials are encrypted at rest with a local key file (`secret.key`) that is not a defense against a fully compromised host.
 - The application does not provide TLS. Use a trusted network or an HTTPS reverse proxy for remote access.
 - Keep SQLite on local storage; shared network filesystems are not supported.

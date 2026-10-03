@@ -1,5 +1,5 @@
 import { createThemeTokens } from '../charts.js';
-import { buildStatsQuery, coverArtUrl } from '../format.js';
+import { albumCoverUrl, buildStatsQuery, coverArtUrl } from '../format.js';
 import {
     getFilters,
     pushFilters,
@@ -149,10 +149,11 @@ export function createEntityDetail({
         fallback.textContent = identity.name.trim().charAt(0).toUpperCase() || '?';
         cover.replaceChildren(fallback);
         const sourceId = identity.sourceId || getScope().sourceId || getFallbackSourceId();
-        if (!sourceId || !entityId) return;
+        if (!sourceId || (!entityId && identity.type !== 'album')) return;
         const image = document.createElement('img');
         image.alt = '';
-        image.src = coverArtUrl({ sourceId, id: entityId, size: 300 });
+        image.src = entityId ? coverArtUrl({ sourceId, id: entityId, size: 300 })
+            : albumCoverUrl({ sourceId, album: identity.name, artist: identity.artist });
         image.addEventListener('error', () => image.replaceWith(fallback));
         cover.replaceChildren(image);
     }

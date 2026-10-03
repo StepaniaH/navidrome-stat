@@ -17,6 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.dashboard_cache import DashboardSnapshotCache  # noqa: E402
 from src.database import (  # noqa: E402
     get_data_relations,
     get_playback_history,
@@ -24,7 +25,10 @@ from src.database import (  # noqa: E402
     get_time_bucket_stats,
     init_db,
 )
+from src.persistence import save_play_session  # noqa: E402
+from src.stats_read_repository import StatsReadRepository  # noqa: E402
 from src.stats_scope import StatsScope  # noqa: E402
+from src.stats_service import StatsService  # noqa: E402
 
 MAX_ROWS = 1_000_000
 SEED_BATCH_SIZE = 10_000
@@ -45,6 +49,7 @@ def _seed_row(index: int, start: datetime) -> tuple:
     source_number = index % 4
     return (
         played_at.isoformat(),
+        int(played_at.timestamp()),
         f"synthetic-user-{index % 8}",
         f"client-{index % 5}",
         f"synthetic-track-{index % 2_000}",
@@ -64,10 +69,10 @@ def seed(db_path: str, rows: int) -> float:
     start = datetime(2024, 1, 1, tzinfo=timezone.utc)
     statement = """
         INSERT INTO play_history (
-            played_at, username, client_name, track_id, title, artist, album,
+            played_at, played_at_epoch, username, client_name, track_id, title, artist, album,
             is_transcoding, listen_duration_sec, source, source_id, source_name,
             finalized
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     """
     with sqlite3.connect(db_path) as db:
         for batch_start in range(0, rows, SEED_BATCH_SIZE):
@@ -113,7 +118,64 @@ def filtered_history_plan(db_path: str) -> dict[str, object]:
     }
 
 
-async def benchmark_size(rows: int) -> dict[str, object]:
+async def measure_write_load(db_path: str, scope: StatsScope, samples: int) -> dict:
+    query_timings = {}
+
+    class MeasuredRepository(StatsReadRepository):
+        async def _timed(self, query, operation):
+            started = time.perf_counter()
+            try:
+                return await super()._timed(query, operation)
+            finally:
+                query_timings[query] = round((time.perf_counter() - started) * 1_000, 2)
+
+    service = StatsService(
+        cache=DashboardSnapshotCache(), read_repository=MeasuredRepository(db_path),
+    )
+    stop = asyncio.Event()
+    writes = 0
+
+    async def writer():
+        nonlocal writes
+        while not stop.is_set():
+            await save_play_session({
+                "last_seen_at": "2024-07-01T12:00:00+00:00",
+                "username": "synthetic-writer", "client_name": "benchmark",
+                "track_id": f"write-{writes}", "title": "Synthetic write",
+                "artist": "Synthetic writer", "album": "Synthetic album",
+                "duration_sec": 60, "source_id": "synthetic-source-0",
+            }, db_path=db_path)
+            # This is the same write -> invalidation boundary as StatsService,
+            # with an explicit temporary path instead of application config.
+            await service.invalidate()
+            writes += 1
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=0.1)
+            except TimeoutError:
+                pass
+
+    task = asyncio.create_task(writer())
+    timings = []
+    try:
+        for _ in range(samples):
+            await service.invalidate()
+            query_timings.clear()
+            dashboard, relations = await asyncio.gather(
+                measure(lambda: service.dashboard(scope)),
+                measure(lambda: service.data_relations(scope, "artist")),
+            )
+            timings.append({
+                "dashboard_ms": round(dashboard, 2),
+                "relations_ms": round(relations, 2),
+                "queries_ms": dict(query_timings),
+            })
+    finally:
+        stop.set()
+        await task
+    return {"samples": timings, "successful_writes": writes, "write_interval_ms": 100}
+
+
+async def benchmark_size(rows: int, write_samples: int = 0) -> dict[str, object]:
     with tempfile.TemporaryDirectory(prefix="navidrome-stat-benchmark-") as tmp:
         db_path = str(Path(tmp) / "synthetic.db")
         await init_db(db_path)
@@ -173,7 +235,13 @@ async def benchmark_size(rows: int) -> dict[str, object]:
                 )
             ),
         }
+        filtered_scope = StatsScope.create(
+            days=0, timezone_name="UTC", source_id="synthetic-source-0",
+            username="synthetic-user-0", **window,
+        )
         return {
+            "write_load": await measure_write_load(db_path, relation_scope, write_samples) if write_samples else None,
+            "write_load_filtered": await measure_write_load(db_path, filtered_scope, write_samples) if write_samples else None,
             "rows": rows,
             "seed_ms": round(seed_ms, 2),
             "queries_ms": {name: round(value, 2) for name, value in scenarios.items()},
@@ -181,8 +249,8 @@ async def benchmark_size(rows: int) -> dict[str, object]:
         }
 
 
-async def run(sizes: list[int], max_query_ms: float | None = None) -> dict[str, object]:
-    results = [await benchmark_size(size) for size in sizes]
+async def run(sizes: list[int], max_query_ms: float | None = None, write_samples: int = 0) -> dict[str, object]:
+    results = [await benchmark_size(size, write_samples) for size in sizes]
     failures = []
     for result in results:
         if not result["query_plan"]["uses_expected_index"]:
@@ -211,6 +279,9 @@ def print_human(report: dict[str, object]) -> None:
             f"rows={result['rows']} seed_ms={result['seed_ms']:.2f} "
             f"{timings} index_ok={str(result['query_plan']['uses_expected_index']).lower()}"
         )
+        if result.get("write_load"):
+            print("write_load=" + json.dumps(result["write_load"]))
+            print("write_load_filtered=" + json.dumps(result["write_load_filtered"]))
     for failure in report["failures"]:
         print(f"FAIL: {failure}", file=sys.stderr)
 
@@ -229,6 +300,7 @@ def main() -> None:
         type=float,
         help="fail when any measured query exceeds this duration",
     )
+    parser.add_argument("--write-samples", type=int, default=0, choices=range(0, 21), help="optional repeated dashboard/relations reads during writes (0-20)")
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
     args = parser.parse_args()
     sizes = args.sizes
@@ -239,7 +311,7 @@ def main() -> None:
             parser.error(str(exc))
     if args.max_query_ms is not None and args.max_query_ms <= 0:
         parser.error("--max-query-ms must be greater than zero")
-    report = asyncio.run(run(sizes, args.max_query_ms))
+    report = asyncio.run(run(sizes, args.max_query_ms, args.write_samples))
     if args.json:
         print(json.dumps(report, indent=2))
     else:

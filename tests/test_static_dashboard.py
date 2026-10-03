@@ -538,7 +538,7 @@ def test_update_summary_populates_change_badges(source):
     assert "summary.listen_change_pct" in block
     assert block.count("compareLabel: compareLabel()") == 2
     assert "summary.active_days" in block
-    assert "summary.average_daily_plays" in block
+    assert "dailyAverage(summary)" in block
     assert "statTotalPlaysEvidence" not in block
     assert "statListenTimeQuality" not in block
     assert "summary.listen_change_reason" not in block
@@ -760,7 +760,9 @@ def test_source_options_replace_with_available_and_historical_union(source):
     assert "item.source_id || item.id" in block
     assert "item.source_name || item.display_name" in block
     assert "knownSources.clear()" in block
-    assert "!knownSources.has(selectedSourceId)" in block
+    assert "!nextSources.has(selectedSourceId)" in block
+    assert "nextSources.set(selectedSourceId" in block
+    assert "selectedSourceId = ''" not in block
     stats = _function_block(source, "fetchStats")
     assert "snapshot.available_servers" in stats
     assert "snapshot.servers" in stats

@@ -16,6 +16,7 @@ from src.core_types import (
     classify_history_duration_quality,
     combine_duration_qualities,
 )
+from src.review_highlights import review_highlights
 from src.sqlite import connect_db
 from src.stats_queries import get_top_albums, get_top_artists
 from src.windows import (
@@ -239,20 +240,13 @@ async def get_review_summary(
             previous_params,
         ) as cursor:
             previous_total_plays = int((await cursor.fetchone())[0] or 0)
-        async with db.execute(
-            f"""
-            SELECT COUNT(*)
-            FROM (
-                SELECT COALESCE(source_id, 'legacy') || char(31) || COALESCE(track_id, '')
-                FROM play_history
-                WHERE ({identity_pred}) AND played_at_epoch IS NOT NULL
-                GROUP BY COALESCE(source_id, 'legacy'), track_id
-                HAVING MIN(played_at_epoch) >= ? AND MIN(played_at_epoch) < ?
-            )
-            """,
-            [*identity_params, *window_params],
-        ) as cursor:
-            first_recorded_tracks = int((await cursor.fetchone())[0] or 0)
+
+    highlights = await review_highlights(
+        path, identity_pred, identity_params, window_params,
+        previous_pred, previous_params, top_artists, artist_mode,
+    )
+    if not previous_total_plays:
+        highlights['rising_artist'] = None
 
     biggest_month = None
     if total_plays:
@@ -292,7 +286,7 @@ async def get_review_summary(
         "duration_quality_counts": duration_quality_counts,
         "play_source_counts": play_source_counts,
         "unique_tracks": len(unique_tracks),
-        "first_recorded_tracks": first_recorded_tracks,
+        **highlights,
         "active_days": len(active_dates),
         "longest_streak_days": longest_streak,
         "first_played_at": first_local.isoformat() if first_local else None,

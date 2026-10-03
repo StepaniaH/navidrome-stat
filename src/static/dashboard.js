@@ -3,11 +3,13 @@ import { createI18n } from './localization.js';
 import { applyAppVersion } from './js/app-info.js';
 import {
     buildStatsQuery,
+    buildStatsScopeQuery,
     formatDuration,
     formatPreciseDuration,
     validateCustomRange,
 } from './js/format.js';
-import { readPreference } from './js/prefs.js';
+import { onPreferenceChange, readPreference } from './js/prefs.js';
+import { DAILY_AVERAGE_KEY } from './js/daily-average.js';
 import { createListbox } from './js/listbox.js';
 import { getFilters, setFilters } from './js/filters.js';
 import { THEME_CHANGE_EVENT } from './theme-bootstrap.js';
@@ -93,6 +95,14 @@ import {
         if (selectedSourceId) params.set('source_id', selectedSourceId);
         if (selectedUsername) params.set('username', selectedUsername);
         link.href = `/review?${params.toString()}`;
+        document.getElementById('historyLink').href = `/history?${buildStatsScopeQuery({
+            days: statsDays,
+            timezone: resolveStatsTimezone(),
+            sourceId: selectedSourceId,
+            username: selectedUsername,
+            startDate: customStartDate,
+            endDate: customEndDate,
+        })}`;
     }
     syncReviewLink();
 
@@ -248,6 +258,40 @@ import {
         else if (state === 'error') dot.className += 'bg-red-400';
         else if (state === 'loading') dot.className += 'bg-accent animate-pulse';
         else dot.className += 'bg-slate-600';
+    }
+
+    let lastCollectionStatus = null;
+
+    function renderCollectionStatus() {
+        const status = lastCollectionStatus?.status || 'unavailable';
+        const state = status === 'live' ? 'ok'
+            : status === 'degraded' || status === 'unavailable' ? 'error'
+                : status === 'starting' ? 'loading' : 'idle';
+        const mixed = lastCollectionStatus?.mixed_collection;
+        setStatus(state, dashboardMessage(`status.${status}`)
+            + (mixed ? ` · ${dashboardMessage('status.mixedShort')}` : ''));
+        document.getElementById('statusBadge').title = mixed
+            ? dashboardMessage('status.mixedHelp')
+            : status === 'receiver_enabled' ? dashboardMessage('status.receiverHelp') : '';
+    }
+
+    async function fetchCollectionStatus(requestState, controller, generation) {
+        const params = new URLSearchParams();
+        if (requestState.sourceId) params.set('source_id', requestState.sourceId);
+        try {
+            const response = await apiFetch(`/api/stats/collection-status?${params}`, {
+                signal: controller.signal,
+            });
+            if (!response.ok) throw new Error('collection status unavailable');
+            const status = await response.json();
+            if (generation !== statsRequestGeneration || controller.signal.aborted) return;
+            lastCollectionStatus = status;
+        } catch (error) {
+            if (isAbortError(error) || error instanceof UnauthorizedError
+                || generation !== statsRequestGeneration) return;
+            lastCollectionStatus = null;
+        }
+        renderCollectionStatus();
     }
 
     function showError(msg) {
@@ -566,7 +610,7 @@ import {
         menu.replaceChildren(...options);
         document.getElementById('statsSourceButtonLabel').textContent =
             entries.find(([id]) => id === selectedSourceId)?.[1]
-            || dashboardMessage('source.all');
+            || selectedSourceId || dashboardMessage('source.all');
     }
 
     function updateSourceOptions(...sourceGroups) {
@@ -584,15 +628,13 @@ import {
                 }
             });
         });
+        // An empty window cannot prove that the selected historical source is gone.
+        if (selectedSourceId && !nextSources.has(selectedSourceId)) {
+            nextSources.set(selectedSourceId, knownSources.get(selectedSourceId) || selectedSourceId);
+        }
         knownSources.clear();
         nextSources.forEach((name, id) => knownSources.set(id, name));
-        const selectionReset = Boolean(selectedSourceId && !knownSources.has(selectedSourceId));
-        if (selectionReset) {
-            selectedSourceId = '';
-            persistFilters();
-        }
         renderSourceOptions();
-        return selectionReset;
     }
 
     function renderUserOptions() {
@@ -657,6 +699,10 @@ import {
         ));
     }
 
+    onPreferenceChange(DAILY_AVERAGE_KEY, () => {
+        if (lastStatsSnapshot) renderStatPanels(lastStatsSnapshot);
+    });
+
     async function fetchStats() {
         const requestState = captureStatsRequestState();
         if (playAccounting.isOpen()) playAccounting.refresh({ force: true });
@@ -664,9 +710,10 @@ import {
         if (statsRequestController) statsRequestController.abort();
         const controller = new AbortController();
         statsRequestController = controller;
-        let sourceSelectionReset = false;
+        lastCollectionStatus = null;
         setLoading(true);
         setStatus('loading', dashboardMessage('status.syncing'));
+        const collectionRequest = fetchCollectionStatus(requestState, controller, generation);
         dataRelations.refresh({ scope: requestState });
 
         try {
@@ -699,7 +746,7 @@ import {
             lastStatsSnapshot = snapshot;
             lastRankingMetric = requestState.metric;
             // Sources feed the cover-art URLs, so refresh them before rendering.
-            sourceSelectionReset = updateSourceOptions(
+            updateSourceOptions(
                 snapshot.available_servers,
                 snapshot.servers,
             );
@@ -709,7 +756,9 @@ import {
 
             hasLoadedOnce = true;
             hideError();
-            setStatus('ok', dashboardMessage('status.live'));
+            await collectionRequest;
+            if (generation !== statsRequestGeneration || controller.signal.aborted) return;
+            renderCollectionStatus();
             const now = new Date();
             document.getElementById('lastUpdated').textContent = dashboardMessage('status.lastUpdated', {
                 time: now.toLocaleTimeString(dashboardI18n.getLocale(), {
@@ -720,7 +769,9 @@ import {
             });
         } catch (error) {
             if (isAbortError(error) || generation !== statsRequestGeneration) return;
-            setStatus('error', dashboardMessage('status.connectionError'));
+            await collectionRequest;
+            if (generation !== statsRequestGeneration || controller.signal.aborted) return;
+            renderCollectionStatus();
             showError(dashboardMessage('error.stats', {
                 stale: hasLoadedOnce ? dashboardMessage('error.stale') : '',
             }));
@@ -734,12 +785,6 @@ import {
             if (generation === statsRequestGeneration) {
                 setLoading(false);
                 statsRequestController = null;
-                if (sourceSelectionReset) {
-                    window.queueMicrotask(() => {
-                        fetchStats();
-                        nowPlaying.refresh();
-                    });
-                }
             }
         }
     }

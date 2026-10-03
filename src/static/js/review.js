@@ -5,7 +5,7 @@ import { readPreference } from './prefs.js';
 import { createI18n } from '../localization.js';
 import { pageMessages } from './i18n/index.js';
 import { createThemeTokens } from './charts.js';
-import { formatDuration, formatRecordedDuration } from './format.js';
+import { albumCoverUrl, coverArtUrl, entityDetailUrl, formatDuration, formatRecordedDuration } from './format.js';
 import { createListbox } from './listbox.js';
 import { THEME_CHANGE_EVENT } from '../theme-bootstrap.js';
 
@@ -197,20 +197,19 @@ function letterFallback(text) {
     return placeholder;
 }
 
-function coverImage(sourceId, id, className, fallbackText) {
-    if (!sourceId || !id) return letterFallback(fallbackText);
+function coverImage(sourceId, id, className, fallbackText, album, artist) {
+    if (!sourceId || (!id && !album)) return letterFallback(fallbackText);
     const img = document.createElement('img');
     img.className = className;
     img.loading = 'lazy';
     img.decoding = 'async';
     img.alt = '';
-    const params = new URLSearchParams({ source_id: sourceId, id, size: '300' });
-    img.src = `/api/coverart?${params.toString()}`;
+    img.src = id ? coverArtUrl({ sourceId, id }) : albumCoverUrl({ sourceId, album, artist });
     img.addEventListener('error', () => img.replaceWith(letterFallback(fallbackText)));
     return img;
 }
 
-function renderTopList(listId, entries, { coverId, sourceId }) {
+function renderTopList(listId, entries, { coverId, sourceId, entityType, scope, detailText }) {
     const list = document.getElementById(listId);
     list.replaceChildren();
     entries.forEach((entry, index) => {
@@ -222,18 +221,26 @@ function renderTopList(listId, entries, { coverId, sourceId }) {
         rank.textContent = String(index + 1);
         li.appendChild(rank);
 
-        const id = entry[coverId];
-        li.appendChild(coverImage(entry.source_id || sourceId, id, 'review-top-cover', entry.name));
+        const id = entry[coverId] || (entityType === 'album' ? entry.album_id : '');
+        li.appendChild(coverImage(entry.source_id || sourceId, id, 'review-top-cover', entry.name,
+            entityType === 'album' ? entry.name : entry.album, entry.artist));
 
         const meta = document.createElement('span');
         meta.className = 'review-top-meta';
-        const name = document.createElement('span');
+        const link = entityType ? entityDetailUrl({
+            type: entityType, name: entry.name || '',
+            id: entityType === 'album' ? entry.album_id || '' : entry.artist_id || '',
+            sourceId: entry.source_id || sourceId || '', artist: entry.artist || '',
+        }, scope) : null;
+        const name = document.createElement(link ? 'a' : 'span');
+        if (link) name.href = link;
         name.className = 'review-top-name';
         name.textContent = entry.name || '-';
         name.title = entry.name || '';
         const detail = document.createElement('span');
         detail.className = 'review-top-detail';
-        detail.textContent = `${num(entry.count)} · ${formatDuration(entry.total_listen_sec, t)}`;
+        detail.textContent = detailText ? detailText(entry)
+            : `${num(entry.count)} · ${entry.total_listen_sec == null ? '—' : formatDuration(entry.total_listen_sec, t)}`;
         meta.append(name, detail);
         li.appendChild(meta);
         list.appendChild(li);
@@ -294,9 +301,31 @@ function renderReview(review, sourceId) {
         return;
     }
     renderCharts(review);
-    renderTopList('reviewTopArtists', review.top_artists, { coverId: 'artist_id', sourceId });
-    renderTopList('reviewTopAlbums', review.top_albums, { coverId: 'cover_art_id', sourceId });
+    const month = review.period === 'month' ? review.month : 1;
+    const lastMonth = review.period === 'month' ? review.month : 12;
+    const scope = {
+        days: 0, timezone: review.timezone || resolveTimezone(),
+        sourceId: review.source_id || sourceId, username: review.username || requestedScope().username,
+        startDate: `${review.year}-${String(month).padStart(2, '0')}-01`,
+        endDate: `${review.year}-${String(lastMonth).padStart(2, '0')}-${new Date(review.year, lastMonth, 0).getDate()}`,
+        artistMode: resolveArtistMode(),
+    };
+    renderTopList('reviewTopArtists', review.top_artists, { coverId: 'artist_id', sourceId, entityType: 'artist', scope });
+    renderTopList('reviewTopAlbums', review.top_albums, { coverId: 'cover_art_id', sourceId, entityType: 'album', scope });
     renderTopList('reviewTopTracks', review.top_tracks, { coverId: 'track_id', sourceId });
+    const newTracks = review.new_tracks || [];
+    const returning = review.returning_albums || [];
+    renderTopList('reviewNewTracks', newTracks, { coverId: 'album_id', sourceId });
+    renderTopList('reviewReturningAlbums', returning, { coverId: 'album_id', sourceId, entityType: 'album', scope });
+    renderTopList('reviewRisingArtist', review.rising_artist ? [review.rising_artist] : [], {
+        coverId: 'artist_id', sourceId, entityType: 'artist', scope,
+        detailText: (entry) => t('review.risingDetail', {
+            previous: num(entry.previous_count), current: num(entry.count),
+        }),
+    });
+    document.getElementById('reviewNewTracksEmpty').hidden = newTracks.length > 0;
+    document.getElementById('reviewReturningAlbumsEmpty').hidden = returning.length > 0;
+    document.getElementById('reviewRisingArtistEmpty').hidden = Boolean(review.rising_artist);
 }
 
 function fillYearSelect() {

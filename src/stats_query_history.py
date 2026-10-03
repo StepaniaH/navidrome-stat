@@ -57,6 +57,8 @@ async def get_playback_history(
             )
             SELECT
                 ph.username,
+                ph.track_id,
+                ph.album_id,
                 ph.title,
                 ph.artist,
                 ph.album,

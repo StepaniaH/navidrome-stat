@@ -42,6 +42,10 @@ SQLite uses write-ahead logging. The database file, `-wal` and `-shm` files, vol
 
 ## Browser and network behavior
 
+The daily-average preference is stored in browser `localStorage` as `navidrome-daily-average-mode`, with `calendar` (default) or `active` as its value. It is not sent to the server or included in shared URLs. The backend returns both calculations from the same authorized records; changing the display preference does not write listening data.
+
+Individual listening history exposes the same authorized timestamps, users, clients, sources, track metadata, and duration claims as existing detail views. Search terms are sent in an authenticated GET request and may appear in access logs; the page does not persist them in browser storage or its shareable URL. Pagination cursors encode a timestamp and a database row ID, are not access credentials, and never bypass viewer scope restrictions. Review highlights use existing records and do not capture additional personal data. Collection status returns only a state and a mixed-collection warning, without credentials or connection addresses.
+
 The collaborating-artist preference is stored in browser `localStorage` as `navidrome-artist-mode`. Its value, `combined` or `separate`, is sent with statistics requests and included in shared dashboard and review URLs.
 
 Missing artist lists may be fetched from the configured Navidrome server with `getSong`, using its existing credentials. Each collector keeps a bounded in-memory cache of track IDs and artist credits. These lookups do not contact MusicBrainz or ListenBrainz. The optional artist backfill command prints proposed artist metadata and affected record counts; treat its output as listening data. Applying it changes only missing artist lists in existing records.

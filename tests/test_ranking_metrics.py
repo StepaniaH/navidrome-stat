@@ -171,6 +171,28 @@ def test_top_albums_legacy_identity_includes_artist_within_source(db_path):
     ]
 
 
+def test_album_metadata_uses_latest_scoped_play_with_deterministic_ties(db_path):
+    asyncio.run(init_db(db_path))
+    for index, (moment, username, album) in enumerate((
+        ("2024-01-02T12:00:00Z", "listener", "Old title"),
+        ("2024-01-02T13:00:00Z", "listener", "Renamed"),
+        ("2024-01-01T13:00:00Z", "listener", "Late import"),
+        ("2024-01-02T13:00:00Z", "listener", "Current title"),
+        ("2024-01-02T13:00:00Z", "other", "Other user's title"),
+    )):
+        payload = _session(moment, track_id=str(index), username=username, album=album)
+        payload.update(source_id="source-a", album_id="stable-album")
+        asyncio.run(save_play_session(payload, db_path=db_path))
+
+    scoped = asyncio.run(get_top_albums(username="listener", db_path=db_path))
+    assert scoped[0]["album"] == "Current title"
+    assert scoped[0]["count"] == 4
+    assert scoped[0]["album_id"] == "stable-album"
+    all_users = asyncio.run(get_top_albums(db_path=db_path))
+    assert all_users[0]["album"] == "Other user's title"
+    assert all_users[0]["count"] == 5
+
+
 def test_invalid_metric_raises_value_error_db_layer(db_path):
     asyncio.run(init_db(db_path))
     with pytest.raises(ValueError):

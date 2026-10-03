@@ -327,6 +327,19 @@
                             </div>
                             <div class="setting-row">
                                 <div class="setting-copy">
+                                    <strong data-i18n="preferences.dailyAverage">Daily average</strong>
+                                    <span data-i18n="preferences.dailyAverageHelp">Calendar days include days without plays. Active days include only days with recorded plays. All history uses the span from the first to the latest recorded date.</span>
+                                </div>
+                                <div id="dailyAverageSelect" class="settings-select" data-open="false" data-value="calendar">
+                                    <button id="dailyAverageSelectButton" class="settings-select-trigger" type="button" data-listbox-trigger aria-haspopup="listbox" aria-expanded="false" aria-controls="dailyAverageSelectMenu">
+                                        <span data-listbox-label>Calendar days</span>
+                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>
+                                    </button>
+                                    <div id="dailyAverageSelectMenu" class="settings-options" role="listbox" aria-label="Daily average" data-i18n-attr="aria-label:preferences.dailyAverage" hidden></div>
+                                </div>
+                            </div>
+                            <div class="setting-row">
+                                <div class="setting-copy">
                                     <strong data-i18n="preferences.timezone">Statistics timezone</strong>
                                     <span data-i18n="preferences.timezoneHelp">“Browser timezone” uses the IANA timezone reported by this device.</span>
                                 </div>

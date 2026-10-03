@@ -16,7 +16,6 @@ from weakref import WeakKeyDictionary
 
 from src.auth import current_access_context
 from src.config import env_int
-from src.coverart import cover_art_service
 from src.dashboard_cache import DashboardSnapshotCache, dashboard_snapshot_cache
 from src.persistence import save_imported_events, save_play_attempt, save_play_session
 from src.privacy_ops import (
@@ -26,8 +25,7 @@ from src.privacy_ops import (
 )
 from src.review_queries import get_review_summary
 from src.runtime_state import runtime_state
-from src.schema import LEGACY_SOURCE_ID
-from src.server_registry import delete_server, list_server_options, save_server
+from src.server_registry import delete_server, save_server
 from src.stats_query_entities import EntityIdentity
 from src.stats_query_relations import RelationDimension
 from src.stats_read_repository import StatsReadRepository, stats_read_repository
@@ -283,20 +281,7 @@ class StatsService:
             detail = await self._read_repository.entity_detail(scope, identity)
             if identity.entity_type != "album":
                 return detail
-            cover_art_id = identity.entity_id
-            if cover_art_id is None:
-                try:
-                    cover_art_id = await cover_art_service.resolve_album_id(
-                        identity.source_id,
-                        identity.name,
-                        identity.artist,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Album detail cover enrichment skipped (type=%s)",
-                        exception_kind(exc),
-                    )
-            return {**detail, "cover_art_id": cover_art_id}
+            return {**detail, "cover_art_id": identity.entity_id}
 
         return await self._cache.get_or_create(
             ("entity_detail", scope, identity),
@@ -335,62 +320,15 @@ class StatsService:
                 artist_mode=artist_mode,
                 month=month,
             )
-            servers = await list_server_options()
-            summary["top_albums"] = await self._attach_album_cover_ids(
-                source_id, summary["top_albums"], servers
-            )
-            effective_source = self._resolve_effective_source(source_id, servers)
-            for entry in summary["top_albums"]:
-                if entry.get("source_id") in (None, LEGACY_SOURCE_ID):
-                    entry["source_id"] = effective_source
+            summary["top_albums"] = self._attach_album_cover_ids(summary["top_albums"])
             return summary
 
         return await self._cache.get_or_create(key, build)
 
     @staticmethod
-    def _resolve_effective_source(source_id: str | None, available_servers: list) -> str | None:
-        if source_id:
-            return source_id
-        if len(available_servers) == 1:
-            return available_servers[0].get("id")
-        return None
-
-    async def _attach_album_cover_ids(
-        self,
-        source_id: str | None,
-        albums: list,
-        available_servers: list,
-    ) -> list:
-        """Resolve artwork without changing the identity stored in history."""
-        if not albums:
-            return albums
-        effective_source = self._resolve_effective_source(source_id, available_servers)
-        attached = []
-        for entry in albums:
-            if entry.get("album_id"):
-                attached.append({**entry, "cover_art_id": entry["album_id"]})
-                continue
-            entry_source = entry.get("source_id") or effective_source
-            if entry_source is None:
-                attached.append({**entry, "album_id": None, "cover_art_id": None})
-                continue
-            try:
-                album_id = await cover_art_service.resolve_album_id(
-                    entry_source, entry.get("album"), entry.get("artist")
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Album cover enrichment skipped (type=%s)",
-                    exception_kind(exc),
-                )
-                attached.append({**entry, "album_id": None, "cover_art_id": None})
-                continue
-            attached.append({
-                **entry,
-                "album_id": None,
-                "cover_art_id": album_id,
-            })
-        return attached
+    def _attach_album_cover_ids(albums: list) -> list:
+        """Keep artwork metadata local; missing covers resolve on image requests."""
+        return [{**entry, "cover_art_id": entry.get("album_id")} for entry in albums]
 
     async def _build_snapshot(self, scope: StatsScope) -> dict:
         snapshot = await self._read_repository.dashboard(scope)
@@ -398,11 +336,7 @@ class StatsService:
         time_buckets = snapshot["time_buckets"]
         available_servers = snapshot["available_servers"]
         top_albums = snapshot["top_albums"]
-        top_albums = await self._attach_album_cover_ids(
-            scope.source_id,
-            top_albums,
-            available_servers,
-        )
+        top_albums = self._attach_album_cover_ids(top_albums)
         return {
             "summary": summary,
             "players": snapshot["players"],

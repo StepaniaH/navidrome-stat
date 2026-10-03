@@ -4,6 +4,31 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-10-03
+
+### Added
+
+- Settings can choose calendar-day or active-day averages. Calendar days are the default; the dashboard labels both choices as a daily average, and existing API average fields retain their earlier definitions.
+- Individual listening history supports track, artist, and album search with stable pagination, inherited filters, and duration-quality labels.
+- Listening Review shows albums heard again after a gap of at least 90 days and the largest play-count increase among the current top ten artists.
+
+### Changed
+
+- Summary, ranking, relationship, and UTC time-bucket queries aggregate in SQLite before loading results.
+- Missing album artwork resolves when requested, with bounded upstream concurrency and timeouts. Statistics responses no longer wait for cover lookup.
+- The header reports collection health independently of statistics requests, distinguishes enabled ingestion from active polling, and warns when both collection methods are enabled.
+
+### Fixed
+
+- A process lock prevents a second instance from recovering or collecting into the same database. Background tasks and collectors are stopped when application lifespan exits.
+- Selected server filters remain in effect when the current window has no matching server options.
+- First-recorded track counts and review metadata use the same authorized history and source-qualified track identities.
+
+### Security
+
+- Individual-history and legacy album-cover requests enforce the existing viewer source and username restrictions.
+- Git and container build exclusions cover SQLite databases, sidecars, lock files, logs, and local agent configuration directories.
+
 ## [0.9.4] - 2026-10-02
 
 ### Added
@@ -361,7 +386,10 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.5...HEAD
+[0.9.5]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.4...v0.9.5
+[0.9.4]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.3...v0.9.4
+[0.9.3]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/StepaniaH/navidrome-stat/compare/v0.8.9...v0.9.0

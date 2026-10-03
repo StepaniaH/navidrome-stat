@@ -6,7 +6,6 @@ import aiosqlite
 
 from src.core_types import (
     DurationQuality,
-    classify_history_duration_quality,
     combine_duration_qualities,
 )
 from src.schema import LEGACY_SOURCE_ID, LEGACY_SOURCE_NAME
@@ -296,9 +295,10 @@ async def get_summary(
 ):
     """Return listening aggregates and previous-window comparisons.
 
-    Finite-window daily averages divide by active days; all-history averages
-    divide by the inclusive date span. All history omits comparisons, and
-    percentage changes are null when the previous total is zero.
+    Explicit averages cover both active days and calendar days. Legacy averages
+    retain active days for finite windows and the first-to-last recorded date
+    span for all history. Comparisons are absent for all history and when the
+    previous total is zero.
     """
     path = _path(db_path)
     tz = resolve_timezone(timezone_name)
@@ -337,35 +337,44 @@ async def get_summary(
         ) as cursor:
             row = await cursor.fetchone()
 
+        def local_date(played_at):
+            result = _played_at_to_local_date(played_at, tz)
+            return result.isoformat() if result else None
+
+        await db.create_function("summary_local_date", 1, local_date, deterministic=True)
+        local_date_sql = "summary_local_date(played_at)"
+        if timezone_name == "UTC":
+            local_date_sql = (
+                "CASE WHEN played_at_epoch IS NULL THEN summary_local_date(played_at) "
+                "ELSE date(played_at_epoch, 'unixepoch') END"
+            )
         async with db.execute(
             f"""
-            SELECT played_at,
-                   listen_duration_sec,
-                   COALESCE(source, 'poller') AS source,
-                   session_id,
-                   COALESCE(finalized, 1) AS finalized,
-                   COALESCE(duration_confidence, 'estimated') AS duration_confidence
-            FROM play_history
-            WHERE {cur_pred}
+            SELECT {local_date_sql} AS local_date,
+                   COALESCE(source, 'poller') AS play_source,
+                   CASE
+                       WHEN listen_duration_sec IS NULL THEN 'unknown'
+                       WHEN duration_confidence = 'lower_bound' THEN 'lower_bound'
+                       WHEN COALESCE(source, 'poller') = 'poller'
+                            AND (NULLIF(session_id, '') IS NULL OR COALESCE(finalized, 1) = 0)
+                            THEN 'lower_bound'
+                       WHEN COALESCE(source, 'poller') = 'poller' THEN 'estimated'
+                       WHEN duration_confidence = 'reported' THEN 'reported'
+                       ELSE 'estimated'
+                   END AS quality,
+                   COUNT(*) AS count
+            FROM play_history WHERE {cur_pred}
+            GROUP BY local_date, play_source, quality
             """,
             cur_params,
         ) as cursor:
             async for current in cursor:
-                local = _played_at_to_local_date(current["played_at"], tz)
-                if local is not None:
-                    local_dates.add(local)
-                quality = classify_history_duration_quality(
-                    listen_duration_sec=current["listen_duration_sec"],
-                    source=current["source"],
-                    session_id=current["session_id"],
-                    finalized=current["finalized"],
-                    duration_confidence=current["duration_confidence"],
-                )
-                duration_quality_counts[quality] += 1
-                play_source = str(current["source"] or "poller")
-                play_source_counts[play_source] = (
-                    play_source_counts.get(play_source, 0) + 1
-                )
+                if current["local_date"] is not None:
+                    local_dates.add(date.fromisoformat(current["local_date"]))
+                count = int(current["count"])
+                duration_quality_counts[current["quality"]] += count
+                source = current["play_source"]
+                play_source_counts[source] = play_source_counts.get(source, 0) + count
 
         total_plays = int(row["total_plays"] or 0)
         total_listen_sec = int(row["total_listen_sec"] or 0)
@@ -394,10 +403,18 @@ async def get_summary(
         listen_change_reason = "all_history"
 
         is_custom_window = start_date is not None and end_date is not None
+        calendar_days = (
+            (end_date - start_date).days + 1 if is_custom_window else days
+        )
+        active_daily_plays = round(total_plays / active_days, 2) if active_days else 0.0
+        active_daily_listen_sec = (
+            round(total_listen_sec / active_days, 2) if active_days else 0.0
+        )
         if days <= 0 and not is_custom_window:
             denom: int | None = None
             if local_dates:
                 span_days = (max(local_dates) - min(local_dates)).days + 1
+                calendar_days = span_days
                 if span_days > 0:
                     denom = span_days
             if denom and denom > 0:
@@ -407,10 +424,9 @@ async def get_summary(
                 avg_daily_plays = 0.0 if total_plays == 0 else None
                 avg_daily_listen_sec = 0.0 if total_listen_sec == 0 else None
         else:
-            avg_daily_plays = round(total_plays / active_days, 2) if active_days > 0 else 0.0
-            avg_daily_listen_sec = (
-                round(total_listen_sec / active_days, 2) if active_days > 0 else 0.0
-            )
+            # Preserve the original API's finite-window averages.
+            avg_daily_plays = active_daily_plays
+            avg_daily_listen_sec = active_daily_listen_sec
             prev_pred, prev_params = _previous_window_predicate(
                 days,
                 timezone_name,
@@ -430,7 +446,7 @@ async def get_summary(
                             duration_confidence = 'lower_bound'
                             OR (
                                 COALESCE(source, 'poller') = 'poller'
-                                AND (session_id IS NULL OR COALESCE(finalized, 1) = 0)
+                                AND (NULLIF(session_id, '') IS NULL OR COALESCE(finalized, 1) = 0)
                             )
                         ) THEN 1 ELSE 0 END), 0) AS p_lower_bound_count,
                     COALESCE(SUM(CASE
@@ -500,8 +516,19 @@ async def get_summary(
             "unique_tracks": unique_tracks,
             "client_count": client_count,
             "active_days": active_days,
+            "calendar_days": calendar_days,
+            "first_recorded_date": min(local_dates).isoformat() if local_dates else None,
+            "last_recorded_date": max(local_dates).isoformat() if local_dates else None,
             "average_daily_plays": avg_daily_plays,
             "average_daily_listen_sec": avg_daily_listen_sec,
+            "average_active_daily_plays": active_daily_plays,
+            "average_active_daily_listen_sec": active_daily_listen_sec,
+            "average_calendar_daily_plays": (
+                round(total_plays / calendar_days, 2) if calendar_days > 0 else 0.0
+            ),
+            "average_calendar_daily_listen_sec": (
+                round(total_listen_sec / calendar_days, 2) if calendar_days > 0 else 0.0
+            ),
             "previous_total_plays": previous_total_plays,
             "previous_total_listen_sec": previous_total_listen_sec,
             "plays_change_pct": plays_change_pct,

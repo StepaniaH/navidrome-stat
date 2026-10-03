@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="builtin-dark" data-scheme="dark" data-motion="system">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Listening history · Navidrome Stat</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <script type="module" src="/static/localization.js"></script>
+    <script type="module" src="/static/theme-bootstrap.js"></script>
+    <link rel="stylesheet" href="/static/vendor/tailwind.css">
+    <link rel="stylesheet" href="/static/dashboard.css">
+    <link rel="stylesheet" href="/static/themes.css">
+    <link rel="stylesheet" href="/static/history.css">
+</head>
+<body>
+    <div id="listeningHistoryApp" class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <header class="dashboard-header">
+            <div class="dashboard-header-main">
+                <div class="dashboard-brand">
+                    <a id="historyBackLink" class="header-icon-button" href="/" aria-label="Back to statistics" data-i18n-attr="aria-label:review.back">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    </a>
+                    <h1 class="dashboard-title" data-i18n="listens.title">Listening history</h1>
+                </div>
+            </div>
+        </header>
+        <main>
+            <p id="listeningScope" class="listening-scope"></p>
+            <section class="rounded-2xl bg-ink-900/80 shadow-card p-5 sm:p-6 border border-white/5" aria-labelledby="listeningRecordsTitle">
+                <h2 id="listeningRecordsTitle" class="visually-hidden" data-i18n="listens.title">Listening history</h2>
+                <p class="listening-help" data-i18n="listens.help">Each row is one recorded listen, newest first.</p>
+                <form id="listeningSearchForm" class="listening-search" role="search">
+                    <label for="listeningSearch" data-i18n="listens.searchLabel">Search tracks, artists, or albums</label>
+                    <div class="listening-search-controls">
+                        <input id="listeningSearch" type="search" maxlength="256" autocomplete="off" data-i18n-attr="placeholder:listens.searchPlaceholder" placeholder="Track, artist, or album">
+                        <button type="submit" class="review-retry-button" data-i18n="listens.search">Search</button>
+                        <button id="listeningClear" type="button" class="review-retry-button" data-i18n="listens.clear">Clear</button>
+                    </div>
+                </form>
+                <p id="listeningState" class="listening-state" role="status" aria-live="polite"></p>
+                <ul id="listeningRecords" class="listening-records" aria-busy="false"></ul>
+                <div class="listening-pagination">
+                    <button id="listeningRetry" type="button" class="review-retry-button" data-i18n="review.retry" hidden>Retry</button>
+                    <button id="listeningMore" type="button" class="review-retry-button" data-i18n="listens.more" hidden>Load more</button>
+                </div>
+            </section>
+        </main>
+    </div>
+    <div id="loginOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-ink-950/90 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="historyLoginTitle">
+        <form id="loginForm" class="w-full max-w-sm rounded-2xl bg-ink-900 border border-white/10 shadow-card p-6 space-y-4">
+            <div>
+                <h2 id="historyLoginTitle" class="text-lg font-semibold text-white" data-i18n="auth.title">Access token required</h2>
+                <p class="text-sm text-slate-400 mt-1" data-i18n="auth.description">Enter the access token configured by your administrator.</p>
+            </div>
+            <label class="block">
+                <span class="text-xs text-slate-500 uppercase tracking-wider" data-i18n="auth.token">Access token</span>
+                <input id="loginToken" type="password" autocomplete="current-password" required class="mt-2 w-full rounded-lg bg-ink-800 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-accent/50">
+            </label>
+            <p id="loginError" class="hidden text-sm text-red-400" role="alert"></p>
+            <button type="submit" class="w-full rounded-lg bg-accent hover:bg-accent-dim text-white text-sm font-medium py-2.5 transition-colors" data-i18n="auth.login">Log in</button>
+        </form>
+    </div>
+    <script type="module" src="/static/js/listening-history.js"></script>
+</body>
+</html>

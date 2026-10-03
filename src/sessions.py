@@ -2,9 +2,8 @@ import uuid
 from datetime import datetime
 from typing import Awaitable, Callable
 
-from src.artist_credits import normalize_artists
 from src.config import env_int
-from src.core_types import PlaybackObservation, PlaybackSession
+from src.core_types import PlaybackMetadata, PlaybackObservation, PlaybackSession, PlaybackWrite
 
 PLAY_THRESHOLD_SEC = 30
 STALE_THRESHOLD_SEC = 30
@@ -25,7 +24,7 @@ _DEFAULT_CHECKPOINT_INTERVAL_SEC = env_int(
     "CHECKPOINT_INTERVAL_SEC", default=60, min_value=10, max_value=3600
 )
 
-SaveSessionCallback = Callable[[PlaybackSession], Awaitable[None]]
+SaveSessionCallback = Callable[[PlaybackWrite], Awaitable[None]]
 
 
 class SessionFinalizationError(RuntimeError):
@@ -114,19 +113,12 @@ class PlaybackSessionTracker:
         elif self._save_attempt is not None:
             await self._persist(
                 self._save_attempt,
-                {
-                    **session,
-                    "duration_sec": int(duration),
-                    "outcome": "short_play",
-                    "last_seen_at": (
-                        session.get("last_active_at") or session["last_seen_at"]
-                    ).isoformat(),
-                },
+                {**self._write_payload(session, int(duration), finalized=True), "outcome": "short_play"},
             )
         self._sessions.pop(player_id, None)
 
     @staticmethod
-    async def _persist(callback: SaveSessionCallback, payload: PlaybackSession) -> None:
+    async def _persist(callback: SaveSessionCallback, payload: PlaybackWrite) -> None:
         try:
             await callback(payload)
         except PlaybackPersistenceError:
@@ -141,17 +133,24 @@ class PlaybackSessionTracker:
         *,
         finalized: bool,
     ) -> None:
+        await self._persist(
+            self._save_session, self._write_payload(session, duration_sec, finalized=finalized)
+        )
+
+    @staticmethod
+    def _write_payload(session: PlaybackSession, duration_sec: int, *, finalized: bool) -> PlaybackWrite:
         # Anchor played_at to active listening, excluding any trailing idle gap.
-        last_active = session.get("last_active_at") or session["last_seen_at"]
-        payload = {
-            **session,
+        instant = session["last_active_at"].isoformat()
+        return {
+            **{key: session[key] for key in PlaybackMetadata.__annotations__},
+            "session_id": session["session_id"],
+            "duration_confidence": session["duration_confidence"],
             "duration_sec": duration_sec,
-            "last_seen_at": last_active.isoformat(),
+            "last_seen_at": instant,
             "finalized": finalized,
-            "finalized_at": last_active.isoformat() if finalized else None,
-            "checkpointed_at": last_active.isoformat(),
+            "finalized_at": instant if finalized else None,
+            "checkpointed_at": instant,
         }
-        await self._persist(self._save_session, payload)
 
     async def _maybe_commit_active_session(self, player_id: str) -> None:
         session = self._sessions.get(player_id)
@@ -226,7 +225,7 @@ class PlaybackSessionTracker:
             "title": entry.title,
             "artist": entry.artist,
             "artist_id": entry.artist_id,
-            "artists": normalize_artists(entry.artists) or None,
+            "artists": entry.artist_mappings() or None,
             "album": entry.album,
             "album_id": entry.album_id,
             "is_transcoding": 1 if entry.transcoded_content_type else 0,
@@ -345,7 +344,7 @@ class PlaybackSessionTracker:
 
             session = self._sessions.get(player_id)
             if session is not None and session["track_id"] == track_id:
-                artists = normalize_artists(entry.artists)
+                artists = entry.artist_mappings()
                 if artists and artists != session.get("artists"):
                     session["artists"] = artists
                     session["artist_metadata_changed"] = True
@@ -356,6 +355,9 @@ class PlaybackSessionTracker:
                 if player_id in self._sessions:
                     self._mark_unobserved_gap(self._sessions[player_id], current_time)
                 await self.finalize_session(player_id)
+                continue
+
+            if track_id is None:
                 continue
 
             is_playing = self._is_playing(entry)

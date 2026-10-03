@@ -7,6 +7,8 @@ from httpx import ASGITransport, AsyncClient
 
 from src.database import get_daily_stats, get_hourly_stats, init_db, save_play_session
 from src.main import app
+from src.stats_query_overview import get_summary
+from src.stats_query_timeline import get_time_bucket_stats
 
 
 def _session(played_at: str, track_id: str = "t1", duration_sec: int = 30):
@@ -42,6 +44,28 @@ def test_get_hourly_stats_empty_database(db_path):
     asyncio.run(init_db(db_path))
     rows = asyncio.run(get_hourly_stats(db_path=db_path))
     assert rows == []
+
+
+@pytest.mark.parametrize("zone,moments,dates", [
+    ("UTC", ("1969-12-31T23:59:59Z", "1970-01-01T00:00:00Z"),
+     ("1969-12-31", "1970-01-01")),
+    ("Asia/Kolkata", ("2024-01-01T18:29:59Z", "2024-01-01T18:30:00Z"),
+     ("2024-01-01", "2024-01-02")),
+    ("UTC", ("2024-01-01T23:59:59+0000", "2024-01-02T00:00:00+0000"),
+     ("2024-01-01", "2024-01-02")),
+])
+def test_time_buckets_preserve_midnight_at_epoch_and_half_hour_offsets(db_path, zone, moments, dates):
+    asyncio.run(init_db(db_path))
+    for index, moment in enumerate(moments):
+        asyncio.run(save_play_session(_session(moment, str(index)), db_path=db_path))
+    buckets = asyncio.run(get_time_bucket_stats(days=0, timezone_name=zone, db_path=db_path))
+    assert buckets["hourly"] == [{"hour": 0, "count": 1}, {"hour": 23, "count": 1}]
+    assert buckets["daily"] == [{"date": value, "count": 1} for value in dates]
+    assert sum(cell["count"] for cell in buckets["heatmap"]) == 2
+    summary = asyncio.run(get_summary(days=0, timezone_name=zone, db_path=db_path))
+    assert summary["active_days"] == 2
+    assert summary["calendar_days"] == 2
+    assert summary["first_recorded_date"] == dates[0]
 
 
 def test_get_daily_stats_aggregates_recent_days(db_path):

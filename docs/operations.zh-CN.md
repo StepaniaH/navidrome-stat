@@ -21,7 +21,7 @@ docker compose logs -f --tail=100 navidrome-stat
 
 ## 更新
 
-更新固定版本时，先在 `compose.yaml` 中把镜像标签改为目标版本，再执行下面的命令。保持 `v0.9.4` 不变会继续运行 v0.9.4；`latest` 则跟随最新稳定版。
+更新固定版本时，先在 `compose.yaml` 中把镜像标签改为目标版本，再执行下面的命令。保持 `v0.9.5` 不变会继续运行 v0.9.5；`latest` 则跟随最新稳定版。
 
 ```bash
 docker compose pull

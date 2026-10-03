@@ -499,6 +499,45 @@ async def _scan_totals(
     )
 
 
+async def _scan_grouped_shapes_utc(
+    db: aiosqlite.Connection,
+    predicate: str,
+    params: list,
+    dimension: RelationDimension,
+    *,
+    grain: RelationGrain,
+    trend_keys: set[str],
+    matrix_keys: set[str],
+    metadata: dict[str, dict],
+) -> tuple[dict[tuple[str, str], dict], dict[tuple[str, str], dict]]:
+    """Group UTC artist/client observations before returning them to Python."""
+    query, query_params = _shape_query(predicate, params, dimension)
+    if grain == "month":
+        bucket = "strftime('%Y-%m', epoch, 'unixepoch')"
+    elif grain == "week":
+        bucket = "date(epoch, 'unixepoch', 'weekday 0', '-6 days')"
+    else:
+        bucket = "date(epoch, 'unixepoch')"
+    daypart = "CAST(((epoch % 86400 + 86400) % 86400) / 21600 AS INTEGER)"
+    statement = f"""WITH observations(epoch, name, duration) AS ({query})
+        SELECT {bucket} AS bucket, name, {daypart} AS daypart,
+               COUNT(*), SUM(duration)
+        FROM observations GROUP BY bucket, name, daypart"""
+    trend, matrix = {}, {}
+    key_for_row = _selected_key_resolver(dimension, metadata, trend_keys | matrix_keys)
+    async with db.execute(statement, query_params) as cursor:
+        async for row in cursor:
+            if row[0] is None:
+                continue
+            key = key_for_row(row)
+            count, duration = int(row[3]), int(row[4] or 0)
+            trend_key = key if key in trend_keys else OTHER_KEY
+            _add_aggregate(trend, (row[0], trend_key), count, duration)
+            if key in matrix_keys:
+                _add_aggregate(matrix, (key, DAYPARTS[row[2]]), count, duration)
+    return trend, matrix
+
+
 async def _scan_shapes(
     db: aiosqlite.Connection,
     predicate: str,
@@ -512,18 +551,16 @@ async def _scan_shapes(
     metadata: dict[str, dict],
     artist_mode: str = "combined",
 ) -> tuple[dict[tuple[str, str], dict], dict[tuple[str, str], dict]]:
-    if (
-        dimension == "album"
-        and getattr(tz, "key", None) == "UTC"
-        and grain == "month"
-    ):
-        return await _scan_album_month_shapes_utc(
-            db,
-            predicate,
-            params,
-            trend_keys=trend_keys,
-            matrix_keys=matrix_keys,
-        )
+    if getattr(tz, "key", None) == "UTC":
+        if dimension == "album" and grain == "month":
+            return await _scan_album_month_shapes_utc(
+                db, predicate, params, trend_keys=trend_keys, matrix_keys=matrix_keys,
+            )
+        if dimension == "client" or (dimension == "artist" and artist_mode != "separate"):
+            return await _scan_grouped_shapes_utc(
+                db, predicate, params, dimension, grain=grain,
+                trend_keys=trend_keys, matrix_keys=matrix_keys, metadata=metadata,
+            )
 
     trend: dict[tuple[str, str], dict] = {}
     matrix: dict[tuple[str, str], dict] = {}

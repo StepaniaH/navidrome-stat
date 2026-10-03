@@ -59,6 +59,8 @@ python3 scripts/benchmark_stats.py --sizes 100000,1000000
 
 The report measures all-history time buckets, all three relationship dimensions, source-and-user-filtered finite-window summary and history queries, and verifies that the filtered history plan uses the source/user/epoch index. Use `--json` for machine-readable output and `--max-query-ms <budget>` to enforce a ceiling. The scheduled GitHub Actions run uses a deliberately generous 2500 ms per-query budget at 100,000 and 1,000,000 rows; it is a regression guard for shared runners, not a local performance target. The older `--rows` single-size option remains available for compatibility.
 
+Add `--write-samples 3` to measure complete dashboard snapshots and relationship queries while synthetic sessions are saved and caches are invalidated. This runs both an all-source scope and a source/user-filtered scope, and reports the individual query timings and successful writes. The writer waits 100 ms after each completed write; that interval is a target cadence, not a guaranteed write rate. These are individual samples, not latency percentiles, and `--max-query-ms` applies to the isolated query scenarios only. Run benchmarks without other test suites or builds competing for resources.
+
 Run the container smoke test after changing the Dockerfile, runtime dependencies, startup behavior, or health endpoints. It requires Docker and uses an ephemeral loopback port by default. Set `SMOKE_HOST_PORT` only when a fixed host port is needed.
 
 ```bash

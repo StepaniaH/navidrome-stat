@@ -8,6 +8,14 @@ htmlcov/
 __pycache__/
 *.db
 *.db-*
+*.db.lock
+*.sqlite
+*.sqlite-*
+*.sqlite.lock
+*.sqlite3
+*.sqlite3-*
+*.sqlite3.lock
+*.log
 .env
 .env.*
 node_modules/
@@ -21,6 +29,8 @@ restore-test/
 coverart-cache/
 secret.key
 .openchamber/
+.codex/
+.agents/
 
 # Local working notes and task drafts
 .local/

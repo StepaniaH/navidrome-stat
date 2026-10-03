@@ -83,8 +83,15 @@ class SummaryStat(BaseModel):
     unique_tracks: int
     client_count: int
     active_days: Optional[int] = None
+    calendar_days: int = 0
+    first_recorded_date: Optional[str] = None
+    last_recorded_date: Optional[str] = None
     average_daily_plays: Optional[float] = None
     average_daily_listen_sec: Optional[float] = None
+    average_active_daily_plays: float = 0.0
+    average_active_daily_listen_sec: float = 0.0
+    average_calendar_daily_plays: float = 0.0
+    average_calendar_daily_listen_sec: float = 0.0
     previous_total_plays: Optional[int] = None
     previous_total_listen_sec: Optional[int] = None
     # Null when the previous value is zero or all history is selected.
@@ -186,6 +193,21 @@ class EntityRecentPlayItem(BaseModel):
     source_name: Optional[str] = None
 
 
+class ListeningHistoryItem(EntityRecentPlayItem):
+    album_id: Optional[str] = None
+    source: Optional[str] = None
+
+
+class ListeningHistoryPage(BaseModel):
+    items: list[ListeningHistoryItem]
+    next_cursor: Optional[str] = None
+
+
+class CollectionStatus(BaseModel):
+    status: Literal["live", "starting", "degraded", "receiver_enabled", "disabled", "unconfigured"]
+    mixed_collection: bool = False
+
+
 class EntityDetailResponse(BaseModel):
     entity_type: Literal["artist", "album", "client"]
     name: str
@@ -273,6 +295,8 @@ class DataRelationsResponse(BaseModel):
 
 class HistoryItem(BaseModel):
     username: Optional[str] = None
+    track_id: Optional[str] = None
+    album_id: Optional[str] = None
     title: Optional[str] = None
     artist: Optional[str] = None
     album: Optional[str] = None
@@ -546,6 +570,10 @@ class ReviewWeekdayBucket(BaseModel):
 
 
 class ReviewTopItem(BaseModel):
+    artist: Optional[str] = None
+    album: Optional[str] = None
+    artist_id: Optional[str] = None
+    previous_count: Optional[int] = None
     name: Optional[str] = None
     count: int
     total_listen_sec: Optional[int] = None
@@ -575,6 +603,9 @@ class ReviewResponse(BaseModel):
     play_source_counts: dict[str, int] = Field(default_factory=dict)
     unique_tracks: int
     first_recorded_tracks: int = 0
+    new_tracks: list[ReviewTopItem] = Field(default_factory=list)
+    returning_albums: list[ReviewTopItem] = Field(default_factory=list)
+    rising_artist: Optional[ReviewTopItem] = None
     active_days: int
     longest_streak_days: int
     first_played_at: Optional[str] = None

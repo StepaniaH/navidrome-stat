@@ -41,12 +41,12 @@ PAUSE_GRACE_SEC=30
 
 ## 3. 创建 `compose.yaml`
 
-示例固定使用当前稳定版 `v0.9.4`；`latest` 会随稳定版更新。
+示例固定使用当前稳定版 `v0.9.5`；`latest` 会随稳定版更新。
 
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.4
+    image: stepaniah/navidrome-statistic:v0.9.5
     container_name: navidrome-stat
     user: "1000:1000"
     ports:
@@ -105,7 +105,7 @@ docker compose ps
 ## 运行要求
 
 - 同一组数据源只能运行一个 Navidrome Stat 实例。多个实例轮询同一数据源可能导致重复计数。
-- 活跃会话只保存在单个进程中，不支持多 worker 的 Uvicorn 部署。
+- 活跃会话只保存在单个进程中，不支持多 worker 的 Uvicorn 部署。数据库旁的进程锁会在恢复数据或启动采集前拒绝第二个实例。退出或崩溃后操作系统会释放锁，`.lock` 文件会保留；服务运行期间不要删除或替换它。每个实例应使用独立的本地数据库卷，这不是面向网络文件系统的分布式协调机制。
 - SQLite 中的收听记录为未加密存储；已保存的服务器凭据使用随库生成的本地密钥文件（`secret.key`）静态加密，该方案不抵御主机被完全攻陷的情形。
 - 应用本身不提供 TLS。远程访问时应使用可信网络或 HTTPS 反向代理。
 - SQLite 数据目录应放在本机存储上，不支持共享网络文件系统。

@@ -17,9 +17,9 @@ def synthetic_navidrome_env(monkeypatch):
 
 
 @pytest.fixture
-def reset_runtime(monkeypatch, db_path):
+def reset_runtime(monkeypatch, isolated_db):
 
-    monkeypatch.setenv("DATABASE_URL", db_path)
+    monkeypatch.setenv("DATABASE_URL", isolated_db)
     runtime_state.reset()
     session_tracker._sessions.clear()
     collectors._runtime_trackers.clear()

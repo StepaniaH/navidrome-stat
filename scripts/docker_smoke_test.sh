@@ -46,7 +46,7 @@ echo "Smoke endpoint: ${BASE_URL}"
 
 echo "Waiting for /health..."
 for _ in $(seq 1 30); do
-  if python3 -c "import urllib.request; urllib.request.urlopen('${BASE_URL}/health')"; then
+  if python3 -c "import urllib.request; urllib.request.build_opener(urllib.request.ProxyHandler({})).open('${BASE_URL}/health')"; then
     break
   fi
   sleep 1
@@ -54,12 +54,20 @@ done
 
 python3 -c "
 import json
+import urllib.error
 import urllib.request
 
-health = json.load(urllib.request.urlopen('${BASE_URL}/health'))
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+health = json.load(opener.open('${BASE_URL}/health'))
 assert health == {'status': 'ok'}, health
 
-ready = json.load(urllib.request.urlopen('${BASE_URL}/health/ready'))
+try:
+    response = opener.open('${BASE_URL}/health/ready')
+except urllib.error.HTTPError as error:
+    if error.code != 503:
+        raise
+    response = error
+ready = json.load(response)
 assert ready['status'] in ('ready', 'degraded', 'not_ready'), ready
 assert ready['checks']['database'] == 'ok', ready
 print('Smoke test passed:', ready['status'])

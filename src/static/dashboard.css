@@ -1259,6 +1259,9 @@
             white-space: nowrap;
         }
         .review-top-detail { color: var(--app-dim); font-size: 0.75rem; }
+        .review-highlight-help { color: var(--app-dim); font-size: 0.75rem; line-height: 1.5; margin: 0 0 12px; }
+        a.review-top-name:hover { color: var(--app-accent); text-decoration: underline; }
+        a.review-top-name:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 2px; border-radius: 2px; }
 
         .review-empty {
             border: 1px dashed var(--app-border);

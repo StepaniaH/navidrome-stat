@@ -1,6 +1,8 @@
 import { createThemeTokens } from '../charts.js';
+import { dailyAverage } from '../daily-average.js';
 import {
     coverArtUrl,
+    albumCoverUrl,
     escapeHtml,
     formatChangeText,
     formatRecordedDuration,
@@ -110,10 +112,10 @@ export function createHistoricalDashboard({
         const activeDays = Number(summary.active_days) || 0;
         const avgParts = [];
         if (activeDays > 0) avgParts.push(t('summary.activeDays', { count: activeDays }));
-        if (typeof summary.average_daily_plays === 'number'
-            && Number.isFinite(summary.average_daily_plays)) {
+        const average = dailyAverage(summary);
+        if (Number.isFinite(average)) {
             avgParts.push(t('summary.playsPerDay', {
-                count: summary.average_daily_plays.toFixed(1),
+                count: average.toFixed(1),
             }));
         }
         document.getElementById('statActiveDays').textContent = avgParts.join(' · ');
@@ -577,14 +579,15 @@ export function createHistoricalDashboard({
         return fallback;
     }
 
-    function createCoverImage({ sourceId, id, className, onError }) {
-        if (!sourceId || !id) return null;
+    function createCoverImage({ sourceId, id, album, artist, className, onError }) {
+        if (!sourceId || (!id && !album)) return null;
         const image = document.createElement('img');
         image.className = className;
         image.loading = 'lazy';
         image.decoding = 'async';
         image.alt = '';
-        image.src = coverArtUrl({ sourceId, id, size: 300 });
+        image.src = id ? coverArtUrl({ sourceId, id, size: 300 })
+            : albumCoverUrl({ sourceId, album, artist });
         image.addEventListener('error', onError
             ? () => onError(image)
             : () => image.remove());
@@ -642,6 +645,8 @@ export function createHistoricalDashboard({
                 id: panel === 'albums'
                     ? (item.cover_art_id || item.album_id)
                     : item.artist_id,
+                album: panel === 'albums' ? item.album : '',
+                artist: item.artist,
                 className: 'ranking-cover',
                 onError: (image) => image.replaceWith(createRankingFallback(labelValue)),
             });

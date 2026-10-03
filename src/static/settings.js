@@ -10,12 +10,14 @@ import { SUPPORTED_LOCALES } from './js/locales.js';
 import { applyAppVersion } from './js/app-info.js';
 import { pageMessages } from './js/i18n/index.js';
 import { createSelectListbox } from './js/listbox.js';
+import { DAILY_AVERAGE_KEY, dailyAverageMode } from './js/daily-average.js';
 
 const preferenceKeys = Object.freeze({
     language: 'navidrome-language',
     timezone: 'navidrome-timezone',
     motion: 'navidrome-motion',
     artistMode: 'navidrome-artist-mode',
+    dailyAverage: DAILY_AVERAGE_KEY,
 });
 
 const i18n = createI18n({ messages: pageMessages('settings'), fallbackLocale: 'en' });
@@ -117,6 +119,7 @@ function applyLocalPreferences() {
     listboxes.get('artistModeSelect')?.setValue(
         readPreference(preferenceKeys.artistMode, 'combined') === 'separate' ? 'separate' : 'combined',
     );
+    listboxes.get('dailyAverageSelect')?.setValue(dailyAverageMode());
     listboxes.get('settingsTimezoneSelect')?.setValue(
         readPreference(preferenceKeys.timezone, 'browser'),
     );
@@ -200,6 +203,13 @@ function bindPreferenceControls() {
             value, labelKey: `preferences.artistMode.${value}`,
         })),
         onChange: (mode) => writePreference(preferenceKeys.artistMode, mode),
+    });
+    registerSettingsListbox('dailyAverageSelect', {
+        value: dailyAverageMode(),
+        options: ['calendar', 'active'].map((value) => ({
+            value, labelKey: `preferences.dailyAverage.${value}`,
+        })),
+        onChange: (mode) => writePreference(DAILY_AVERAGE_KEY, mode),
     });
     registerSettingsListbox('settingsTimezoneSelect', {
         value: readPreference(preferenceKeys.timezone, 'browser'),

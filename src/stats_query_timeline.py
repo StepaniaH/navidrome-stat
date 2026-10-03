@@ -1,6 +1,6 @@
 """Hourly, daily, and weekday/hour statistics from one history scan."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from src.sqlite import connect_db
 from src.stats_query_common import database_path as _path
@@ -61,18 +61,36 @@ async def get_time_bucket_stats(
         for hour in range(WEEKDAY_HOUR_HOUR_COUNT)
     }
     async with connect_db(path) as db:
-        async with db.execute(
-            f"SELECT played_at FROM play_history WHERE {pred}",
-            params,
-        ) as cursor:
+        # In UTC an hour is an exact calendar bucket. Aggregate before moving
+        # rows across threads; other zones retain precise per-instant conversion
+        # (half-hour offsets and DST can split a UTC hour).
+        grouped_utc = timezone_name == "UTC"
+        utc_hour = "played_at_epoch - ((played_at_epoch % 3600 + 3600) % 3600)"
+        query = (
+            f"SELECT {utc_hour} AS utc_hour, NULL, COUNT(*) FROM play_history "
+            f"WHERE {pred} AND played_at_epoch IS NOT NULL GROUP BY utc_hour "
+            "UNION ALL SELECT NULL, played_at, 1 FROM play_history "
+            f"WHERE {pred} AND played_at_epoch IS NULL"
+            if grouped_utc else f"SELECT NULL, played_at, 1 FROM play_history WHERE {pred}"
+        )
+        async with db.execute(query, params * 2 if grouped_utc else params) as cursor:
             async for row in cursor:
-                local = _played_at_to_local_datetime(row[0], tz)
+                # Older timestamps can be parseable by Python but not SQLite
+                # (for example a compact +0000 offset). Keep their fallback.
+                try:
+                    local = (
+                        datetime.fromtimestamp(row[0], timezone.utc)
+                        if row[0] is not None else _played_at_to_local_datetime(row[1], tz)
+                    )
+                except (OSError, OverflowError, ValueError):
+                    continue
                 if local is None:
                     continue
-                hourly_counts[local.hour] = hourly_counts.get(local.hour, 0) + 1
+                count = row[2]
+                hourly_counts[local.hour] = hourly_counts.get(local.hour, 0) + count
                 local_date = local.date()
-                daily_counts[local_date] = daily_counts.get(local_date, 0) + 1
-                heatmap_counts[(local.weekday(), local.hour)] += 1
+                daily_counts[local_date] = daily_counts.get(local_date, 0) + count
+                heatmap_counts[(local.weekday(), local.hour)] += count
 
     hourly = [{"hour": hour, "count": hourly_counts[hour]} for hour in sorted(hourly_counts)]
     if days <= 0 and (start_date is None or end_date is None):

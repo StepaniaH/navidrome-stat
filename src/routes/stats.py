@@ -7,7 +7,9 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
+from src import config
 from src.auth import current_access_context, enforce_stats_scope
+from src.collection_status import collection_status
 from src.collectors import active_now_playing
 from src.coverart import cover_art_service
 from src.database import (
@@ -26,6 +28,7 @@ from src.database import (
     list_usernames,
     resolve_timezone,
 )
+from src.listening_history import decode_cursor, get_listening_history
 from src.schemas import (
     DAILY_DAYS_DEFAULT,
     DAILY_DAYS_MAX,
@@ -45,12 +48,14 @@ from src.schemas import (
     TOP_LIMIT_MAX,
     TOP_LIMIT_MIN,
     ClientDetailRequest,
+    CollectionStatus,
     DailyStat,
     DashboardSnapshot,
     DataRelationsResponse,
     EntityDetailResponse,
     HistoryItem,
     HourlyStat,
+    ListeningHistoryPage,
     NowPlayingItem,
     PlayerStat,
     ReviewResponse,
@@ -64,6 +69,7 @@ from src.schemas import (
     UsersResponse,
     WeekdayHourStat,
 )
+from src.sqlite import connect_db
 from src.stats_query_entities import EntityIdentity
 from src.stats_query_relations import RelationDimension
 from src.stats_scope import StatsScope
@@ -193,6 +199,64 @@ async def api_cover_art(
         media_type=content_type,
         headers={"Cache-Control": "private, max-age=2592000, immutable"},
     )
+
+
+@router.get("/api/stats/album-cover")
+async def api_album_cover(
+    source_id: str = Query(min_length=1, max_length=128),
+    album: str = Query(min_length=1, max_length=1024),
+    artist: str | None = Query(default=None, max_length=1024),
+    username: str | None = Query(default=None, max_length=128),
+    size: int = Query(default=300, ge=32, le=600),
+):
+    """Resolve a legacy album cover outside the statistics response path."""
+    async def permitted():
+        async with connect_db(config.DATABASE_PATH) as db:
+            async with db.execute(
+                "SELECT 1 FROM play_history WHERE COALESCE(source_id, 'legacy') = ? "
+                "AND album = ? AND (? IS NULL OR artist = ?) "
+                "AND (? IS NULL OR username = ?) LIMIT 1",
+                (source_id, album, artist, artist, username, username),
+            ) as cursor:
+                return await cursor.fetchone() is not None
+    if not await _query_stats(permitted):
+        raise HTTPException(status_code=404, detail="Cover art not available")
+    result = await cover_art_service.load_album(source_id, album, artist, size)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Cover art not available")
+    data, content_type = result
+    return Response(content=data, media_type=content_type,
+                    headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.get("/api/stats/collection-status", response_model=CollectionStatus)
+async def api_collection_status(
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
+):
+    return await _query_stats(lambda: collection_status(source_id))
+
+
+@router.get("/api/stats/listens", response_model=ListeningHistoryPage)
+async def api_listening_history(
+    days: int = Query(default=STATS_DAYS_DEFAULT, ge=0, le=STATS_DAYS_MAX),
+    timezone: str = Query(default=TIMEZONE_DEFAULT),
+    source_id: str | None = Query(default=None, min_length=1, max_length=128),
+    username: str | None = Query(default=None, min_length=1, max_length=128),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    search: str = Query(default="", max_length=256),
+    cursor: str | None = Query(default=None, min_length=1, max_length=128),
+    limit: int = Query(default=50, ge=1, le=100),
+):
+    try:
+        scope = StatsScope.create(days=days, timezone_name=timezone, source_id=source_id,
+                                  username=username, start_date=start_date, end_date=end_date)
+        decode_cursor(cursor)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await _query_stats(lambda: get_listening_history(
+        scope, search=search, cursor=cursor, limit=limit,
+    ))
 
 
 @router.get("/api/stats/dashboard", response_model=DashboardSnapshot)

@@ -14,11 +14,13 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from weakref import WeakKeyDictionary
 
 from src import config
 from src.client import DEFAULT_COVER_ART_MAX_BYTES, NavidromeClient
 from src.config import env_int
 from src.runtime_state import runtime_state
+from src.server_registry import list_servers
 from src.source_config import credentials_for_source
 from src.sqlite import connect_db
 from src.windows import utc_instant
@@ -77,6 +79,8 @@ class CoverArtService:
         max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
         client_factory=None,
         now=None,
+        request_timeout_sec: float = 5,
+        queue_timeout_sec: float = 15,
     ):
         self._cache_dir = Path(cache_dir) if cache_dir else None
         self._max_bytes = max_bytes
@@ -87,6 +91,9 @@ class CoverArtService:
         self._locks_guard = asyncio.Lock()
         self._cache_io_guard = threading.RLock()
         self._tracked_bytes: int | None = None
+        self._request_slots = WeakKeyDictionary()
+        self._request_timeout_sec = request_timeout_sec
+        self._queue_timeout_sec = queue_timeout_sec
         runtime_state.set_coverart_cache_limit(max_bytes)
 
     def cache_dir(self) -> Path:
@@ -125,6 +132,15 @@ class CoverArtService:
 
     async def _client_for(self, source_id: str):
         credentials = await credentials_for_source(source_id)
+        if credentials is None and source_id == "legacy":
+            servers = await list_servers()
+            if len(servers) == 1:
+                server = servers[0]
+                credentials = {
+                    "url": server["url"],
+                    "user": server["username"],
+                    "password": server["password"],
+                }
         if credentials is None:
             return None
         return self._client_factory(
@@ -134,6 +150,31 @@ class CoverArtService:
         )
 
     async def load(self, source_id: str, item_id: str, size: int):
+        return await self._load(source_id, item_id, size)
+
+    async def load_album(self, source_id: str, album: str, artist: str | None, size: int):
+        """Resolve missing legacy metadata only when an image is requested."""
+        async with self._key_lock(f"album:{source_id}:{album_key(album, artist)}"):
+            item_id = await self.resolve_album_id(source_id, album, artist)
+        return await self._load(source_id, item_id, size) if item_id else None
+
+    async def _bounded_request(self, fetch):
+        loop = asyncio.get_running_loop()
+        with self._cache_io_guard:
+            slots = self._request_slots.setdefault(loop, asyncio.Semaphore(4))
+        try:
+            await asyncio.wait_for(slots.acquire(), timeout=self._queue_timeout_sec)
+        except TimeoutError:
+            return None
+        try:
+            async with asyncio.timeout(self._request_timeout_sec):
+                return await fetch()
+        except TimeoutError:
+            return None
+        finally:
+            slots.release()
+
+    async def _load(self, source_id: str, item_id: str, size: int):
         """Return ``(bytes, content_type)`` for an item's cover, or None."""
         path = await asyncio.to_thread(self._path_for, source_id, item_id, size)
         async with self._key_lock(path.name):
@@ -151,7 +192,7 @@ class CoverArtService:
                 cache_bytes=await asyncio.to_thread(self._cache_bytes),
                 limit_bytes=self._max_bytes,
             )
-            fetched = await self._fetch(source_id, item_id, size)
+            fetched = await self._bounded_request(lambda: self._fetch(source_id, item_id, size))
             if fetched is None:
                 return None
             data, _upstream_content_type = fetched
@@ -239,15 +280,9 @@ class CoverArtService:
             if now - attempted_at < NEGATIVE_TTL:
                 return None
 
-        client = await self._client_for(source_id)
-        if client is None:
+        albums = await self._bounded_request(lambda: self._search_album(source_id, album.strip()))
+        if albums is None:
             return None
-        try:
-            albums = await client.search3(album.strip())
-        except Exception:
-            return None
-        finally:
-            await client.close()
 
         wanted = album.strip().casefold()
         artist_wanted = (artist or "").strip().casefold()
@@ -262,6 +297,17 @@ class CoverArtService:
         album_id = str(match.get("id", "")) if match else ""
         await self._save_map(source_id, key, album_id, now)
         return album_id or None
+
+    async def _search_album(self, source_id: str, album: str):
+        client = await self._client_for(source_id)
+        if client is None:
+            return None
+        try:
+            return await client.search3(album)
+        except Exception:
+            return None
+        finally:
+            await client.close()
 
     @staticmethod
     async def _lookup_map(source_id: str, key: str):

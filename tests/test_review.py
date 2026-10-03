@@ -255,30 +255,19 @@ async def test_review_top_tracks_carry_source_id(seeded_db, isolated_db):
 
 
 @pytest.mark.asyncio
-async def test_review_albums_stamp_single_server_source(seeded_db, isolated_db, monkeypatch):
-    year = seeded_db
-    async def fake_list_server_options():
-        return [{"id": "srv-1", "display_name": "Main"}]
-    monkeypatch.setattr(stats_service_module, "list_server_options", fake_list_server_options)
+@pytest.mark.parametrize("server_count", [0, 1, 2])
+async def test_review_preserves_recorded_album_source(seeded_db, isolated_db, server_count):
+    from src.sqlite import connect_db
+    async with connect_db(isolated_db) as db:
+        for index in range(server_count):
+            await db.execute(
+                "INSERT INTO servers (id, display_name, url, username, password, enabled, created_at, updated_at) "
+                "VALUES (?, ?, 'https://example.invalid', 'synthetic', '', 0, '', '')",
+                (f'server-{index}', f'Server {index}'),
+            )
+        await db.commit()
     service = stats_service_module.StatsService(cache=FakeCache(), retry_attempts=1)
-    review = await service.review(year=year, timezone_name="UTC", source_id=None)
+    review = await service.review(year=seeded_db, timezone_name="UTC")
     assert review["top_albums"]
-    for entry in review["top_albums"]:
-        assert entry["source_id"] == "srv-1"
-
-
-@pytest.mark.asyncio
-async def test_review_albums_source_id_null_without_effective_source(seeded_db, isolated_db, monkeypatch):
-    year = seeded_db
-    async def fake_list_server_options():
-        return [
-            {"id": "srv-1", "display_name": "Main"},
-            {"id": "srv-2", "display_name": "Second"},
-        ]
-    monkeypatch.setattr(stats_service_module, "list_server_options", fake_list_server_options)
-    service = stats_service_module.StatsService(cache=FakeCache(), retry_attempts=1)
-    review = await service.review(year=year, timezone_name="UTC", source_id=None)
-    assert review["top_albums"]
-    for entry in review["top_albums"]:
-        assert entry["source_id"] is None
-        assert entry["album_id"] is None
+    assert all(entry["source_id"] == "legacy" for entry in review["top_albums"])
+    assert all(entry["album_id"] is None for entry in review["top_albums"])

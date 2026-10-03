@@ -21,7 +21,7 @@ The published container disables request access logs so dashboard filters, usern
 
 ## Update
 
-For a pinned deployment, first change the image tag in `compose.yaml` to the desired release, then run the commands below. Leaving `v0.9.4` unchanged keeps that version; `latest` follows the newest stable release.
+For a pinned deployment, first change the image tag in `compose.yaml` to the desired release, then run the commands below. Leaving `v0.9.5` unchanged keeps that version; `latest` follows the newest stable release.
 
 ```bash
 docker compose pull

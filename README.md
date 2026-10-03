@@ -52,7 +52,7 @@ Screenshots use synthetic demo data.
 
 ## Quick start
 
-You need Docker Compose v2 and a Navidrome account accessible from the container. The example uses the current stable release, [v0.9.4](https://github.com/StepaniaH/navidrome-stat/releases/tag/v0.9.4).
+You need Docker Compose v2 and a Navidrome account accessible from the container. The example uses the current stable release, [v0.9.5](https://github.com/StepaniaH/navidrome-stat/releases/tag/v0.9.5).
 
 Create a directory containing these two files. In `.env`, replace the example values and choose a long, random dashboard token:
 
@@ -68,7 +68,7 @@ Save the following as `compose.yaml`:
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.4
+    image: stepaniah/navidrome-statistic:v0.9.5
     container_name: navidrome-stat
     ports:
       - "39421:39421"

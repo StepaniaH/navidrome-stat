@@ -137,6 +137,26 @@
                         <ol id="reviewTopTracks" class="review-top-list" role="list"></ol>
                     </section>
                 </div>
+                <div class="review-tops-row">
+                    <section class="review-top-card" aria-labelledby="reviewNewTracksHeading">
+                        <h2 id="reviewNewTracksHeading" class="review-chart-title" data-i18n="review.newTracks">First recorded this period</h2>
+                        <p class="review-highlight-help" data-i18n="review.newTracksHelp">First appearance in saved history, ranked by plays this period.</p>
+                        <ol id="reviewNewTracks" class="review-top-list"></ol>
+                        <p id="reviewNewTracksEmpty" class="review-highlight-help" data-i18n="review.highlightEmpty" hidden>No matching records this period.</p>
+                    </section>
+                    <section class="review-top-card" aria-labelledby="reviewReturningAlbumsHeading">
+                        <h2 id="reviewReturningAlbumsHeading" class="review-chart-title" data-i18n="review.returningAlbums">Returning albums</h2>
+                        <p class="review-highlight-help" data-i18n="review.returningAlbumsHelp">Recorded again after a gap of at least 90 days.</p>
+                        <ol id="reviewReturningAlbums" class="review-top-list"></ol>
+                        <p id="reviewReturningAlbumsEmpty" class="review-highlight-help" data-i18n="review.highlightEmpty" hidden>No matching records this period.</p>
+                    </section>
+                    <section class="review-top-card" aria-labelledby="reviewRisingArtistHeading">
+                        <h2 id="reviewRisingArtistHeading" class="review-chart-title" data-i18n="review.risingArtist">Biggest increase among the top 10 artists</h2>
+                        <p class="review-highlight-help" data-i18n="review.risingArtistHelp">Largest increase in plays over the previous period.</p>
+                        <ol id="reviewRisingArtist" class="review-top-list"></ol>
+                        <p id="reviewRisingArtistEmpty" class="review-highlight-help" data-i18n="review.risingNone" hidden>No positive increase or no previous-period records.</p>
+                    </section>
+                </div>
             </section>
 
             <section id="reviewError" class="review-empty hidden" role="alert">

@@ -8,6 +8,7 @@ import pytest
 
 import src.stats_service as stats_module
 from src.auth import AccessContext, bind_access_context, reset_access_context
+from src.coverart import cover_art_service
 from src.stats_query_entities import EntityIdentity
 from src.stats_scope import StatsScope
 from src.stats_service import StatsService
@@ -50,7 +51,6 @@ def restore_module_symbols():
             "delete_user_data",
             "save_server",
             "delete_server",
-            "list_server_options",
         )
     }
     yield
@@ -327,7 +327,7 @@ async def test_entity_detail_uses_scope_and_identity_in_cache_key(cache, service
 
 
 @pytest.mark.asyncio
-async def test_legacy_album_detail_resolves_cover_without_changing_identity(
+async def test_legacy_album_detail_never_waits_for_upstream_cover(
     cache, service, monkeypatch
 ):
     payload = {
@@ -337,7 +337,7 @@ async def test_legacy_album_detail_resolves_cover_without_changing_identity(
     }
     service._read_repository.entity_detail = AsyncMock(return_value=payload)
     lookup = AsyncMock(return_value="resolved-cover-id")
-    monkeypatch.setattr(stats_module.cover_art_service, "resolve_album_id", lookup)
+    monkeypatch.setattr(cover_art_service, "resolve_album_id", lookup)
     scope = StatsScope.create(days=30, timezone_name="UTC", metric="plays")
     identity = EntityIdentity.create(
         entity_type="album",
@@ -349,8 +349,8 @@ async def test_legacy_album_detail_resolves_cover_without_changing_identity(
     result = await service.entity_detail(scope, identity)
 
     assert result["entity_id"] is None
-    assert result["cover_art_id"] == "resolved-cover-id"
-    lookup.assert_awaited_once_with("server-1", "Legacy Album", "Artist A")
+    assert result["cover_art_id"] is None
+    lookup.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -399,7 +399,7 @@ async def test_dashboard_keeps_local_stats_when_album_art_lookup_fails(cache, se
         }
     )
     lookup = AsyncMock(side_effect=ValueError("upstream credentials unavailable"))
-    monkeypatch.setattr(stats_module.cover_art_service, "resolve_album_id", lookup)
+    monkeypatch.setattr(cover_art_service, "resolve_album_id", lookup)
 
     result = await service.dashboard(StatsScope.create(
         days=30,
@@ -415,15 +415,14 @@ async def test_dashboard_keeps_local_stats_when_album_art_lookup_fails(cache, se
             "count": 3,
             "total_listen_sec": 120,
             "value": 3,
-            "album_id": None,
             "cover_art_id": None,
         }
     ]
-    lookup.assert_awaited_once_with("server-1", "Local Album", None)
+    lookup.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_dashboard_keeps_legacy_album_identity_when_cover_art_is_resolved(
+async def test_dashboard_defers_legacy_album_cover_to_image_request(
     cache, service, monkeypatch
 ):
     service._read_repository.dashboard = AsyncMock(
@@ -450,10 +449,10 @@ async def test_dashboard_keeps_legacy_album_identity_when_cover_art_is_resolved(
         }
     )
     lookup = AsyncMock(return_value="resolved-cover-id")
-    monkeypatch.setattr(stats_module.cover_art_service, "resolve_album_id", lookup)
+    monkeypatch.setattr(cover_art_service, "resolve_album_id", lookup)
 
     result = await service.dashboard(StatsScope.create(days=30, timezone_name="UTC"))
 
     assert result["top_albums"][0]["album_id"] is None
-    assert result["top_albums"][0]["cover_art_id"] == "resolved-cover-id"
-    lookup.assert_awaited_once_with("server-1", "Legacy Album", "Artist A")
+    assert result["top_albums"][0]["cover_art_id"] is None
+    lookup.assert_not_awaited()

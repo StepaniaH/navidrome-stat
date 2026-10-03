@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from src import collectors
+from src import collectors, config
 from src.auth import (
     AccessContext,
     authorization_context,
@@ -26,6 +26,7 @@ from src.auth import (
 )
 from src.config import env_flag
 from src.database import init_db
+from src.instance_lock import database_instance_lock
 from src.listenbrainz_ingest import load_ingest_config
 from src.privacy_ops import IMPORT_MAX_PAYLOAD_BYTES
 from src.request_limits import PrivacyImportBodyLimitMiddleware
@@ -48,30 +49,30 @@ OPENAPI_ENABLED = env_flag("OPENAPI_ENABLED", default=True)
 async def lifespan(app: FastAPI):
     ingest_config = load_ingest_config()
     validate_auth_configuration(ingest_config.token if ingest_config else None)
-    logger.info("Initializing database...")
-    await init_db()
-    await run_startup_retention_purge()
-
-    retention_task = asyncio.create_task(retention_maintenance_loop())
-    try:
-        await collectors.reconcile_collectors()
-    except Exception as exc:
-        runtime_state.client_initialized = False
-        logger.error(
-            "Collector initialization failed (type=%s)",
-            type(exc).__name__,
-        )
-
-    yield
-
-    logger.info("Shutting down background task...")
-    retention_task.cancel()
-    try:
-        await retention_task
-    except asyncio.CancelledError:
-        logger.info("Retention maintenance task cancelled.")
-    await collectors.collector_manager.stop_all()
-    runtime_state.polling_task = None
+    with database_instance_lock(config.DATABASE_PATH):
+        logger.info("Initializing database...")
+        await init_db()
+        await run_startup_retention_purge()
+        retention_task = asyncio.create_task(retention_maintenance_loop())
+        try:
+            try:
+                await collectors.reconcile_collectors()
+            except Exception as exc:
+                runtime_state.client_initialized = False
+                logger.error("Collector initialization failed (type=%s)", type(exc).__name__)
+            yield
+        finally:
+            logger.info("Shutting down background task...")
+            retention_task.cancel()
+            try:
+                await retention_task
+            except asyncio.CancelledError:
+                logger.info("Retention maintenance task cancelled.")
+            finally:
+                try:
+                    await collectors.collector_manager.stop_all()
+                finally:
+                    runtime_state.polling_task = None
 
 
 app = FastAPI(
@@ -116,7 +117,7 @@ def _viewer_path_allowed(request: Request) -> bool:
     """Limit viewer requests to read-only statistics endpoints."""
 
     path = request.url.path
-    if path in {"/", "/review", "/review/", "/api/about", "/api/auth/logout"}:
+    if path in {"/", "/review", "/review/", "/history", "/history/", "/api/about", "/api/auth/logout"}:
         return True
     if path.startswith("/static/"):
         return True
@@ -233,6 +234,11 @@ async def root():
     if os.path.exists(index_file):
         return FileResponse(index_file)
     return {"message": "Dashboard not found"}
+
+
+@app.get("/history")
+async def history_page():
+    return FileResponse(os.path.join(STATIC_DIR, "history.html"))
 
 
 @app.get("/review")
