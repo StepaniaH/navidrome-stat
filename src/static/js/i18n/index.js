@@ -6,18 +6,20 @@ import de from './locales/de.js';
 import en from './locales/en.js';
 import es from './locales/es.js';
 import fr from './locales/fr.js';
+import ru from './locales/ru.js';
 import ja from './locales/ja.js';
 import zhCN from './locales/zh-CN.js';
 import zhTW from './locales/zh-TW.js';
 
 const localeModules = {
-    'zh-CN': zhCN,
-    'zh-TW': zhTW,
     en,
-    ja,
     de,
     es,
+    ru,
     fr,
+    ja,
+    'zh-CN': zhCN,
+    'zh-TW': zhTW,    
 };
 
 export function pageMessages(...domains) {
