@@ -1029,7 +1029,8 @@ import {
             history.render(lastStatsSnapshot.history, { showSources: !selectedSourceId });
             history.updateFirstUse(lastStatsSnapshot);
         }
-        entityDetail.restore();
+        // Client details have no URL state and may already be open.
+        if (getFilters().entityType) entityDetail.restore();
         scheduleRefresh();
     }
 

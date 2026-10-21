@@ -439,6 +439,14 @@ test("cross analysis charts share dimension, metric, and URL state", async ({ pa
 });
 
 test("client rows and relationship cells open detail without exposing the name in URLs", async ({ page }) => {
+  let releaseUserOptions;
+  const userOptionsReady = new Promise((resolve) => {
+    releaseUserOptions = resolve;
+  });
+  await page.route("**/api/stats/users", async (route) => {
+    await userOptionsReady;
+    await route.fulfill({ json: { users: ["Synthetic User"] } });
+  });
   const clientRequests = [];
   page.on("request", (request) => {
     if (request.url().includes("/api/stats/client-detail")) {
@@ -460,6 +468,12 @@ test("client rows and relationship cells open detail without exposing the name i
     timezone: "UTC",
   });
   await expect(page.locator("#entityTopTracks")).toContainText("Synthetic Artist");
+  // Finish bootstrap after the client detail is already open.
+  const userOptionsResponse = page.waitForResponse("**/api/stats/users");
+  releaseUserOptions();
+  await userOptionsResponse;
+  await expect(page.locator('#statsUserMenu [data-username="Synthetic User"]')).toHaveCount(1);
+  await expect(page.locator("#entityDetailLayer")).toBeVisible();
   await page.locator("#entityDetailClose").click();
   await expect(page.locator("#entityDetailLayer")).toBeHidden();
 
