@@ -780,7 +780,8 @@ def test_all_server_rows_render_source_badges_safely(now_playing_source, history
     assert "innerHTML" not in badge
 
 
-def test_dashboard_accessible_labels_are_bilingual(source, catalog_source):
+def test_dashboard_accessible_labels_have_english_fallback(source):
+    english = (LOCALES_DIR / "en.js").read_text(encoding="utf-8")
     for key in (
         "aria.windowListbox",
         "aria.sourceListbox",
@@ -794,7 +795,7 @@ def test_dashboard_accessible_labels_are_bilingual(source, catalog_source):
         "label.directPlay",
         "label.transcoded",
     ):
-        assert catalog_source.count(f"['{key}',") >= 2
+        assert f"['{key}'," in english
     assert 'id="loginOverlay"' in source
     assert 'role="dialog"' in source
     assert 'aria-modal="true"' in source
@@ -853,10 +854,9 @@ def test_history_column_visibility_persisted_with_min_one_rule(source):
     assert "column-hidden" in source
 
 
-def test_history_column_menu_messages_exist_in_all_locales():
-    for locale_file in sorted(LOCALES_DIR.glob("*.js")):
-        catalog = locale_file.read_text(encoding="utf-8")
-        assert "['history.columns'," in catalog, locale_file.name
+def test_history_column_menu_has_english_fallback():
+    english = (LOCALES_DIR / "en.js").read_text(encoding="utf-8")
+    assert "['history.columns'," in english
 
 
 def test_header_shows_brand_name_and_live_version(source):

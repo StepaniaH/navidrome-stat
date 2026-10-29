@@ -86,7 +86,7 @@ Review the complete lock-file diff and rerun the backend checks after refreshing
 - Keep each change focused and add tests for changed behavior.
 - Update the relevant bilingual [user guides](docs/README.md) when setup, configuration, collection, or dashboard behavior changes. Update both READMEs if the overview or quick start is affected.
 - Update [`docs/privacy.md`](docs/privacy.md) when stored data, logging, retention, export, or authentication behavior changes.
-- Follow [`docs/translations.md`](docs/translations.md) when adding a locale or changing localized interface keys.
+- Follow [`docs/translations.md`](docs/translations.md) when adding a locale or changing localized interface keys. English is the source language; community translations can be updated in separate pull requests.
 - Run `python3 scripts/check_md_links.py` after editing Markdown files.
 
 ## Privacy

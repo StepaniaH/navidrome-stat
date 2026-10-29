@@ -195,6 +195,41 @@ test("custom listboxes support keyboard selection and preferences persist", asyn
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });
 
+test("Russian selection persists and missing translations fall back to English", async ({ page }) => {
+  await page.route("**/static/js/i18n/locales/ru.js", async (route) => {
+    const response = await route.fetch();
+    const source = await response.text();
+    const missingEntries = ["['preferences.languageHelp',", "['localeName.ru',"];
+    for (const entry of missingEntries) expect(source).toContain(entry);
+    const incomplete = source.split("\n").filter((line) => (
+      !missingEntries.some((entry) => line.includes(entry))
+    )).join("\n");
+    await route.fulfill({ response, body: incomplete });
+  });
+
+  await page.goto("/settings#preferences");
+  await page.locator("#languageSelectButton").click();
+  const russian = page.locator('#languageSelectMenu [data-value="ru"]');
+  await expect(russian.locator(".settings-option-label")).toHaveText("Русский");
+  await expect(russian.locator(".settings-option-subtitle")).toHaveText("Russian");
+  await russian.click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru");
+  await expect(page.locator('[data-i18n="page.heading"]')).toHaveText("Настройки");
+  await expect(page.locator('[data-i18n="preferences.languageHelp"]')).toHaveText(
+    "Changes the settings and statistics pages immediately.",
+  );
+  await page.locator("#languageSelectButton").click();
+  await expect(russian.locator(".settings-option-subtitle")).toHaveText("Russian");
+  await page.keyboard.press("Escape");
+
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru");
+  await expect(page.locator("#languageSelectButton")).toContainText("Русский");
+  await expect(page.locator('[data-i18n="preferences.languageHelp"]')).toHaveText(
+    "Changes the settings and statistics pages immediately.",
+  );
+});
+
 test("system mode follows the OS and resolves every palette in both schemes", async ({
   page,
 }) => {
