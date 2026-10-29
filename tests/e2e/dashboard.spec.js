@@ -4,8 +4,6 @@ const delay = (milliseconds) => new Promise((resolve) => {
   setTimeout(resolve, milliseconds);
 });
 
-const dashboardLocales = ["de", "en", "es", "fr", "ja", "zh-CN", "zh-TW"];
-
 async function dashboardOverflowReport(page) {
   return page.evaluate(() => {
     const root = document.documentElement;
@@ -485,6 +483,10 @@ test("all dashboard locales stay contained at desktop and mobile widths", async 
     "ready",
   );
 
+  const dashboardLocales = await page.evaluate(async () => {
+    const { LOCALE_CODES } = await import("/static/js/locales.js");
+    return LOCALE_CODES;
+  });
   for (const locale of dashboardLocales) {
     await page.setViewportSize({ width: 1280, height: 1000 });
     await page.evaluate((nextLocale) => {

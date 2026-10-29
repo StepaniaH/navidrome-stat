@@ -42,7 +42,7 @@ Choose system, light, or dark mode independently of the palette. Nine familiesâ€
 
 Advanced appearance settings let you adjust six core colors with live preview, contrast checks, HEX copying, and protection for unsaved changes. Import or export one preset's custom colors as JSON. Preferences stay in the browser and apply to the dashboard, Listening Review, settings, and API reference.
 
-The interface supports English, Simplified Chinese, Traditional Chinese, Japanese, German, Spanish, and French.
+The interface supports English, Simplified Chinese, Traditional Chinese, Japanese, German, Spanish, French, and Russian.
 
 ## Connections, access, and data controls
 

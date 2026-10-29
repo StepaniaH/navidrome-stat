@@ -594,5 +594,6 @@ export default {
         ['localeName.ja', '日語'],
         ['localeName.es', '西班牙語'],
         ['localeName.fr', '法語'],
+        ['localeName.ru', '俄語'],
     ],
 };
