@@ -588,6 +588,7 @@ export default {
         ['localeName.ja', 'Japanisch'],
         ['localeName.es', 'Spanisch'],
         ['localeName.fr', 'Französisch'],
+        ['localeName.ru', 'Russisch'],
         ['localeName.de', 'Deutsch'],
     ],
 };

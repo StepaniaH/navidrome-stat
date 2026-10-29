@@ -9,6 +9,7 @@ import fr from './locales/fr.js';
 import ja from './locales/ja.js';
 import zhCN from './locales/zh-CN.js';
 import zhTW from './locales/zh-TW.js';
+import ru from './locales/ru.js';
 
 const localeModules = {
     'zh-CN': zhCN,
@@ -18,6 +19,7 @@ const localeModules = {
     de,
     es,
     fr,
+    ru,
 };
 
 export function pageMessages(...domains) {

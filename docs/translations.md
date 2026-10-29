@@ -1,6 +1,6 @@
 # Adding an interface language
 
-The interface ships seven languages (Simplified Chinese, Traditional Chinese, English, Japanese, German, Spanish, French). New languages are one module plus two registrations; tests catch anything missed.
+The interface ships eight languages (Simplified Chinese, Traditional Chinese, English, Japanese, German, Spanish, French, Russian). New languages use one module, two registrations, and a label in each existing language; tests catch anything missed.
 
 ## Steps
 
@@ -25,6 +25,7 @@ The interface ships seven languages (Simplified Chinese, Traditional Chinese, En
 
 2. Register the module in `src/static/js/i18n/index.js` (import + one entry in `localeModules`).
 3. Register the code in `src/static/js/locales.js` (`SUPPORTED_LOCALES`) with its native name; the settings page picker renders from this list.
+4. Add `localeName.<code>` to the settings table in every locale, including English and the new language. These labels appear below the native names in the picker.
 
 ## Theme key conventions
 

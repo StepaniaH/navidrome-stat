@@ -163,9 +163,11 @@ test("custom listboxes support keyboard selection and preferences persist", asyn
   await languageButton.focus();
   await languageButton.press("ArrowDown");
   await expect(languageButton).toHaveAttribute("aria-expanded", "true");
+  const lastLocale = await page.locator('#languageSelectMenu [role="option"]').last().getAttribute("data-value");
+  expect(lastLocale).toBeTruthy();
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
-  await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+  await expect(page.locator("html")).toHaveAttribute("lang", lastLocale);
   await expect(languageButton).toHaveAttribute("aria-expanded", "false");
 
   await page.locator('#themeModePicker input[value="light"]').check();
@@ -179,7 +181,7 @@ test("custom listboxes support keyboard selection and preferences persist", asyn
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "latte");
   await expect(page.locator("html")).toHaveAttribute("data-motion", "reduced");
-  await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+  await expect(page.locator("html")).toHaveAttribute("lang", lastLocale);
   await expect(page.locator("#settingsTimezoneSelectButton")).toContainText(
     "UTC",
   );

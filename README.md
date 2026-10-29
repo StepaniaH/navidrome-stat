@@ -38,7 +38,7 @@ Navidrome Stat collects activity reported to your Navidrome server and stores it
 - **Monthly and yearly Listening Review** — listening streaks, top lists, time-of-day patterns, and tracks first recorded in that period.
 - **Flexible artist credits** — show collaborating artists together or credit them separately while keeping overall play totals consistent.
 - **Control access and data** — administrator and read-only viewer tokens, optional server/user restrictions, retention settings, and per-user JSON export, import, and deletion.
-- **Make it yours** — seven languages, nine palette families with light and dark variants, custom colors, and layouts for desktop and mobile.
+- **Make it yours** — eight languages, nine palette families with light and dark variants, custom colors, and layouts for desktop and mobile.
 - **Run it on your own server** — Docker images for amd64 and arm64, locally served frontend assets, no usage telemetry, and optional ListenBrainz-compatible ingestion.
 
 ## Screenshots
