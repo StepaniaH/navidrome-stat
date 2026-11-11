@@ -120,7 +120,7 @@ async def test_review_top_lists(seeded_db, isolated_db):
 @pytest.mark.asyncio
 async def test_review_respects_timezone_day_buckets(seeded_db, isolated_db):
     # 22:00 UTC is already the next day in UTC+2, moving that play out of hour 22.
-    review = await get_review_summary(seeded_db, "Europe/Kiev", db_path=isolated_db)
+    review = await get_review_summary(seeded_db, "Europe/Kyiv", db_path=isolated_db)
     hourly = {entry["hour"]: entry["count"] for entry in review["hourly"]}
     assert hourly.get(22, 0) <= 1
 
