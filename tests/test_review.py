@@ -1,6 +1,7 @@
 """Listening Review aggregation."""
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -123,6 +124,34 @@ async def test_review_respects_timezone_day_buckets(seeded_db, isolated_db):
     review = await get_review_summary(seeded_db, "Europe/Kyiv", db_path=isolated_db)
     hourly = {entry["hour"]: entry["count"] for entry in review["hourly"]}
     assert hourly.get(22, 0) <= 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("old,current", [
+    ("Europe/Kiev", "Europe/Kyiv"),
+    ("Asia/Calcutta", "Asia/Kolkata"),
+    ("Asia/Saigon", "Asia/Ho_Chi_Minh"),
+    ("Asia/Rangoon", "Asia/Yangon"),
+    ("Asia/Katmandu", "Asia/Kathmandu"),
+    ("Asia/Ulan_Bator", "Asia/Ulaanbaatar"),
+    ("Asia/Macao", "Asia/Macau"),
+])
+async def test_review_renamed_timezone_matches_all_buckets(
+    seeded_db, isolated_db, monkeypatch, old, current,
+):
+    def without_legacy_link(name):
+        if name == old:
+            raise ZoneInfoNotFoundError(name)
+        return ZoneInfo(name)
+
+    monkeypatch.setattr("src.windows.ZoneInfo", without_legacy_link)
+    legacy = await get_review_summary(seeded_db, old, db_path=isolated_db)
+    canonical = await get_review_summary(seeded_db, current, db_path=isolated_db)
+    # The response keeps the requested name; every actual statistic must agree.
+    assert legacy.pop("timezone") == old
+    assert canonical.pop("timezone") == current
+    assert legacy["total_plays"] > 0
+    assert legacy == canonical
 
 
 @pytest.mark.asyncio

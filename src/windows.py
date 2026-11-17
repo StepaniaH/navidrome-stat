@@ -6,21 +6,42 @@ transitions keep their day boundaries.
 """
 
 from datetime import date, datetime, time, timedelta, timezone
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from src.schema import LEGACY_SOURCE_ID
 
 TIMEZONE_DEFAULT = "UTC"
 
+# Renames for the same location, not guesses or merged-zone aliases.
+# Source: https://data.iana.org/time-zones/tzdb/backward
+_TIMEZONE_RENAMES = {
+    "Europe/Kiev": "Europe/Kyiv",
+    "Asia/Calcutta": "Asia/Kolkata",
+    "Asia/Saigon": "Asia/Ho_Chi_Minh",
+    "Asia/Rangoon": "Asia/Yangon",
+    "Asia/Katmandu": "Asia/Kathmandu",
+    "Asia/Ulan_Bator": "Asia/Ulaanbaatar",
+    "Asia/Macao": "Asia/Macau",
+}
+
 
 def resolve_timezone(timezone_name: str | None) -> ZoneInfo:
     """Resolve an IANA timezone name, normalizing unknown names to ``ValueError``.
 
-    The name is used only for Python date arithmetic, never SQL construction.
+    If the installed tzdata omits a renamed location's backward link, retry
+    its current name. Existing names retain their installed rules. The name
+    is used only for Python date arithmetic, never SQL construction.
     """
+    name = timezone_name or TIMEZONE_DEFAULT
     try:
-        return ZoneInfo(timezone_name or TIMEZONE_DEFAULT)
-    except KeyError as exc:
+        try:
+            return ZoneInfo(name)
+        except ZoneInfoNotFoundError:
+            current_name = _TIMEZONE_RENAMES.get(name)
+            if current_name is None:
+                raise
+            return ZoneInfo(current_name)
+    except ZoneInfoNotFoundError as exc:
         raise ValueError(str(exc)) from exc
 
 
