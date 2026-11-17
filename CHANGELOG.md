@@ -8,6 +8,10 @@ All notable user-facing changes are documented in this file. The format follows 
 
 - Unraid Docker Manager template, Community Applications repository metadata, and English and Simplified Chinese installation guides.
 
+### Fixed
+
+- A few older time zone spellings, such as Europe/Kiev, are accepted again instead of returning a validation error.
+
 ## [0.9.5] - 2026-10-03
 
 ### Added

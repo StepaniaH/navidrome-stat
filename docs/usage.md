@@ -6,6 +6,8 @@
 
 Choose a date range, timezone, server, and user to scope the dashboard. Filters persist in the URL, so reloading or copying a link retains the selected view. A link does not grant access: the recipient still needs the appropriate credential when authentication is configured.
 
+Time zones use the IANA names a device reports. A few older spellings, such as Europe/Kiev, are still accepted; other unrecognised names are reported as invalid.
+
 Now Playing shows activity reported by Navidrome. History, totals, hourly and daily trends, the weekday × hour heatmap, and rankings use the stored records. History, rankings, and now-playing cards display cover art through the application's authenticated, cached proxy.
 
 Recent Plays lets you choose visible columns separately for desktop and mobile; the choices stay in the browser. Its information control explains sessions that ended before the play threshold. See [collection and counting](collection.md) for what contributes to play counts and listening time.
