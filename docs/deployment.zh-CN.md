@@ -9,6 +9,7 @@
 - Docker Engine 与 Docker Compose v2
 - 容器能够访问每个 Navidrome 服务器
 - 拥有可调用 Subsonic API 的 Navidrome 账户
+- 仪表盘需要较新的浏览器：内置样式表使用 Chrome 111、Safari 16.4、Firefox 128 及以上版本支持的 CSS 特性
 
 ## 1. 创建部署目录
 

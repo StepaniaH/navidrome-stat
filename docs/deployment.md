@@ -9,6 +9,7 @@ For Unraid's Docker Manager, use the [Unraid installation guide](unraid.md).
 - Docker Engine with Docker Compose v2
 - Network access from the container to each Navidrome server
 - A Navidrome account that can call the Subsonic API
+- A current browser for the dashboard: the bundled stylesheet uses CSS available in Chrome 111, Safari 16.4 and Firefox 128 or newer
 
 ## 1. Create a deployment directory
 

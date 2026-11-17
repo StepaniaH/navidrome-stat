@@ -8,6 +8,10 @@ All notable user-facing changes are documented in this file. The format follows 
 
 - Unraid Docker Manager template, Community Applications repository metadata, and English and Simplified Chinese installation guides.
 
+### Changed
+
+- Bundled styles are built with Tailwind CSS 4. The dashboard now needs Chrome 111, Safari 16.4 or Firefox 128 and later; older browsers may render it without styling.
+
 ### Fixed
 
 - A few older time zone spellings, such as Europe/Kiev, are accepted again instead of returning a validation error.
