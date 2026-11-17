@@ -4,6 +4,22 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Keep the existing page colors instead of adopting v4's new palette.
+        slate: {
+          100: "#f1f5f9",
+          200: "#e2e8f0",
+          300: "#cbd5e1",
+          400: "#94a3b8",
+          500: "#64748b",
+          600: "#475569",
+          700: "#334155",
+        },
+        red: {
+          300: "#fca5a5",
+          400: "#f87171",
+          500: "#ef4444",
+          950: "#450a0a",
+        },
         ink: {
           950: "#0a0a0f",
           900: "#12121a",
@@ -19,6 +35,9 @@ module.exports = {
           DEFAULT: "#34d399",
           dim: "#059669",
         },
+      },
+      blur: {
+        sm: "4px",
       },
       fontFamily: {
         display: ['"SF Pro Display"', "ui-sans-serif", "system-ui", "sans-serif"],

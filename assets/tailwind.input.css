@@ -1,3 +1,28 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss" source(none);
+@config "../tailwind.config.js";
+@source "../src/static/**/*.html";
+@source "../src/static/**/*.js";
+
+/* Preserve the v3 defaults used by the existing pages during the v4 migration. */
+@layer base {
+  *, ::before, ::after, ::backdrop {
+    border-color: #e5e7eb;
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: #9ca3af;
+    opacity: 1;
+  }
+
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* Keep the existing focus class's transparent outline for forced-color modes. */
+@layer utilities {
+  .focus\:outline-none:focus {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+}
