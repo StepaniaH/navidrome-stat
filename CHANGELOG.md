@@ -7,14 +7,17 @@ All notable user-facing changes are documented in this file. The format follows 
 ### Added
 
 - Unraid Docker Manager template, Community Applications repository metadata, and English and Simplified Chinese installation guides.
+- Russian interface language, bringing the interface to eight languages.
 
 ### Changed
 
-- Bundled styles are built with Tailwind CSS 4. The dashboard now needs Chrome 111, Safari 16.4 or Firefox 128 and later; older browsers may render it without styling.
+- Bundled styles are built with Tailwind CSS 4, which supports Chrome 111, Safari 16.4 and Firefox 128 or later; older browsers may render the dashboard without styling.
+- A request with a null body for a required JSON payload reports the validation error type as `model_attributes_type` instead of `missing`. Required-field errors still return HTTP 422; the detail payload is shaped differently.
 
 ### Fixed
 
 - A few older time zone spellings, such as Europe/Kiev, are accepted again instead of returning a validation error.
+- Client details opened while the dashboard is still loading stay open when the first data arrives.
 
 ## [0.9.5] - 2026-10-03
 
