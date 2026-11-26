@@ -101,7 +101,7 @@ Applying fetches current metadata again; the output includes actual update count
 ## Security and privacy
 
 - Without either dashboard token, dashboard data and administrative APIs are anonymous. Use this only on a trusted network.
-- `STATS_API_TOKEN` grants administrator access. `STATS_READ_ONLY_TOKEN` grants statistics, review, and related cover-art access; the backend rejects settings, connection, import, retention, deletion, OpenAPI, protected metrics, and out-of-scope requests.
+- `STATS_API_TOKEN` grants administrator access. `STATS_READ_ONLY_TOKEN` grants statistics, individual listening history, review, and related cover-art access; the backend rejects settings, connection, import, retention, deletion, OpenAPI, protected metrics, and out-of-scope requests.
 - A fixed viewer source/username scope is enforced by the backend. Username-scoped viewers receive server options and cover art only for sources containing that user's history.
 - Administrator, viewer, and ListenBrainz ingestion tokens must use different values.
 - `/health` and `/health/ready` remain public. `/metrics` is public by default unless `STATS_METRICS_AUTH=true` is used with a token.

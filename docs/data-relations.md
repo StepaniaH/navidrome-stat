@@ -1,5 +1,7 @@
 # Dashboard relationships and drill-downs
 
+[Documentation](README.md)
+
 The relationship section derives chart values from the existing `play_history`
 rows. It does not generate behavioral conclusions or scores. Every request uses
 the dashboard's date, timezone, server, user, metric, and artist-attribution scope.

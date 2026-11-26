@@ -40,7 +40,7 @@ PAUSE_GRACE_SEC=30
 
 The three `NAVIDROME_*` variables provide one fallback connection when no server entries have been saved. For this fallback, each non-empty environment value takes precedence over the corresponding value already stored in SQLite. Once any entry exists under **Settings > Connections**, only enabled entries from that list are collected; the fallback is not used, even when every saved entry is disabled.
 
-To aggregate multiple servers, add each connection from **Settings > Connections** after startup. Credentials saved there are encrypted at rest with a per-installation key file (`secret.key`) generated beside the SQLite database. Back up that file together with the database, or plan to re-enter passwords after restoring a database-only copy; the encryption protects database copies and backups from casual inspection, not a fully compromised host. If that storage model is unsuitable, use only the single environment-configured connection and do not save connections through the settings page.
+To aggregate multiple servers, add each connection from **Settings > Connections** after startup. Credentials saved there are encrypted at rest with AES-256-GCM using a per-installation key file (`secret.key`) generated beside the SQLite database. Back up that file together with the database, or plan to re-enter passwords after restoring a database-only copy; the encryption protects database copies and backups from casual inspection, not a fully compromised host. If that storage model is unsuitable, use only the single environment-configured connection and do not save connections through the settings page.
 
 ## 3. Create `compose.yaml`
 

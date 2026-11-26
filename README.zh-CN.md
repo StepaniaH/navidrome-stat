@@ -18,7 +18,7 @@
 
 </div>
 
-[English](README.md) · [文档](docs/README.zh-CN.md) · [更新记录](CHANGELOG.md)
+[English](README.md) · [文档](docs/README.zh-CN.md) · [变更记录](CHANGELOG.md)
 
 **为 Navidrome 自托管的收听统计面板。** 把不同客户端和服务器上的播放汇总起来，查看收听历史、详细图表，以及每月或每年的音乐回顾。
 
@@ -96,7 +96,7 @@ docker compose up -d
 
 | 文档 | 内容 |
 | --- | --- |
-| [部署指南](docs/deployment.zh-CN.md) | Docker 安装、连接管理、数据存储与运行要求 |
+| [部署指南](docs/deployment.zh-CN.md) · [Unraid](docs/unraid.zh-CN.md) | Docker 与 Unraid 安装、连接管理、数据存储与运行要求 |
 | [配置参考](docs/configuration.zh-CN.md) | 环境变量、默认值与查看者权限 |
 | [使用指南](docs/usage.zh-CN.md) | 筛选、详情、收听回顾、主题和语言 |
 | [采集与统计口径](docs/collection.zh-CN.md) | 播放阈值、时长质量、历史回填与 ListenBrainz |
@@ -107,7 +107,7 @@ docker compose up -d
 
 ## 参与贡献与反馈
 
-欢迎提交问题、翻译和代码。[贡献指南](CONTRIBUTING.md)包含开发环境与检查步骤。Bug 与功能建议请提交到 [GitHub Issues](https://github.com/StepaniaH/navidrome-stat/issues)，安全漏洞请按[安全政策](SECURITY.md)私下报告。
+欢迎提交问题、翻译和代码。[贡献指南（英文）](CONTRIBUTING.md)包含开发环境与检查步骤。Bug 与功能建议请提交到 [GitHub Issues](https://github.com/StepaniaH/navidrome-stat/issues)，安全漏洞请按[安全政策（英文）](SECURITY.md)私下报告。
 
 ## 许可证
 

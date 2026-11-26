@@ -32,4 +32,4 @@ Exact retries are deduplicated using the source, username, timestamp, recording,
 
 In details, `≈` denotes an estimate, `≥` a confirmed lower bound, and `—` an unrecorded duration. Dashboard and Listening Review totals show the stored listening time directly. Imported records without duration still count as plays but add no listening time.
 
-Pre-install backfill only recovers records actually supplied by the upstream server; it cannot reconstruct a complete history. The `getSongHistory` adapter in v0.9.3 is experimental and attempts import only when a server advertises that endpoint; standard deployments should not depend on it.
+Pre-install backfill only recovers records actually supplied by the upstream server; it cannot reconstruct a complete history. The `getSongHistory` adapter is experimental and attempts import only when a server advertises that endpoint; standard deployments should not depend on it.

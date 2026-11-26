@@ -1,5 +1,7 @@
 # Interface translations
 
+[Documentation](README.md)
+
 The interface ships eight languages: Simplified Chinese, Traditional Chinese, English, Japanese, German, Spanish, French, and Russian.
 
 ## Maintenance policy

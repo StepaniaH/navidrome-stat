@@ -103,7 +103,7 @@ Run one instance with one worker per set of sources. Recording depends on playba
 
 | Guide | Contents |
 | --- | --- |
-| [Deployment](docs/deployment.md) | Docker setup, connections, storage, and runtime requirements |
+| [Deployment](docs/deployment.md) · [Unraid](docs/unraid.md) | Docker and Unraid setup, connections, storage, and runtime requirements |
 | [Configuration](docs/configuration.md) | Environment variables, defaults, and viewer access |
 | [Using the dashboard](docs/usage.md) | Filters, details, Listening Review, themes, and languages |
 | [Collection and counting](docs/collection.md) | Play thresholds, duration quality, backfill, and ListenBrainz |

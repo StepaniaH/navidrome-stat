@@ -101,7 +101,7 @@ docker compose start navidrome-stat
 ## 安全与隐私
 
 - 两种仪表盘 token 均未设置时，仪表盘数据和管理接口允许匿名访问，只应在可信网络中使用。
-- `STATS_API_TOKEN` 授予管理员权限；`STATS_READ_ONLY_TOKEN` 只能读取统计、回顾和相关封面，后端会拒绝设置、连接、导入、保留期、删除、OpenAPI、受保护指标及越界请求。
+- `STATS_API_TOKEN` 授予管理员权限；`STATS_READ_ONLY_TOKEN` 只能读取统计、逐条收听记录、回顾和相关封面，后端会拒绝设置、连接、导入、保留期、删除、OpenAPI、受保护指标及越界请求。
 - 查看者的固定服务器/用户名范围由后端强制执行。按用户名限制后，只会返回包含该用户历史的服务器选项和封面。
 - 管理员、查看者与 ListenBrainz 采集 token 必须使用不同值。
 - `/health` 与 `/health/ready` 始终公开。`/metrics` 默认公开；设置 token 并启用 `STATS_METRICS_AUTH=true` 后可要求认证。
@@ -111,4 +111,4 @@ docker compose start navidrome-stat
 - 播放记录默认永久保留；保存 1–360 天的有限策略，即授权服务在启动和后台维护时自动清理超期记录。
 - 收集播放活动前应告知受影响的用户，并选择适当的保留期。
 
-详细说明见[隐私文档](privacy.md)与[安全政策](../SECURITY.md)。
+详细说明见[隐私说明（英文）](privacy.md)与[安全政策（英文）](../SECURITY.md)。

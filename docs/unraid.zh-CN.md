@@ -2,7 +2,7 @@
 
 [English](unraid.md) · [文档目录](README.zh-CN.md)
 
-[Docker Manager 模板](../deploy/unraid/navidrome-stat.xml)使用已发布的 `stepaniah/navidrome-statistic:latest` 镜像，`latest` 随稳定版更新。需要已有一个容器可访问的 Navidrome 服务。Navidrome Stat 通过 API 连接，不需要挂载音乐库、Navidrome 数据库或 Docker socket。
+[Docker Manager 模板](../deploy/unraid/navidrome-stat.xml)使用已发布的 `stepaniah/navidrome-statistic:latest` 镜像，`latest` 随稳定版更新。需要已有一个容器可访问的 Navidrome 服务。Navidrome Stat 通过 API 连接，不需要挂载音乐库、Navidrome 数据库或 Docker socket。仪表盘需要 Tailwind CSS 4 所支持的浏览器：Chrome 111、Safari 16.4、Firefox 128 及以上；更旧的浏览器可能以无样式呈现。
 
 ## 准备 appdata
 
@@ -17,15 +17,11 @@ test ! -e /mnt/user/appdata/navidrome-stat && \
 
 如果选择其他路径，请同时修改这里的路径和模板的 **Appdata** 字段。对于已有目录，先停止应用并备份，再调整所有权，确保 UID/GID `1000:1000` 能读写其中的内容。镜像不处理 `PUID` 或 `PGID` 变量。移动 appdata 时应停止容器，Unraid mover 执行的迁移也一样。
 
-## 手动安装模板
+## 从 Community Applications 安装
 
-1. 从本仓库下载 [`navidrome-stat.xml`](../deploy/unraid/navidrome-stat.xml)。
-2. 将文件放到 Unraid 服务器的 `/boot/config/plugins/dockerMan/templates-user/my-navidrome-stat.xml`。如果已有同名文件，请使用其他文件名，保留原有模板及其设置。
-3. 打开 **Docker > Add Container**，从 **Template** 列表选择模板。
-4. 核对下表中的字段，填写足够长的随机 **Administrator token**，然后应用。
-5. 如果需要随服务器启动，在 Docker 页面为该容器开启 **Autostart**。
-
-Unraid 将保存的容器模板存放在上述目录，参见 [Community Applications 文档](https://docs.unraid.net/community-applications/)。
+1. 在 Unraid 中打开 **Apps** 标签页，搜索 **Navidrome Stat**（或直接查看 [Community Applications 页面](https://ca.unraid.net/apps/navidrome-stat-0xfttrp0mywwfl)）。
+2. 点击 **Install**，核对下表中的字段，填写足够长的随机 **Administrator token**，然后应用。
+3. 如果需要随服务器启动，在 Docker 页面为该容器开启 **Autostart**。
 
 | 字段 | 默认值或操作 |
 | --- | --- |
@@ -37,6 +33,18 @@ Unraid 将保存的容器模板存放在上述目录，参见 [Community Applica
 | Database path | `/data/navidrome_stats.db`，在 Advanced View 中显示 |
 
 如果主机端口已被占用，只修改主机端口，WebUI 快捷入口会使用映射后的端口。管理员 token 必须保持非空：清空它会关闭管理员认证；如果也没有查看者 token，仪表盘和管理 API 将公开可访问。
+
+### 手动安装模板
+
+如果不使用 Community Applications，也可以手动安装模板：
+
+1. 从本仓库下载 [`navidrome-stat.xml`](../deploy/unraid/navidrome-stat.xml)。
+2. 将文件放到 Unraid 服务器的 `/boot/config/plugins/dockerMan/templates-user/my-navidrome-stat.xml`。如果已有同名文件，请使用其他文件名，保留原有模板及其设置。
+3. 打开 **Docker > Add Container**，从 **Template** 列表选择模板。
+4. 核对上表中的字段，填写足够长的随机 **Administrator token**，然后应用。
+5. 如果需要随服务器启动，在 Docker 页面为该容器开启 **Autostart**。
+
+Unraid 将保存的容器模板存放在上述目录，参见 [Community Applications 文档](https://docs.unraid.net/community-applications/)。
 
 ## 连接 Navidrome
 

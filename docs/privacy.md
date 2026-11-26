@@ -1,5 +1,7 @@
 # Privacy
 
+[Documentation](README.md)
+
 Navidrome Stat stores listening activity so it can build a shared dashboard across Navidrome servers, clients, and devices. This page describes what the application handles and what operators should protect.
 
 ## Data stored
@@ -58,7 +60,7 @@ Frontend assets are served by the application. Normal dashboard use does not loa
 
 Client detail views are not shareable URLs. The browser sends the client name in a POST body and keeps that detail state out of browser history and query strings. Client names remain visible in authorized dashboard responses and on-screen charts because they are part of the stored listening data described above.
 
-`STATS_API_TOKEN` grants administrator access to all stored listening data and configured connection identities, settings and connections, and export, import, retention, and deletion controls. `STATS_READ_ONLY_TOKEN` grants a viewer session access to the dashboard, Listening Review, and related cover art. Viewer sessions cannot open settings or invoke connection, source, retention, privacy, deletion, OpenAPI, or protected metrics routes.
+`STATS_API_TOKEN` grants administrator access to all stored listening data and configured connection identities, settings and connections, and export, import, retention, and deletion controls. `STATS_READ_ONLY_TOKEN` grants a viewer session access to the dashboard, individual listening history, Listening Review, and related cover art. Viewer sessions cannot open settings or invoke connection, source, retention, privacy, deletion, OpenAPI, or protected metrics routes.
 
 Operators may bind all viewer sessions to a single stored source and/or username with `STATS_READ_ONLY_SOURCE_ID` and `STATS_READ_ONLY_USERNAME`. The backend applies that scope to statistics queries and rejects conflicting query parameters or POST bodies. A username restriction also removes server options with no matching history and prevents cover-art requests to those sources. The fixed username is not added to cover-art URLs. Fixed controls are hidden in the browser, but enforcement does not depend on the frontend.
 

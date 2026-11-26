@@ -2,7 +2,7 @@
 
 [简体中文](unraid.zh-CN.md) · [Documentation](README.md)
 
-The [Docker Manager template](../deploy/unraid/navidrome-stat.xml) uses the published `stepaniah/navidrome-statistic:latest` image. The `latest` tag follows stable releases. Navidrome must already be running and reachable from this container. Navidrome Stat connects through its API; it does not need a music-library mount, the Navidrome database, or the Docker socket.
+The [Docker Manager template](../deploy/unraid/navidrome-stat.xml) uses the published `stepaniah/navidrome-statistic:latest` image. The `latest` tag follows stable releases. Navidrome must already be running and reachable from this container. Navidrome Stat connects through its API; it does not need a music-library mount, the Navidrome database, or the Docker socket. The dashboard requires a browser supported by Tailwind CSS 4: Chrome 111, Safari 16.4, Firefox 128, or later; older browsers may render it without styling.
 
 ## Prepare appdata
 
@@ -17,15 +17,11 @@ test ! -e /mnt/user/appdata/navidrome-stat && \
 
 If you choose another path, use it both here and in the **Appdata** field. For an existing directory, stop the application and back it up before adjusting ownership; UID/GID `1000:1000` must be able to read and write its contents. The image does not interpret `PUID` or `PGID` variables. Keep the container stopped while moving its appdata, including moves performed by Unraid's mover.
 
-## Install the template manually
+## Install from Community Applications
 
-1. Download [`navidrome-stat.xml`](../deploy/unraid/navidrome-stat.xml) from this repository.
-2. Place it on the Unraid server at `/boot/config/plugins/dockerMan/templates-user/my-navidrome-stat.xml`. Choose a different filename if one already exists; preserve existing saved templates and their settings.
-3. Open **Docker > Add Container** and select the template from the **Template** list.
-4. Review the fields below, enter a long, random **Administrator token**, and apply.
-5. Enable **Autostart** for the container on the Docker page if it should start with the server.
-
-Unraid stores saved container templates in the directory above; see the [Community Applications documentation](https://docs.unraid.net/community-applications/).
+1. Open the **Apps** tab in Unraid and search for **Navidrome Stat** (or open its [Community Applications listing](https://ca.unraid.net/apps/navidrome-stat-0xfttrp0mywwfl)).
+2. Select **Install**, review the fields below, enter a long, random **Administrator token**, and apply.
+3. Enable **Autostart** for the container on the Docker page if it should start with the server.
 
 | Field | Default or action |
 | --- | --- |
@@ -37,6 +33,18 @@ Unraid stores saved container templates in the directory above; see the [Communi
 | Database path | `/data/navidrome_stats.db`; shown in Advanced View |
 
 If the host port is occupied, change only the host port. The WebUI shortcut uses the mapped port. Keep the administrator token non-empty: an empty token disables administrator authentication, and without a viewer token the dashboard and administrative APIs are public.
+
+### Install the template manually
+
+If you prefer not to use Community Applications:
+
+1. Download [`navidrome-stat.xml`](../deploy/unraid/navidrome-stat.xml) from this repository.
+2. Place it on the Unraid server at `/boot/config/plugins/dockerMan/templates-user/my-navidrome-stat.xml`. Choose a different filename if one already exists; preserve existing saved templates and their settings.
+3. Open **Docker > Add Container** and select the template from the **Template** list.
+4. Review the fields above, enter a long, random **Administrator token**, and apply.
+5. Enable **Autostart** for the container on the Docker page if it should start with the server.
+
+Unraid stores saved container templates in the directory above; see the [Community Applications documentation](https://docs.unraid.net/community-applications/).
 
 ## Connect Navidrome
 

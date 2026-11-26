@@ -298,7 +298,7 @@ All notable user-facing changes are documented in this file. The format follows 
 - Cover art for play history, album rankings, and now-playing through an authenticated proxy with a size-capped disk cache; album names are resolved to Navidrome album IDs via `search3` with a 24-hour negative cache.
 - A year-in-review page at `/review` with totals, streaks, monthly/hourly/weekday charts, and top artists, albums, and tracks.
 - A `getSongHistory` capability probe per server, surfaced through the connections API ahead of an upstream read API.
-- A pre-1.0 compatibility policy (docs/compat.md).
+- A pre-1.0 compatibility policy ([docs/compat.md](docs/compat.md)).
 - German interface localization.
 - Dashboard filters persist across reloads and are shareable through URL parameters.
 - Dashboard charts recolor immediately when the theme preference changes in another tab.
@@ -310,16 +310,15 @@ All notable user-facing changes are documented in this file. The format follows 
 - A concise project roadmap plus reproducible benchmark, dependency-lock, browser-test, and release guidance.
 
 ### Changed
+
 - The brand icon is now line art that adapts to the active theme; the favicon uses the same drawing.
 - Ten themes ship out of the box: Catppuccin (Latte, Frappé, Macchiato, Mocha), Nord, Dracula, Tokyo Night, Gruvbox, and Solarized (dark and light), with a `data-scheme` attribute for light-specific rules.
 - The language picker shows each language in its own script with a translated subtitle, and Traditional Chinese plus Japanese join Simplified Chinese and English.
-
 - Internal layout: application assembly, collectors, retention, statistics routes, privacy routes, and connection routes now live in dedicated modules; the SQLite layer is split into schema, time-window, persistence, query, and server-registry modules with one shared database-path setting.
 - Every playback write path goes through a single stats service that also invalidates the dashboard snapshot cache, so stale dashboard responses after writes are structurally prevented.
 - Domain validation failures surface as HTTP 422 through one shared handler instead of per-route translations.
 - Frontend pages load as ES modules sharing common HTTP, login-dialog, and preference modules; dashboard UI strings live in a catalog module guarded by Node unit tests against duplicate or missing translation keys.
 - Pure frontend helpers (formatting, query building, custom-range validation) run under `npm run test:unit`.
-
 - Release automation now runs only for `v*` tags and publishes the corresponding Docker image to Docker Hub.
 - Documentation was consolidated around deployment, architecture, privacy, contributing, and security guidance.
 - Dashboard styles and scripts are split into maintainable local assets; executable inline scripts are no longer permitted by the Content Security Policy.
@@ -334,7 +333,6 @@ All notable user-facing changes are documented in this file. The format follows 
 ### Fixed
 
 - Cancelling a server change while collectors were reconciling could leave the saved row in place; the rollback now completes before the cancellation propagates.
-
 - Authentication handles non-ASCII token input as an authorization failure instead of a server error, and login forms clear submitted tokens after success.
 - Unauthorized API responses retain security headers, and unauthorized imports are rejected before their request body is read.
 - Logging in from the dashboard starts periodic refreshes, while an expired session stops refreshes and freezes the now-playing timer.
@@ -380,7 +378,7 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [0.5.3] - 2026-07-27
 
-The published tag points to the same source revision as `v0.5.0` and contains no additional changes. Use `v0.5.4` or later when pinning an image.
+The retired tag pointed to the same source revision as `v0.5.0` and contained no additional changes. The Git tag has been removed; use `v0.5.4` or later when pinning an image.
 
 ## [0.5.2] - 2026-07-26
 
@@ -421,7 +419,6 @@ The published tag points to the same source revision as `v0.5.0` and contains no
 [0.7.0]: https://github.com/StepaniaH/navidrome-stat/tree/v0.7.0
 [0.6.0]: https://github.com/StepaniaH/navidrome-stat/tree/v0.6.0
 [0.5.4]: https://github.com/StepaniaH/navidrome-stat/tree/v0.5.4
-[0.5.3]: https://github.com/StepaniaH/navidrome-stat/tree/v0.5.3
 [0.5.2]: https://github.com/StepaniaH/navidrome-stat/tree/v0.5.2
 [0.5.1]: https://github.com/StepaniaH/navidrome-stat/tree/v0.5.1
 [0.5.0]: https://github.com/StepaniaH/navidrome-stat/tree/v0.5.0

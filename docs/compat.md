@@ -1,5 +1,7 @@
 # Compatibility policy (pre-1.0)
 
+[Documentation](README.md)
+
 Navidrome Stat has not reached 1.0. This page records what you can rely on between releases today, and what will be stabilized at 1.0.
 
 Removals and breaking changes are announced in the [changelog](../CHANGELOG.md) at least one minor release before they take effect; entries under **Deprecated** describe behavior that still works but is scheduled to change.
