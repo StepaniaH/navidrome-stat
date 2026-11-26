@@ -44,12 +44,12 @@ To aggregate multiple servers, add each connection from **Settings > Connections
 
 ## 3. Create `compose.yaml`
 
-The example pins the current stable release, `v0.9.5`. The `latest` tag follows stable releases.
+The example pins the current stable release, `v0.9.6`. The `latest` tag follows stable releases.
 
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.5
+    image: stepaniah/navidrome-statistic:v0.9.6
     container_name: navidrome-stat
     user: "1000:1000"
     ports:
@@ -102,6 +102,8 @@ docker compose ps
 ```
 
 Open `http://localhost:39421`. When an administrator or viewer token is configured, enter it in the login screen; the browser stores an HttpOnly role-specific session cookie rather than the token itself.
+
+Optional supporter recognition: set `STATS_SUPPORTER_KEY` (an offline Ed25519 `NS1.…` key) or paste it under **Settings > Supporter** to light the Gold Vinyl plaque, header badge, and Listening Review seal. Verification runs locally with zero outbound requests; set `STATS_SUPPORTER_SHOW_HEADER=false` (or toggle the switch in Settings) to keep the header and review footer plain while keeping the plaque active.
 
 `/health` reports process liveness. `/health/ready` also checks the database, collectors, upstream polling, and durable playback writes. An upstream or database failure can therefore make readiness degraded or not ready while the process remains healthy.
 

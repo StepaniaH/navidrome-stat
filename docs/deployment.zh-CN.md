@@ -44,12 +44,12 @@ PAUSE_GRACE_SEC=30
 
 ## 3. 创建 `compose.yaml`
 
-示例固定使用当前稳定版 `v0.9.5`；`latest` 会随稳定版更新。
+示例固定使用当前稳定版 `v0.9.6`；`latest` 会随稳定版更新。
 
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.5
+    image: stepaniah/navidrome-statistic:v0.9.6
     container_name: navidrome-stat
     user: "1000:1000"
     ports:
@@ -102,6 +102,8 @@ docker compose ps
 ```
 
 打开 `http://localhost:39421`。配置管理员或查看者 token 后，在登录界面输入对应 token；浏览器保存的是带角色的 HttpOnly 会话 Cookie，而不是 token 本身。
+
+可选的赞助者识别：可设置环境变量 `STATS_SUPPORTER_KEY`（离线 Ed25519 `NS1.…` 密钥），或在**设置 > 赞助铭牌**中粘贴点亮金唱片铭牌、页头徽标与收听回顾印章。验签完全在本地完成，不发起任何出站请求；如需保持页头与回顾页简洁而仅保留设置页铭牌，可设置 `STATS_SUPPORTER_SHOW_HEADER=false` 或在设置中关闭显示开关。
 
 `/health` 用于检查进程是否存活。`/health/ready` 还会检查数据库、采集器、上游轮询与播放记录持久化。上游或数据库故障可能使就绪状态降级或未就绪，但进程仍保持存活。
 

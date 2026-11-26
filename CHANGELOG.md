@@ -4,13 +4,17 @@ All notable user-facing changes are documented in this file. The format follows 
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-11-27
+
 ### Added
 
+- Optional offline Ed25519 Supporter Key (`NS1.`) verification, collector's pressed vinyl plaque in **Settings > Supporter**, optional dashboard badge and Listening Review seal adapted to all 18 themes and custom palettes, and `STATS_SUPPORTER_KEY` / `STATS_SUPPORTER_SHOW_HEADER` environment configuration, with zero locked features and zero outbound requests.
 - Unraid Docker Manager template, Community Applications repository metadata, and English and Simplified Chinese installation guides.
 - Russian interface language, bringing the interface to eight languages.
 
 ### Changed
 
+- Streamlined the dashboard header by moving the version label to the footer and the `Last updated` timestamp to the refresh control, keeping collection status quiet unless degraded or dual-configured, linking active collection alerts to connection settings, and adapting filter layouts across tablet and mobile viewports.
 - Bundled styles are built with Tailwind CSS 4, which supports Chrome 111, Safari 16.4 and Firefox 128 or later; older browsers may render the dashboard without styling.
 - A request with a null body for a required JSON payload reports the validation error type as `model_attributes_type` instead of `missing`. Required-field errors still return HTTP 422; the detail payload is shaped differently.
 
@@ -399,7 +403,8 @@ The retired tag pointed to the same source revision as `v0.5.0` and contained no
 
 - Initial tagged release of the polling statistics service with optional `STATS_API_TOKEN` authentication.
 
-[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.5...HEAD
+[Unreleased]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.6...HEAD
+[0.9.6]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.4...v0.9.5
 [0.9.4]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/StepaniaH/navidrome-stat/compare/v0.9.2...v0.9.3

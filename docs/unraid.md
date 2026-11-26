@@ -71,7 +71,7 @@ Run one instance per set of sources. Playback must be reported to Navidrome by t
 3. Use Unraid's container update action to pull the current `latest` image, then start the container if it is stopped. Preserve the appdata mapping and configured tokens.
 4. Sign in, confirm the version, check saved connections and earlier history, and verify collection resumes.
 
-To pin a release, change **Repository** to a published tag such as `stepaniah/navidrome-statistic:v0.9.5`. Unraid updates the configured tag; a pinned installation requires changing that field to move to another release. Public template edits do not replace the settings of an existing installation; review its saved configuration when adopting new fields.
+To pin a release, change **Repository** to a published tag such as `stepaniah/navidrome-statistic:v0.9.6`. Unraid updates the configured tag; a pinned installation requires changing that field to move to another release. Public template edits do not replace the settings of an existing installation; review its saved configuration when adopting new fields.
 
 For a rollback, stop the container and restore both the previous image tag and its matching pre-update appdata backup. Do not run an older version against a database migrated by a newer version without confirming compatibility.
 

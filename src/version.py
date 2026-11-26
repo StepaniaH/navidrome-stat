@@ -1,6 +1,6 @@
 import os
 
-APP_VERSION = os.getenv("APP_VERSION", "0.9.5")
+APP_VERSION = os.getenv("APP_VERSION", "0.9.6")
 LICENSE = "MIT"
 PROJECT_NAME = "Navidrome Stat"
 PROJECT_URL = "https://github.com/StepaniaH/navidrome-stat"
