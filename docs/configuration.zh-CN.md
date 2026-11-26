@@ -33,5 +33,7 @@
 | `LISTENBRAINZ_INGEST_USERNAME` | 空 | 接收器写入记录所归属的用户名。 |
 | `LISTENBRAINZ_INGEST_SOURCE_ID` | `listenbrainz` | 接收器记录及去重所用的稳定来源标识。 |
 | `LISTENBRAINZ_INGEST_SOURCE_NAME` | `ListenBrainz receiver` | 接收器记录的展示名称。 |
+| `STATS_SUPPORTER_KEY` | 空 | 可选的离线 Ed25519 赞助者密钥（`NS1.…`），纯本地验签且零出站请求；也可在**设置 > 赞助铭牌**中激活。 |
+| `STATS_SUPPORTER_SHOW_HEADER` | `true` | 在数据库中尚未保存开关偏好前，页头徽标与收听回顾印章的默认显示状态。 |
 
 环境变量在应用启动时解析。管理员、查看者或采集 token 使用相同值时，应用将拒绝启动。修改后需重启容器。

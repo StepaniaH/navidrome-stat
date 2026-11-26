@@ -31,6 +31,7 @@ from src.schemas import (
     SourceConfigUpdate,
     SourceTestRequest,
     SourceTestResponse,
+    SupporterSummaryResponse,
 )
 from src.source_config import (
     get_saved_source_config,
@@ -41,6 +42,7 @@ from src.source_config import (
     validate_source_url,
 )
 from src.stats_service import server_mutation_lock, stats_service
+from src.supporter import about_supporter_summary
 from src.version import APP_VERSION, LICENSE, PROJECT_NAME, PROJECT_URL
 
 logger = logging.getLogger(__name__)
@@ -314,6 +316,7 @@ async def api_servers_test(server_id: str, body: ServerRequest | None = None):
 
 @router.get("/api/about", response_model=AboutResponse)
 async def api_about():
+    summary = await about_supporter_summary()
     return AboutResponse(
         name=PROJECT_NAME,
         version=APP_VERSION,
@@ -321,4 +324,5 @@ async def api_about():
         features=["多 Navidrome 服务器", "播放历史统计", "隐私数据管理", "本地外观偏好"],
         license=LICENSE,
         project_url=PROJECT_URL,
+        supporter=SupporterSummaryResponse(**summary),
     )

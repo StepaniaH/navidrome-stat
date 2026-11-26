@@ -79,3 +79,7 @@ The ListenBrainz-compatible receiver is disabled unless both `LISTENBRAINZ_INGES
 - Review proxy and Navidrome logs for authentication query parameters.
 - Choose a retention period and backup policy appropriate for the deployment.
 - Use synthetic or redacted data in issues, logs, screenshots, and test fixtures.
+
+## Optional Supporter Key
+
+If you activate an optional offline Supporter Key (`NS1.…`), Ed25519 signature verification runs completely locally using embedded public keys with zero outbound network requests. When saved through **Settings > Supporter**, the key is encrypted at rest in `schema_meta` using the same local AES-256-GCM key (`secret.key`) described above. `/api/about` exposes only a non-sensitive boolean/tier/date/display summary so dashboard and review views can render the badge; masked previews (`key_preview`, `order_preview`) are restricted to administrator-only `/api/supporter*` endpoints, and raw keys are never returned by any endpoint or written to browser storage.

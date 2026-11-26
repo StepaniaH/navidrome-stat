@@ -21,6 +21,8 @@
   <License>MIT</License>
   <ExtraSearchTerms>navidrome subsonic music listening statistics history listenbrainz</ExtraSearchTerms>
   <ExtraParams/>
+  <DonateText>Support Navidrome Stat</DonateText>
+  <DonateLink>https://navidrome-stat.stepaniah.me/#support</DonateLink>
   <Requires>A reachable Navidrome server and a dedicated local appdata directory writable by UID/GID 1000:1000. Prepare the directory as described in the ReadMe before installation. Run one instance per set of sources. Use an HTTPS reverse proxy for remote access.</Requires>
   <Config Name="WebUI" Target="39421" Default="39421" Mode="tcp" Description="Dashboard port. Change the host port if it is already in use; keep container port 39421." Type="Port" Display="always" Required="true" Mask="false">39421</Config>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/navidrome-stat" Mode="rw" Description="Dedicated local directory for SQLite, the credential key, and artwork cache. Must be writable by UID/GID 1000:1000; see the ReadMe before installing." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/navidrome-stat</Config>
@@ -29,4 +31,5 @@
   <Config Name="Viewer token" Target="STATS_READ_ONLY_TOKEN" Default="" Description="Optional read-only dashboard token. Must differ from the administrator and ListenBrainz tokens. Leave empty to disable viewer access." Type="Variable" Display="advanced" Required="false" Mask="true"/>
   <Config Name="Secure session cookie" Target="SESSION_COOKIE_SECURE" Default="false|true" Description="Set true when accessing the dashboard through HTTPS. Leave false for direct HTTP access." Type="Variable" Display="advanced" Required="true" Mask="false">false</Config>
   <Config Name="Protect metrics" Target="STATS_METRICS_AUTH" Default="true|false" Description="Require administrator authentication for the metrics endpoint." Type="Variable" Display="advanced" Required="true" Mask="false">true</Config>
+  <Config Name="Supporter key" Target="STATS_SUPPORTER_KEY" Default="" Description="Optional offline Ed25519 Supporter Key (NS1.…) verified locally with zero outbound requests. Can also be activated in Settings &gt; Supporter Key." Type="Variable" Display="advanced" Required="false" Mask="true"/>
 </Container>

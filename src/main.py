@@ -34,8 +34,9 @@ from src.retention import (
     retention_maintenance_loop,
     run_startup_retention_purge,
 )
-from src.routes import listenbrainz, privacy, servers, stats, system
+from src.routes import listenbrainz, privacy, servers, stats, supporter, system
 from src.runtime_state import runtime_state
+from src.supporter import log_startup_notice
 from src.version import APP_VERSION, PROJECT_NAME
 
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +53,10 @@ async def lifespan(app: FastAPI):
     with database_instance_lock(config.DATABASE_PATH):
         logger.info("Initializing database...")
         await init_db()
+        try:
+            await log_startup_notice()
+        except Exception as exc:
+            logger.warning("Supporter startup check skipped (type=%s)", type(exc).__name__)
         await run_startup_retention_purge()
         retention_task = asyncio.create_task(retention_maintenance_loop())
         try:
@@ -272,6 +277,7 @@ app.include_router(system.router)
 app.include_router(stats.router)
 app.include_router(privacy.router)
 app.include_router(servers.router)
+app.include_router(supporter.router)
 app.include_router(listenbrainz.router)
 
 

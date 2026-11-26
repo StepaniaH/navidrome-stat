@@ -17,6 +17,13 @@ const DERIVED_PROPERTIES = Object.freeze([
     '--accent-contrast',
     '--accent-strong',
     '--chart-1',
+    '--surface-raised',
+    '--sup-hi',
+    '--sup-main',
+    '--sup-sec',
+    '--sup-glow',
+    '--sup-ink',
+    '--sup-since',
 ]);
 
 const OWNED_PROPERTIES = Object.freeze([
@@ -135,6 +142,69 @@ function accentContrast(accent) {
     return contrastRatio(accent, dark) >= contrastRatio(accent, light) ? dark : light;
 }
 
+function ensureReadableColor(preferred, fallbacks, backgrounds, minimum = 4.6) {
+    const candidates = [preferred, ...fallbacks];
+    for (const candidate of candidates) {
+        if (backgrounds.every((bg) => contrastRatio(candidate, bg) >= minimum)) {
+            return candidate;
+        }
+    }
+    const pool = [...candidates, '#0f172a', '#ffffff'];
+    return pool.reduce((best, candidate) => {
+        const scoreCandidate = Math.min(...backgrounds.map((bg) => contrastRatio(candidate, bg)));
+        const scoreBest = Math.min(...backgrounds.map((bg) => contrastRatio(best, bg)));
+        return scoreCandidate > scoreBest ? candidate : best;
+    });
+}
+
+function deriveSupporterTokens(colors) {
+    const lightSurface = relativeLuminance(colors.surface) > 0.25;
+    const raised = mixHex(colors.surface, colors.field, 0.45);
+    const supMain = colors.accent;
+    const supHi = lightSurface
+        ? mixHex(colors.accent, '#ffffff', 0.18)
+        : mixHex(colors.accent, '#ffffff', 0.32);
+    const supSec = lightSurface
+        ? mixHex(colors.accent, '#000000', 0.18)
+        : mixHex(colors.accent, colors.text, 0.16);
+    const plateBgA = mixHex(raised, supMain, 0.19);
+    const plateBgB = mixHex(colors.surface, supMain, 0.12);
+    const sinceBg = mixHex(colors.background, colors.surface, 0.45);
+    const inkBackgrounds = [colors.surface, raised, plateBgA, plateBgB];
+    const sinceBackgrounds = [colors.surface, raised, sinceBg, plateBgB];
+
+    const supInk = ensureReadableColor(
+        mixHex(supMain, colors.text, 0.45),
+        [
+            mixHex(supMain, colors.text, 0.65),
+            mixHex(supMain, colors.text, 0.82),
+            colors.text,
+        ],
+        inkBackgrounds,
+        5.0,
+    );
+    const supSince = ensureReadableColor(
+        mixHex(supMain, colors.muted, 0.55),
+        [
+            mixHex(supMain, colors.text, 0.68),
+            colors.muted,
+            colors.text,
+        ],
+        sinceBackgrounds,
+        4.6,
+    );
+
+    return {
+        '--surface-raised': raised,
+        '--sup-hi': supHi,
+        '--sup-main': supMain,
+        '--sup-sec': supSec,
+        '--sup-glow': supMain,
+        '--sup-ink': supInk,
+        '--sup-since': supSince,
+    };
+}
+
 export function validateThemeCustomization(input) {
     const colors = normalizeColors(input);
     if (!colors) return { checks: [], colors: null, issues: ['format'], valid: false };
@@ -222,6 +292,9 @@ export function applyThemeCustomization(root, themeId, input) {
     root.style.setProperty('--accent-contrast', accentContrast(colors.accent));
     root.style.setProperty('--accent-strong', mixHex(colors.accent, colors.text, 0.2));
     root.style.setProperty('--chart-1', colors.accent);
+    for (const [property, value] of Object.entries(deriveSupporterTokens(colors))) {
+        root.style.setProperty(property, value);
+    }
     if (root.dataset) root.dataset.themeCustomization = fingerprint(themeId, colors);
     return { applied: true, colors };
 }

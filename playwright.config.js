@@ -19,6 +19,8 @@ const serverEnvironment = {
   STATS_READ_ONLY_USERNAME: "",
   LISTENBRAINZ_INGEST_TOKEN: "",
   LISTENBRAINZ_INGEST_USERNAME: "",
+  STATS_SUPPORTER_KEY: "",
+  STATS_SUPPORTER_SHOW_HEADER: "",
 };
 
 module.exports = defineConfig({

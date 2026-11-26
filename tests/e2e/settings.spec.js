@@ -67,6 +67,25 @@ async function routeSyntheticSettings(page) {
       },
     }),
   );
+  await page.route("**/api/supporter", (route) =>
+    route.fulfill({
+      json: {
+        supporter: {
+          active: false,
+          status: "inactive",
+          tier: null,
+          issued_at: null,
+          key_preview: null,
+          order_preview: null,
+          origin: "none",
+          env_configured: false,
+          can_edit: true,
+          can_clear: false,
+          show_in_header: true,
+        },
+      },
+    }),
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -443,13 +462,13 @@ test("privacy load failure resolves to an explicit retry state", async ({
   await expect(page.locator("#policySummary")).not.toContainText("Loading");
 });
 
-test("mobile settings keep all four sections inside the viewport", async ({
+test("mobile settings keep all five sections inside the viewport", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings#preferences");
 
-  await expect(page.locator('#settingsTabBar [role="tab"]')).toHaveCount(4);
+  await expect(page.locator('#settingsTabBar [role="tab"]')).toHaveCount(5);
   const layout = await page.evaluate(() => {
     const pageOverflow =
       document.documentElement.scrollWidth

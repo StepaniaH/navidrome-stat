@@ -1,6 +1,7 @@
 import { pageMessages } from './js/i18n/index.js';
 import { createI18n } from './localization.js';
-import { applyAppVersion } from './js/app-info.js';
+import { SUPPORTER_SYNC_STORAGE_KEY, applyAppVersion } from './js/app-info.js';
+import { syncSupporterPlate } from './js/supporter-ui.js';
 import {
     buildStatsQuery,
     buildStatsScopeQuery,
@@ -38,6 +39,7 @@ import {
     let hasLoadedOnce = false;
     let authRequired = false;
     let accessLevel = null;
+    let supporterSummary = null;
     const initialFilters = getFilters();
     let statsDays = initialFilters.days;
     let customStartDate = initialFilters.startDate;
@@ -158,11 +160,37 @@ import {
             viewer && Boolean(status.username),
         );
         if (viewer) persistFilters();
+        syncDashboardSupporter();
+        if (lastCollectionStatus) renderCollectionStatus();
+    }
+
+    function syncDashboardSupporter() {
+        syncSupporterPlate({
+            header: document.querySelector('.dashboard-header'),
+            headerClass: 'has-supporter-vinyl',
+            badge: document.getElementById('supporterBadge'),
+            label: document.getElementById('supporterBadgeLabel'),
+            footerLink: document.getElementById('footerSupportLink'),
+            footerLabel: document.getElementById('footerSupportLabel'),
+            supporter: supporterSummary,
+            t: dashboardMessage,
+            locale: dashboardI18n.getLocale(),
+            internalHref: '/settings#supporter',
+            externalOnly: accessLevel === 'viewer',
+        });
+    }
+
+    async function refreshAppInfo({ force = false } = {}) {
+        const info = await applyAppVersion({ force });
+        if (info?.supporter) {
+            supporterSummary = info.supporter;
+            syncDashboardSupporter();
+        }
     }
 
     async function refreshAfterLogin(status) {
         applyAccessStatus(status);
-        applyAppVersion();
+        refreshAppInfo({ force: true });
         await Promise.all([
             Promise.allSettled([fetchUserOptions(), fetchDashboardDiagnostics()]),
             fetchStats(),
@@ -234,6 +262,7 @@ import {
     });
     function refreshDashboardLanguage() {
         translateDashboard();
+        syncDashboardSupporter();
         setStatus('loading', dashboardMessage('status.syncing'));
         setActiveStatsWindowButton(statsDays);
         setActiveRankingMetric(rankingMetric);
@@ -243,21 +272,69 @@ import {
         playAccounting.localize();
         entityDetail?.localize();
         dataRelations?.localize();
+        syncRefreshTooltip();
     }
+
+    let lastUpdatedAt = null;
+
+    function syncRefreshTooltip() {
+        const refreshBtn = document.getElementById('refreshBtn');
+        const lastUpdatedEl = document.getElementById('lastUpdated');
+        const baseLabel = dashboardMessage('dashboard.manualRefresh');
+        if (!lastUpdatedAt) {
+            if (refreshBtn) refreshBtn.title = baseLabel;
+            return;
+        }
+        const updatedText = dashboardMessage('status.lastUpdated', {
+            time: lastUpdatedAt.toLocaleTimeString(dashboardI18n.getLocale(), {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+            }),
+        });
+        if (lastUpdatedEl) lastUpdatedEl.textContent = updatedText;
+        if (refreshBtn) refreshBtn.title = `${baseLabel} · ${updatedText}`;
+    }
+
     translateDashboard();
     window.addEventListener(UNAUTHORIZED_EVENT, () => {
         showLogin(hasLoadedOnce ? dashboardMessage('auth.expired') : undefined);
     });
 
-    function setStatus(state, text) {
+    function setStatus(state, text, { attention = false, pip = 'none' } = {}) {
+        const badge = document.getElementById('statusBadge');
         const dot = document.getElementById('statusDot');
         const label = document.getElementById('statusText');
+        const pipEl = document.getElementById('refreshStatusPip');
         label.textContent = text;
+        label.classList.toggle('visually-hidden', !attention);
+        if (badge) {
+            badge.classList.toggle('is-attention', attention);
+            badge.classList.toggle('is-quiet', !attention);
+            const interactive = attention && accessLevel !== 'viewer';
+            if (interactive) {
+                badge.setAttribute('href', '/settings#source');
+                badge.removeAttribute('tabindex');
+            } else {
+                badge.removeAttribute('href');
+                badge.setAttribute('tabindex', '-1');
+            }
+        }
         dot.className = 'dashboard-live-dot ';
         if (state === 'ok') dot.className += 'bg-mint pulse-dot';
         else if (state === 'error') dot.className += 'bg-red-400';
         else if (state === 'loading') dot.className += 'bg-accent animate-pulse';
         else dot.className += 'bg-slate-600';
+
+        if (pipEl) {
+            const effectivePip = pip !== 'none'
+                ? pip
+                : (state === 'error' ? 'error' : state === 'loading' ? 'starting' : 'none');
+            pipEl.hidden = effectivePip === 'none';
+            pipEl.className = effectivePip === 'none'
+                ? 'refresh-status-pip'
+                : `refresh-status-pip is-${effectivePip}`;
+        }
     }
 
     let lastCollectionStatus = null;
@@ -267,9 +344,20 @@ import {
         const state = status === 'live' ? 'ok'
             : status === 'degraded' || status === 'unavailable' ? 'error'
                 : status === 'starting' ? 'loading' : 'idle';
-        const mixed = lastCollectionStatus?.mixed_collection;
-        setStatus(state, dashboardMessage(`status.${status}`)
-            + (mixed ? ` · ${dashboardMessage('status.mixedShort')}` : ''));
+        const mixed = Boolean(lastCollectionStatus?.mixed_collection);
+        const attention = status === 'degraded' || mixed;
+        const pip = status === 'degraded'
+            ? 'error'
+            : mixed
+                ? 'warning'
+                : (status === 'live' || status === 'receiver_enabled')
+                    ? 'live'
+                    : status === 'starting' ? 'starting' : 'none';
+        setStatus(
+            state,
+            dashboardMessage(`status.${status}`) + (mixed ? ` · ${dashboardMessage('status.mixedShort')}` : ''),
+            { attention, pip },
+        );
         document.getElementById('statusBadge').title = mixed
             ? dashboardMessage('status.mixedHelp')
             : status === 'receiver_enabled' ? dashboardMessage('status.receiverHelp') : '';
@@ -759,14 +847,8 @@ import {
             await collectionRequest;
             if (generation !== statsRequestGeneration || controller.signal.aborted) return;
             renderCollectionStatus();
-            const now = new Date();
-            document.getElementById('lastUpdated').textContent = dashboardMessage('status.lastUpdated', {
-                time: now.toLocaleTimeString(dashboardI18n.getLocale(), {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                }),
-            });
+            lastUpdatedAt = new Date();
+            syncRefreshTooltip();
         } catch (error) {
             if (isAbortError(error) || generation !== statsRequestGeneration) return;
             await collectionRequest;
@@ -952,6 +1034,7 @@ import {
     setActiveRankingMetric(rankingMetric);
 
     document.getElementById('refreshBtn').addEventListener('click', () => {
+        refreshAppInfo({ force: true });
         fetchStats();
         nowPlaying.refresh();
         entityDetail.refresh();
@@ -976,6 +1059,7 @@ import {
             nowPlaying.stopTicker();
         } else if (document.getElementById('loginOverlay').classList.contains('hidden')) {
             nowPlaying.startTicker();
+            refreshAppInfo({ force: true });
             fetchStats();
             nowPlaying.refresh();
             entityDetail.refresh();
@@ -983,6 +1067,10 @@ import {
     });
 
     window.addEventListener('storage', (event) => {
+        if (event.key === SUPPORTER_SYNC_STORAGE_KEY) {
+            refreshAppInfo({ force: true });
+            return;
+        }
         if (event.key !== 'navidrome-language') return;
         refreshDashboardLanguage();
         fetchStats();
@@ -996,7 +1084,7 @@ import {
 
     async function bootstrap() {
         try {
-            applyAppVersion();
+            refreshAppInfo();
             const statusRes = await apiFetch('/api/auth/status');
             if (statusRes.ok) {
                 const statusData = await statusRes.json();

@@ -51,7 +51,7 @@
                         </svg>
                     </div>
                     <h1 class="dashboard-title">Navidrome Stat</h1>
-                    <span class="brand-version" data-app-version></span>
+                    <a class="supporter-plate" id="supporterBadge" href="/settings#supporter" hidden><svg class="vinyl-glyph" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" data-vinyl-tier="personal"><circle cx="8" cy="8" r="6.75" fill="#111620" stroke="currentColor" stroke-opacity="0.56" stroke-width="1"/><circle cx="8" cy="8" r="5.05" stroke="#ffffff" stroke-opacity="0.16" stroke-width="0.65"/><path d="M 4.15 5.05 A 4.85 4.85 0 0 1 10.95 4.15" stroke="#ffffff" stroke-opacity="0.36" stroke-width="0.9" stroke-linecap="round"/><path d="M 11.85 10.95 A 4.85 4.85 0 0 1 5.05 11.85" stroke="#ffffff" stroke-opacity="0.28" stroke-width="0.85" stroke-linecap="round"/><circle cx="8" cy="8" r="2.85" fill="currentColor"/><circle cx="8" cy="8" r="0.82" fill="#111620"/></svg><span id="supporterBadgeLabel"></span></a>
                 </div>
                 <div class="dashboard-filters">
                     <div class="filter-control window" id="statsWindowControl">
@@ -111,15 +111,11 @@
                     </div>
                 </div>
                 <div class="dashboard-meta">
-                    <div id="statusBadge" class="dashboard-live" role="status" aria-live="polite">
+                    <a id="statusBadge" href="/settings#source" class="dashboard-live is-quiet" tabindex="-1">
                         <span id="statusDot" class="dashboard-live-dot bg-slate-600"></span>
-                        <span id="statusText" data-i18n="status.connecting">连接中…</span>
-                    </div>
-                    <span class="dashboard-meta-divider" aria-hidden="true"></span>
-                    <div class="dashboard-updated">
-                        <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l2.5 1.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <p id="lastUpdated" aria-live="polite"></p>
-                    </div>
+                        <span id="statusText" class="visually-hidden" role="status" aria-live="polite" data-i18n="status.connecting">连接中…</span>
+                    </a>
+                    <p id="lastUpdated" class="visually-hidden" aria-live="polite"></p>
                     <p id="statsScopeLabel" class="visually-hidden" aria-live="polite"></p>
                 </div>
                 <div class="dashboard-actions">
@@ -130,6 +126,7 @@
                         <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     </a>
                     <button id="refreshBtn" type="button" data-i18n-attr="aria-label:dashboard.manualRefresh,title:dashboard.manualRefresh" class="header-icon-button refresh" aria-label="手动刷新" title="手动刷新">
+                        <span id="refreshStatusPip" class="refresh-status-pip" hidden aria-hidden="true"></span>
                         <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     </button>
                 </div>
@@ -515,8 +512,12 @@
         </section>
 
         <footer class="app-footer">
-            <span class="app-footer-brand">Navidrome Stat</span>
+            <span class="app-footer-meta">
+                <span class="app-footer-brand">Navidrome Stat</span>
+                <span class="app-footer-ver" data-app-version></span>
+            </span>
             <nav class="app-footer-links" aria-label="项目链接" data-i18n-attr="aria-label:aria.footerLinks">
+                <a class="app-footer-support" id="footerSupportLink" href="/settings#supporter"><svg class="vinyl-glyph" width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.75" fill="#111620" stroke="currentColor" stroke-opacity="0.56" stroke-width="1"/><circle cx="8" cy="8" r="5.05" stroke="#ffffff" stroke-opacity="0.16" stroke-width="0.65"/><path d="M 4.15 5.05 A 4.85 4.85 0 0 1 10.95 4.15" stroke="#ffffff" stroke-opacity="0.36" stroke-width="0.9" stroke-linecap="round"/><path d="M 11.85 10.95 A 4.85 4.85 0 0 1 5.05 11.85" stroke="#ffffff" stroke-opacity="0.28" stroke-width="0.85" stroke-linecap="round"/><circle cx="8" cy="8" r="2.85" fill="currentColor"/><circle cx="8" cy="8" r="0.82" fill="#111620"/></svg><span id="footerSupportLabel" data-i18n="footer.support">Support Navidrome Stat</span></a>
                 <a href="https://github.com/StepaniaH/navidrome-stat" target="_blank" rel="noopener noreferrer">GitHub</a>
                 <a href="https://github.com/StepaniaH/navidrome-stat/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a>
             </nav>

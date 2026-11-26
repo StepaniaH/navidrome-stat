@@ -163,6 +163,17 @@
                 <p data-i18n="review.error">Could not load the listening review. Please try again.</p>
                 <button id="reviewRetryButton" type="button" class="review-retry-button" data-i18n="review.retry">Retry</button>
             </section>
+
+            <footer id="reviewSupporterSeal" class="review-supporter-seal" hidden>
+                <span class="review-supporter-seal-badge">
+                    <svg class="vinyl-glyph" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.75" fill="#111620" stroke="currentColor" stroke-opacity="0.56" stroke-width="1"/><circle cx="8" cy="8" r="5.05" stroke="#ffffff" stroke-opacity="0.16" stroke-width="0.65"/><path d="M 4.15 5.05 A 4.85 4.85 0 0 1 10.95 4.15" stroke="#ffffff" stroke-opacity="0.36" stroke-width="0.9" stroke-linecap="round"/><path d="M 11.85 10.95 A 4.85 4.85 0 0 1 5.05 11.85" stroke="#ffffff" stroke-opacity="0.28" stroke-width="0.85" stroke-linecap="round"/><circle cx="8" cy="8" r="2.85" fill="currentColor"/><circle cx="8" cy="8" r="0.82" fill="#111620"/></svg>
+                    <span data-i18n="review.supporter.eyebrow">GOLD VINYL · ED25519</span>
+                </span>
+                <div class="review-supporter-seal-meta">
+                    <span id="reviewSupporterSealTier" class="review-supporter-seal-tier"></span>
+                    <span id="reviewSupporterSealSince" class="review-supporter-seal-since"></span>
+                </div>
+            </footer>
         </main>
     </div>
     <div id="loginOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-ink-950/90 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="reviewLoginTitle">

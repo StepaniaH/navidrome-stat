@@ -8,6 +8,7 @@ import { createThemeTokens } from './charts.js';
 import { albumCoverUrl, coverArtUrl, entityDetailUrl, formatDuration, formatRecordedDuration } from './format.js';
 import { createListbox } from './listbox.js';
 import { THEME_CHANGE_EVENT } from '../theme-bootstrap.js';
+import { SUPPORTER_SYNC_STORAGE_KEY, fetchAppInfo } from './app-info.js';
 
 const i18n = createI18n({ messages: pageMessages('dashboard', 'review'), fallbackLocale: 'en' });
 const t = (key, values) => i18n.t(key, values);
@@ -116,6 +117,29 @@ function barOption(categories, values, { horizontal = false, categoryInterval = 
 
 let reviewMetric = 'plays';
 let lastReview = null;
+let supporterSummary = null;
+
+function renderSupporterSeal() {
+    const seal = document.getElementById('reviewSupporterSeal');
+    if (!seal) return;
+    const active = Boolean(supporterSummary?.active) && supporterSummary?.show_in_header !== false;
+    seal.hidden = !active;
+    if (!active) return;
+    const tierKey = supporterSummary.tier === 'patron' ? 'supporter.tier.patron' : 'supporter.tier.personal';
+    setText('reviewSupporterSealTier', t(tierKey));
+    setText(
+        'reviewSupporterSealSince',
+        supporterSummary.issued_at
+            ? t('footer.supportingSince', { date: supporterSummary.issued_at })
+            : t('footer.supporting'),
+    );
+}
+
+async function refreshSupporterSummary({ force = false } = {}) {
+    const info = await fetchAppInfo({ force });
+    supporterSummary = info?.supporter || null;
+    renderSupporterSeal();
+}
 
 function metricValue(entry) {
     return reviewMetric === 'listen_time' ? Number(entry.total_listen_sec) || 0 : entry.count;
@@ -494,13 +518,29 @@ const login = createLoginController({
     tokenId: 'loginToken',
     inertSelector: '#reviewApp',
     useHiddenClass: true,
-    onAuthenticated: loadReview,
+    onAuthenticated: () => {
+        refreshSupporterSummary({ force: true });
+        return loadReview();
+    },
 });
 
 window.addEventListener(UNAUTHORIZED_EVENT, () => login.show());
 
 window.addEventListener(THEME_CHANGE_EVENT, () => {
+    renderSupporterSeal();
     if (lastReview && lastReview.total_plays > 0) renderCharts(lastReview);
+});
+
+window.addEventListener('storage', (event) => {
+    if (event.key === SUPPORTER_SYNC_STORAGE_KEY) {
+        refreshSupporterSummary({ force: true });
+    }
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        refreshSupporterSummary({ force: true });
+    }
 });
 
 function localize() {
@@ -511,6 +551,7 @@ function localize() {
         setText('reviewPeriodChartTitle', t(lastReview.period === 'month' ? 'review.daily' : 'review.monthly'));
         setText('reviewEmptyMessage', t(lastReview.period === 'month' ? 'review.emptyMonth' : 'review.emptyYear'));
     }
+    renderSupporterSeal();
     if (lastReview && lastReview.total_plays > 0) renderCharts(lastReview);
 }
 
@@ -524,6 +565,7 @@ function setReviewMetric(metric) {
         btn.classList.toggle('text-white', active);
         btn.classList.toggle('text-slate-400', !active);
     });
+    renderSupporterSeal();
     if (lastReview && lastReview.total_plays > 0) renderCharts(lastReview);
 }
 
@@ -545,6 +587,7 @@ async function bootstrap() {
     window.addEventListener('resize', () => {
         [monthlyChart, hourlyChart, weekdayChart].forEach((chart) => chart && chart.resize());
     });
+    refreshSupporterSummary();
     await loadReview();
 }
 

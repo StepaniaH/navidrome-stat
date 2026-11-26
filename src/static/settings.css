@@ -58,6 +58,7 @@ a {
 }
 
 .page-header {
+    position: relative;
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
@@ -150,6 +151,7 @@ p {
 }
 
 .settings-tab {
+    position: relative;
     display: flex;
     width: 100%;
     min-height: 40px;
@@ -1391,6 +1393,775 @@ input[type="range"] {
     text-underline-offset: 3px;
 }
 
+/* ── Supporter Key & Collector's Pressed Vinyl Plaque ──── */
+
+.supporter-plate {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 5.5px;
+    height: 23px;
+    padding: 0 8.5px 0 6px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background:
+        linear-gradient(
+            165deg,
+            color-mix(in srgb, var(--sup-main) 15%, var(--surface-raised)) 0%,
+            color-mix(in srgb, var(--sup-sec) 7%, var(--surface)) 100%
+        ) padding-box,
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--sup-hi) 50%, var(--border)) 0%,
+            color-mix(in srgb, var(--sup-main) 24%, var(--border-soft)) 60%,
+            var(--border-soft) 100%
+        ) border-box;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+        0 1px 2px rgba(0, 0, 0, 0.22);
+    color: var(--sup-ink);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.015em;
+    text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.supporter-plate.is-patron {
+    background:
+        linear-gradient(
+            165deg,
+            color-mix(in srgb, var(--sup-main) 20%, var(--surface-raised)) 0%,
+            color-mix(in srgb, var(--sup-sec) 11%, var(--surface)) 100%
+        ) padding-box,
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--sup-hi) 70%, var(--border)) 0%,
+            color-mix(in srgb, var(--sup-sec) 38%, var(--border)) 65%,
+            var(--border-soft) 100%
+        ) border-box;
+}
+
+[data-scheme="light"] .supporter-plate {
+    background:
+        linear-gradient(
+            165deg,
+            #ffffff 0%,
+            color-mix(in srgb, var(--sup-main) 8%, var(--surface-raised)) 100%
+        ) padding-box,
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--sup-main) 44%, var(--border)) 0%,
+            color-mix(in srgb, var(--sup-sec) 24%, var(--border-soft)) 100%
+        ) border-box;
+    box-shadow:
+        inset 0 1px 0 #ffffff,
+        0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.supporter-plate .vinyl-glyph {
+    color: var(--sup-hi);
+    flex-shrink: 0;
+}
+
+[data-scheme="light"] .supporter-plate .vinyl-glyph {
+    color: var(--sup-main);
+}
+
+#tab-supporter-btn.is-active .supporter-tab-glyph {
+    color: var(--sup-main);
+}
+
+#tab-supporter-btn[aria-selected="true"] {
+    background: color-mix(in srgb, var(--sup-main) 13%, transparent);
+    color: var(--text);
+}
+
+#tab-supporter-btn[aria-selected="true"] .supporter-tab-glyph {
+    color: var(--sup-main);
+}
+
+.supporter-tab-dot {
+    width: 6px;
+    height: 6px;
+    margin-left: auto;
+    border-radius: 50%;
+    background: var(--sup-main);
+    flex-shrink: 0;
+}
+
+.supporter-panel {
+    overflow: hidden;
+}
+
+.supporter-plaque {
+    position: relative;
+    overflow: hidden;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    background:
+        linear-gradient(
+            148deg,
+            color-mix(in srgb, var(--sup-main) 10%, var(--surface-raised)) 0%,
+            var(--surface) 46%,
+            color-mix(in srgb, var(--sup-sec) 6%, var(--surface)) 100%
+        ) padding-box,
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--sup-hi) 46%, var(--border)) 0%,
+            color-mix(in srgb, var(--sup-main) 20%, var(--border-soft)) 52%,
+            var(--border-soft) 100%
+        ) border-box;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.09),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.24),
+        0 12px 30px -14px rgba(0, 0, 0, 0.36);
+}
+
+.supporter-plaque.is-patron {
+    background:
+        linear-gradient(
+            148deg,
+            color-mix(in srgb, var(--sup-main) 13%, var(--surface-raised)) 0%,
+            var(--surface) 48%,
+            color-mix(in srgb, var(--sup-sec) 9%, var(--surface)) 100%
+        ) padding-box,
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--sup-hi) 64%, var(--border)) 0%,
+            color-mix(in srgb, var(--sup-sec) 32%, var(--border-soft)) 56%,
+            var(--border-soft) 100%
+        ) border-box;
+}
+
+[data-scheme="light"] .supporter-plaque {
+    background:
+        linear-gradient(
+            148deg,
+            color-mix(in srgb, var(--sup-main) 6%, var(--surface)) 0%,
+            var(--surface) 50%,
+            color-mix(in srgb, var(--sup-sec) 4%, var(--surface-raised)) 100%
+        ) padding-box,
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--sup-main) 38%, var(--border)) 0%,
+            color-mix(in srgb, var(--sup-sec) 18%, var(--border-soft)) 55%,
+            var(--border-soft) 100%
+        ) border-box;
+    box-shadow:
+        inset 0 1px 0 color-mix(in srgb, var(--surface) 88%, #ffffff),
+        0 10px 26px -14px rgba(15, 23, 42, 0.11);
+}
+
+/* Subtle concentric record-groove watermark in top-right corner */
+.supporter-plaque::after {
+    content: "";
+    position: absolute;
+    top: -64px;
+    right: -64px;
+    width: 240px;
+    height: 240px;
+    border-radius: 50%;
+    background: repeating-radial-gradient(
+        circle at center,
+        transparent 0,
+        transparent 7px,
+        color-mix(in srgb, var(--sup-main) 22%, transparent) 7.6px,
+        transparent 8.4px
+    );
+    opacity: 0.32;
+    mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.85) 18%, transparent 70%);
+    -webkit-mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.85) 18%, transparent 70%);
+    pointer-events: none;
+}
+
+.plaque-top {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+    padding: 24px 28px 18px;
+}
+
+.plaque-emblem {
+    width: 76px;
+    height: 76px;
+    border-radius: 16px;
+    border: 1px solid var(--border-soft);
+    background:
+        radial-gradient(
+            circle at 50% 35%,
+            color-mix(in srgb, var(--sup-main) 10%, var(--surface-raised)) 0%,
+            color-mix(in srgb, var(--page-bg) 82%, var(--surface)) 100%
+        );
+    box-shadow:
+        inset 0 2px 5px rgba(0, 0, 0, 0.32),
+        0 1px 0 rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+[data-scheme="light"] .plaque-emblem {
+    background:
+        radial-gradient(
+            circle at 50% 35%,
+            #ffffff 0%,
+            color-mix(in srgb, var(--sup-main) 6%, var(--surface-raised)) 100%
+        );
+    box-shadow:
+        inset 0 1px 4px rgba(15, 23, 42, 0.08),
+        0 1px 0 #ffffff;
+}
+
+.plaque-logo {
+    width: 60px;
+    height: 60px;
+    color: var(--sup-hi);
+    display: block;
+    filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.28));
+}
+
+[data-scheme="light"] .plaque-logo {
+    color: var(--sup-main);
+    filter: drop-shadow(0 2px 5px rgba(15, 23, 42, 0.16));
+}
+
+.plaque-meta {
+    flex: 1;
+    min-width: 0;
+}
+
+.plaque-eyebrow {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sup-since);
+    margin-bottom: 5px;
+}
+
+[data-scheme="light"] .plaque-eyebrow {
+    color: var(--sup-ink);
+}
+
+.plaque-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.plaque-title {
+    font-size: 18px;
+    font-weight: 660;
+    letter-spacing: -0.015em;
+    color: var(--text);
+}
+
+.plaque-tier-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 8px 0 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border: 1px solid color-mix(in srgb, var(--sup-main) 34%, var(--border-soft));
+    background: color-mix(in srgb, var(--sup-main) 12%, var(--surface-raised));
+    color: var(--sup-ink);
+}
+
+[data-scheme="light"] .plaque-tier-tag {
+    background: color-mix(in srgb, var(--sup-main) 8%, var(--surface));
+    border-color: color-mix(in srgb, var(--sup-main) 34%, var(--border-soft));
+}
+
+.plaque-tier-tag .vinyl-glyph {
+    color: var(--sup-hi);
+    flex-shrink: 0;
+}
+
+[data-scheme="light"] .plaque-tier-tag .vinyl-glyph {
+    color: var(--sup-main);
+}
+
+.plaque-since {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border-soft);
+    background: color-mix(in srgb, var(--page-bg) 55%, var(--surface));
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--sup-since);
+    font-weight: 560;
+    font-variant-numeric: tabular-nums;
+}
+
+[data-scheme="light"] .plaque-since {
+    background: var(--surface-raised);
+    color: var(--sup-ink);
+}
+
+.plaque-thanks {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.55;
+}
+
+.supporter-showcase-pillars {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 11px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.supporter-showcase-pillars > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.supporter-showcase-pillars i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--sup-main);
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+/* Inline Dashboard Brand-Bar Preview Window */
+.supporter-brandbar-preview {
+    margin-bottom: 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border-soft);
+    background: color-mix(in srgb, var(--page-bg) 82%, var(--surface));
+    box-shadow:
+        inset 0 1px 3px rgba(0, 0, 0, 0.2),
+        0 1px 0 rgba(255, 255, 255, 0.04);
+    overflow: hidden;
+}
+
+[data-scheme="light"] .supporter-brandbar-preview {
+    background: var(--page-bg);
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.brandbar-preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-soft);
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+.brandbar-preview-caption {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    font-weight: 550;
+    color: var(--text-dim);
+}
+
+.brandbar-preview-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    padding: 10px 12px;
+}
+
+.brandbar-preview-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+.preview-brand-mark {
+    flex-shrink: 0;
+}
+
+.brandbar-preview-wordmark {
+    font-size: 13px;
+    font-weight: 640;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.brandbar-preview-ghosts {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+}
+
+.brandbar-ghost-pill {
+    width: 44px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid var(--border-soft);
+    background: color-mix(in srgb, var(--surface) 65%, transparent);
+}
+
+.brandbar-ghost-pill.wide {
+    width: 58px;
+}
+
+.brandbar-ghost-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--success);
+    margin-left: 3px;
+}
+
+.supporter-preview-seg {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 7px;
+    border: 1px solid var(--border-soft);
+    background: var(--surface);
+    margin-left: auto;
+}
+
+.supporter-preview-seg-btn {
+    min-height: 24px;
+    padding: 0 9px;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    font-weight: 560;
+    cursor: pointer;
+    transition: background-color 140ms ease, color 140ms ease;
+}
+
+.supporter-preview-seg-btn:hover {
+    color: var(--text);
+}
+
+.supporter-preview-seg-btn[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--sup-main) 16%, var(--surface-raised));
+    color: var(--sup-ink);
+}
+
+[data-scheme="light"] .supporter-preview-seg-btn[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--sup-main) 12%, var(--surface-raised));
+    color: var(--sup-ink);
+}
+
+.supporter-showcase-cta {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 15px 28px 18px;
+    border-top: 1px solid var(--border-soft);
+    background: color-mix(in srgb, var(--page-bg) 24%, transparent);
+}
+
+.supporter-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 36px;
+    padding: 0 15px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid transparent;
+    background:
+        linear-gradient(
+            165deg,
+            color-mix(in srgb, var(--sup-main) 22%, var(--surface-raised)) 0%,
+            color-mix(in srgb, var(--sup-sec) 12%, var(--surface)) 100%
+        ) padding-box,
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, var(--sup-hi) 68%, var(--border)) 0%,
+            color-mix(in srgb, var(--sup-main) 38%, var(--border)) 100%
+        ) border-box;
+    color: var(--sup-ink);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        0 2px 6px rgba(0, 0, 0, 0.2);
+    transition: filter 0.16s ease, transform 0.16s ease;
+}
+
+.supporter-cta-btn:hover {
+    filter: brightness(1.06);
+}
+
+[data-scheme="light"] .supporter-cta-btn {
+    background: var(--accent);
+    border-color: var(--accent-strong);
+    color: var(--accent-contrast);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
+}
+
+.supporter-cta-btn .vinyl-glyph {
+    color: var(--sup-hi);
+    flex-shrink: 0;
+}
+
+[data-scheme="light"] .supporter-cta-btn .vinyl-glyph {
+    color: var(--accent-contrast);
+}
+
+.supporter-cta-note {
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.supporter-plaque-body {
+    position: relative;
+    z-index: 1;
+    padding: 0 28px 22px;
+}
+
+.supporter-plaque.supporter-showcase .supporter-plaque-body {
+    padding-bottom: 4px;
+}
+
+.supporter-receipt {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 9px 12px 9px 14px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--page-bg) 84%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--sup-main) 26%, var(--border-soft));
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.16);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+
+[data-scheme="light"] .supporter-receipt {
+    background: color-mix(in srgb, var(--sup-main) 4%, var(--page-bg));
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.supporter-receipt::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 2.5px;
+    border-radius: 0 2px 2px 0;
+    background: linear-gradient(180deg, var(--sup-hi), var(--sup-main));
+}
+
+.supporter-receipt .rk {
+    color: var(--text);
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.supporter-receipt .rv {
+    color: var(--success);
+    font-weight: 600;
+}
+
+[data-theme-customization] .supporter-receipt .rv {
+    color: var(--sup-ink);
+}
+
+/* 3-Cell Machined Serial Colophon Grid */
+.supporter-plaque .about-list.supporter-colophon {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    border: 1px solid var(--border-soft);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--page-bg) 52%, var(--surface));
+    overflow: hidden;
+}
+
+[data-scheme="light"] .supporter-plaque .about-list.supporter-colophon {
+    background: var(--surface-raised);
+}
+
+.supporter-plaque .about-list.supporter-colophon .about-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    padding: 10px 13px;
+    border-top: 0;
+}
+
+.supporter-plaque .about-list.supporter-colophon .about-row + .about-row {
+    border-left: 1px solid var(--border-soft);
+}
+
+.supporter-plaque .about-list.supporter-colophon dt {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.supporter-plaque .about-list.supporter-colophon dd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    font-weight: 560;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+    .plaque-top {
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .supporter-plaque .about-list.supporter-colophon {
+        grid-template-columns: 1fr;
+    }
+
+    .supporter-plaque .about-list.supporter-colophon .about-row + .about-row {
+        border-left: 0;
+        border-top: 1px solid var(--border-soft);
+    }
+}
+
+.supporter-manage {
+    padding-top: 14px;
+    border-top: 1px solid var(--border-soft);
+}
+
+.supporter-manage > summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.supporter-manage > summary:hover {
+    color: var(--text);
+}
+
+.supporter-manage-body {
+    padding-top: 12px;
+}
+
+.supporter-env-hint {
+    margin-bottom: 10px;
+    color: var(--text-dim);
+    font-size: 12px;
+}
+
+.supporter-key-form {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+}
+
+.supporter-key-input {
+    flex: 1 1 220px;
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 11px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--field-bg);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+}
+
+.supporter-key-input:focus {
+    border-color: var(--accent);
+    outline: 3px solid var(--focus);
+}
+
+.supporter-action-status {
+    margin-top: 12px;
+}
+
+.supporter-alert {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 11px 13px;
+    margin-bottom: 14px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--border));
+    background: color-mix(in srgb, var(--danger) 8%, var(--page-bg));
+    font-size: 12.5px;
+}
+
+.supporter-alert p {
+    flex: 1 1 200px;
+    color: var(--danger);
+}
+
+.supporter-inactive-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 15px;
+    padding-top: 13px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.supporter-inactive-foot code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    color: var(--text);
+}
+
+.supporter-inactive-offline {
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .supporter-plate::after {
+        display: none;
+    }
+}
+
+[data-motion="reduced"] .supporter-plate::after {
+    display: none;
+}
+
 .login-overlay {
     position: fixed;
     z-index: 100;
@@ -1473,8 +2244,15 @@ input[type="range"] {
 
     #settingsTabBar {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 4px;
+    }
+
+    .supporter-tab-dot {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        margin-left: 0;
     }
 
     .nav-group {
@@ -1562,8 +2340,13 @@ input[type="range"] {
     }
 
     .panel-heading,
-    .settings-section {
-        padding: 20px 16px;
+    .settings-section,
+    .supporter-showcase-bar,
+    .plaque-top,
+    .supporter-showcase-cta,
+    .supporter-plaque-body {
+        padding-right: 16px;
+        padding-left: 16px;
     }
 
     .connection-guidance {

@@ -62,6 +62,17 @@
                     </div>
                     <div class="nav-group">
                         <span class="nav-group-label" data-i18n="nav.group.project">Project</span>
+                        <button class="settings-tab" id="tab-supporter-btn" type="button" role="tab" data-tab="supporter" aria-controls="tab-supporter" aria-selected="false" tabindex="-1">
+                            <svg id="tabSupporterGlyph" class="supporter-tab-glyph" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                                <circle cx="8" cy="8" r="6.25" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.35"/>
+                                <path d="M 4.4 5.2 A 4.5 4.5 0 0 1 10.8 4.4" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.72"/>
+                                <path d="M 11.6 10.8 A 4.5 4.5 0 0 1 5.2 11.6" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.72"/>
+                                <circle cx="8" cy="8" r="2.2" fill="currentColor" fill-opacity="0.22" stroke="currentColor" stroke-width="1.15"/>
+                                <circle cx="8" cy="8" r="0.8" fill="currentColor"/>
+                            </svg>
+                            <span data-i18n="tab.supporter">Supporter</span>
+                            <i id="tabSupporterDot" class="supporter-tab-dot" hidden aria-hidden="true"></i>
+                        </button>
                         <button class="settings-tab" id="tab-about-btn" type="button" role="tab" data-tab="about" aria-controls="tab-about" aria-selected="false" tabindex="-1">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                                 <circle cx="12" cy="12" r="9"/>
@@ -413,6 +424,8 @@
                         </div>
                     </section>
                 </section>
+
+                <section id="tab-supporter" class="settings-panel supporter-panel" role="tabpanel" aria-labelledby="tab-supporter-btn" hidden></section>
 
                 <section id="tab-about" class="settings-panel" role="tabpanel" aria-labelledby="tab-about-btn" hidden>
                     <header class="panel-heading">

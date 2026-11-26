@@ -536,6 +536,40 @@ class DashboardSnapshot(BaseModel):
     top_albums: list[TopAlbumItem]
 
 
+SupporterTier = Literal["personal", "patron"]
+SupporterOrigin = Literal["db", "env", "none"]
+SupporterStatus = Literal["active", "inactive", "invalid"]
+
+
+class SupporterSummaryResponse(BaseModel):
+    active: bool = False
+    tier: Optional[SupporterTier] = None
+    issued_at: Optional[str] = None
+    show_in_header: bool = True
+
+
+class SupporterDocumentResponse(BaseModel):
+    active: bool = False
+    status: SupporterStatus = "inactive"
+    tier: Optional[SupporterTier] = None
+    issued_at: Optional[str] = None
+    key_preview: Optional[str] = None
+    order_preview: Optional[str] = None
+    origin: SupporterOrigin = "none"
+    env_configured: bool = False
+    can_edit: bool = True
+    can_clear: bool = False
+    show_in_header: bool = True
+
+
+class SupporterEnvelopeResponse(BaseModel):
+    supporter: SupporterDocumentResponse
+
+
+class SupporterPreferencesUpdate(BaseModel):
+    show_in_header: bool
+
+
 class AboutResponse(BaseModel):
     name: str
     version: str
@@ -543,6 +577,7 @@ class AboutResponse(BaseModel):
     features: list[str]
     license: str
     project_url: Optional[str] = None
+    supporter: SupporterSummaryResponse = Field(default_factory=SupporterSummaryResponse)
 
 
 class ReviewMonthBucket(BaseModel):

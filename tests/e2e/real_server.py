@@ -50,6 +50,12 @@ async def seed():
 
 
 if __name__ == "__main__":
+    import src.supporter as _supporter
+    from tests.supporter_vectors import TEST_PUB1_PEM
+
+    _supporter.TRUSTED_PUBLIC_KEYS_PEM = (TEST_PUB1_PEM,)
+    _supporter.TRUSTED_PUBLIC_KEYS = (_supporter.parse_public_key_pem(TEST_PUB1_PEM),)
+
     asyncio.run(seed())
     import uvicorn
 

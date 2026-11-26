@@ -6,6 +6,7 @@ import { APPEARANCE_PREFERENCE_KEYS } from './js/themes.js';
 import { createAppearanceSettings } from './js/settings/appearance-settings.js';
 import { createConnectionSettings } from './js/settings/connection-settings.js';
 import { createPrivacySettings } from './js/settings/privacy-settings.js';
+import { createSupporterSettings } from './js/settings/supporter-settings.js';
 import { SUPPORTED_LOCALES } from './js/locales.js';
 import { applyAppVersion } from './js/app-info.js';
 import { pageMessages } from './js/i18n/index.js';
@@ -91,6 +92,11 @@ const privacySettings = createPrivacySettings({
     registerListbox: registerSettingsListbox,
     showBanner,
 });
+const supporterSettings = createSupporterSettings({
+    t,
+    apiFetch,
+    getLocale: () => i18n.getLocale(),
+});
 
 const login = createLoginController({
     overlayId: 'loginOverlay',
@@ -132,6 +138,7 @@ function renderLocalizedState() {
     appearanceSettings.localize();
     connectionSettings.localize();
     privacySettings.localize();
+    supporterSettings.localize();
 }
 
 async function submitLogin(token) {
@@ -144,8 +151,9 @@ async function submitLogin(token) {
 }
 
 function switchSettingsTab(name, { focus = true, updateHash = true } = {}) {
-    const allowed = new Set(['source', 'privacy', 'preferences', 'about']);
+    const allowed = new Set(['source', 'privacy', 'preferences', 'supporter', 'about']);
     const nextName = allowed.has(name) ? name : 'source';
+    if (nextName !== 'supporter') supporterSettings.clearPreview();
     document.querySelectorAll('#settingsTabBar [role="tab"]').forEach((button) => {
         const active = button.dataset.tab === nextName;
         button.setAttribute('aria-selected', active ? 'true' : 'false');
@@ -276,6 +284,7 @@ async function bootstrapData() {
         const results = await Promise.allSettled([
             privacySettings.load(),
             connectionSettings.load(),
+            supporterSettings.load(),
         ]);
         if (results.some(
             (result) => result.status === 'rejected'
@@ -295,6 +304,7 @@ function initialize() {
     bindTabs();
     privacySettings.mount();
     connectionSettings.mount();
+    supporterSettings.mount();
     bindAuthentication();
     const initialTab = window.location.hash.replace(/^#/, '');
     switchSettingsTab(initialTab, { focus: false, updateHash: false });

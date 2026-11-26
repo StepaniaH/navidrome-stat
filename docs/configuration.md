@@ -33,5 +33,7 @@ This page lists application environment variables. With Docker Compose, declare 
 | `LISTENBRAINZ_INGEST_USERNAME` | Empty | Username assigned to listens accepted by the receiver. |
 | `LISTENBRAINZ_INGEST_SOURCE_ID` | `listenbrainz` | Stable source identity used for receiver records and deduplication. |
 | `LISTENBRAINZ_INGEST_SOURCE_NAME` | `ListenBrainz receiver` | Display name for receiver records. |
+| `STATS_SUPPORTER_KEY` | Empty | Optional offline Ed25519 Supporter Key (`NS1.…`) verified locally with zero outbound requests. Can also be saved in **Settings > Supporter**. |
+| `STATS_SUPPORTER_SHOW_HEADER` | `true` | Default visibility of the Gold Vinyl badge in the header and Listening Review seal before any preference is saved in the database. |
 
 Environment variables are parsed when the application starts. The application refuses to start if administrator, viewer, or ingestion tokens share a value. Restart the container after changing them.

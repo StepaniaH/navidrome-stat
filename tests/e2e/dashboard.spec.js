@@ -738,6 +738,11 @@ test("history fits the page and footer exposes project links", async ({ page }) 
   expect(layout.visibleHeaders).toBe(6);
   expect(layout.footer).toEqual([
     {
+      text: "Support Navidrome Stat",
+      href: "http://127.0.0.1:39422/settings#supporter",
+      rel: "",
+    },
+    {
       text: "GitHub",
       href: "https://github.com/StepaniaH/navidrome-stat",
       rel: "noopener noreferrer",

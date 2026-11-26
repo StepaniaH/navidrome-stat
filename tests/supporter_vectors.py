@@ -1,0 +1,33 @@
+"""Test-only Ed25519 keys and signed NS1 supporter tokens."""
+
+TEST_PUB1_PEM = (
+    "-----BEGIN PUBLIC KEY-----\n"
+    "MCowBQYDK2VwAyEA0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc=\n"
+    "-----END PUBLIC KEY-----\n"
+)
+
+TEST_PUB2_PEM = (
+    "-----BEGIN PUBLIC KEY-----\n"
+    "MCowBQYDK2VwAyEAoJql9HpnWYAv+VX43C0qFKXJnSO+l/hkEn/5ODRVpPA=\n"
+    "-----END PUBLIC KEY-----\n"
+)
+
+PERSONAL_KEY = (
+    "NS1.eyJ2IjoxLCJ0aWVyIjoicGVyc29uYWwiLCJvaWQiOiJPUkQtMDAwMSIsImlhdCI6IjIwMjYtMDQtMTcifQ."
+    "1HM93rt2rmgn2oo-I5eVx0nFL-AjxF19f9Zt1O5-ok2ipyIiRz0rkZ83xu3_VNHVnmZEEI-n9fCFJzcP5T9RDQ"
+)
+
+PATRON_KEY = (
+    "NS1.eyJ2IjoxLCJ0aWVyIjoicGF0cm9uIiwib2lkIjoiT1JELTAwMDIiLCJpYXQiOiIyMDI2LTA0LTE3In0."
+    "CBIHVInMuXwZsBerPYZ0FlIpF8Vw4h_SG5sUBPj0Hn5vNBQkp1QNitOE-7WuG4HSrnrGFFCWdFT62aTRKunTDg"
+)
+
+EXTRA_FIELD_KEY = (
+    "NS1.eyJ2IjoxLCJ0aWVyIjoicGVyc29uYWwiLCJvaWQiOiJPUkQtMDAwMyIsImlhdCI6IjIwMjYtMDQtMTgiLCJleHRyYSI6Im9rIn0."
+    "Qj5An9j8WEAxcDFTdsFfMDRaXB44YVXAxict51NXZM5j4fzxCVYaDfX9QJXqNA0WvmHcotH9hXvHt_-QXBg7Bw"
+)
+
+ROTATED_KEY = (
+    "NS1.eyJ2IjoxLCJ0aWVyIjoicGF0cm9uIiwib2lkIjoiT1JELTAwMDQiLCJpYXQiOiIyMDI2LTA1LTAxIn0."
+    "4HZefDeh95z6jAnHKLytwEBjQ8O4-nWrbMdMlOB8_rfCOdg9y0Vla6MmZ47AULI1FMAOpl0svc2LeDTu4TOGBQ"
+)

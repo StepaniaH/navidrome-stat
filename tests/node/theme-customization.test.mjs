@@ -7,6 +7,7 @@ import {
     applyStoredThemeCustomization,
     applyThemeCustomization,
     clearThemeCustomization,
+    contrastRatio,
     decodeThemeDocument,
     encodeThemeDocument,
     normalizeHexColor,
@@ -141,11 +142,26 @@ test('applying a customization owns only its declared semantic properties', () =
         assert.equal(root.style.getPropertyValue(property), ACCESSIBLE_COLORS[key]);
     }
     assert.equal(root.style.getPropertyValue('--chart-1'), ACCESSIBLE_COLORS.accent);
+    assert.equal(root.style.getPropertyValue('--sup-main'), ACCESSIBLE_COLORS.accent);
+    assert.ok(
+        contrastRatio(
+            root.style.getPropertyValue('--sup-ink'),
+            ACCESSIBLE_COLORS.surface,
+        ) >= 4.5,
+    );
+    assert.ok(
+        contrastRatio(
+            root.style.getPropertyValue('--sup-since'),
+            ACCESSIBLE_COLORS.surface,
+        ) >= 4.5,
+    );
     assert.equal(root.style.getPropertyValue('--accent-contrast'), '#ffffff');
     assert.match(root.dataset.themeCustomization, /^nord-light:/);
 
     clearThemeCustomization(root);
     assert.equal(root.style.getPropertyValue('--page-bg'), '');
+    assert.equal(root.style.getPropertyValue('--sup-main'), '');
+    assert.equal(root.style.getPropertyValue('--sup-since'), '');
     assert.equal(root.style.getPropertyValue('--unrelated'), '#123456');
     assert.equal('themeCustomization' in root.dataset, false);
 });

@@ -10,6 +10,8 @@ LISTBOX_JS = ROOT / "src" / "static" / "js" / "listbox.js"
 APPEARANCE_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "appearance-settings.js"
 CONNECTION_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "connection-settings.js"
 PRIVACY_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "privacy-settings.js"
+SUPPORTER_SETTINGS_JS = ROOT / "src" / "static" / "js" / "settings" / "supporter-settings.js"
+SUPPORTER_UI_JS = ROOT / "src" / "static" / "js" / "supporter-ui.js"
 LOCALIZATION_JS = ROOT / "src" / "static" / "localization.js"
 THEMES_JS = ROOT / "src" / "static" / "js" / "themes.js"
 
@@ -18,14 +20,14 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_settings_has_four_ordered_top_level_sections():
+def test_settings_has_five_ordered_top_level_sections():
     source = _read(SETTINGS_HTML)
-    names = ("source", "privacy", "preferences", "about")
+    names = ("source", "privacy", "preferences", "supporter", "about")
     positions = [source.index(f'data-tab="{name}"') for name in names]
     assert positions == sorted(positions)
     tab_markup = source[source.index('id="settingsTabBar"') : source.index("</nav>")]
-    assert tab_markup.count('role="tab"') == 4
-    assert tab_markup.count("<svg") == 4
+    assert tab_markup.count('role="tab"') == 5
+    assert tab_markup.count("<svg") == 5
     for name in names:
         assert f'id="tab-{name}-btn"' in tab_markup
         assert f'id="tab-{name}"' in source
@@ -216,7 +218,13 @@ def test_settings_loads_shared_theme_assets_and_registry():
 
 def test_sensitive_values_use_safe_dom_apis_and_password_is_never_rendered():
     html = _read(SETTINGS_HTML)
-    script = _read(SETTINGS_JS) + _read(CONNECTION_SETTINGS_JS) + _read(PRIVACY_SETTINGS_JS)
+    script = (
+        _read(SETTINGS_JS)
+        + _read(CONNECTION_SETTINGS_JS)
+        + _read(PRIVACY_SETTINGS_JS)
+        + _read(SUPPORTER_SETTINGS_JS)
+        + _read(SUPPORTER_UI_JS)
+    )
     assert 'id="sourcePass"' in html
     assert 'type="password"' in html
     assert "innerHTML" not in script
