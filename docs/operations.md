@@ -21,14 +21,12 @@ The published container disables request access logs so dashboard filters, usern
 
 ## Update
 
-For a pinned deployment, first change the image tag in `compose.yaml` to the desired release, then run the commands below. Leaving `v0.9.6` unchanged keeps that version; `latest` follows the newest stable release.
+Back up the data volume and review the [changelog](../CHANGELOG.md) before updating. With `latest`, `docker compose pull` fetches the newest stable release; for a pinned deployment, update the image tag in `compose.yaml` to the desired release first:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
-
-Back up the data volume and review the changelog before updating a pinned version.
 
 ## Backup and restore
 
@@ -65,7 +63,7 @@ docker compose run --rm --no-deps \
   python -c "import sqlite3; db = sqlite3.connect('file:/restore/navidrome_stats.db?mode=ro', uri=True); result = db.execute('PRAGMA integrity_check').fetchone()[0]; assert result == 'ok', result; print(result)"
 ```
 
-To restore production, stop the service, preserve the current volume, extract the verified archive into an empty replacement volume, and ensure UID and GID `1000:1000` can write the restored files. Start the pinned application version, verify `/health/ready`, and test a saved connection. If the archive has no `secret.key`, re-enter saved passwords in Settings. Never merge an archive into a running or non-empty data volume.
+To restore production, stop the service, preserve the current volume, extract the verified archive into an empty replacement volume, and ensure UID and GID `1000:1000` can write the restored files. Start the matching application version, verify `/health/ready`, and test a saved connection. If the archive has no `secret.key`, re-enter saved passwords in Settings. Never merge an archive into a running or non-empty data volume.
 
 ## Fill missing artist metadata
 

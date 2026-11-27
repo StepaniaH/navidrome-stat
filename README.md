@@ -46,7 +46,7 @@ A self-hosted listening statistics dashboard for Navidrome. It aggregates playba
 
 ## Quick start
 
-Image: [`stepaniah/navidrome-statistic`](https://hub.docker.com/r/stepaniah/navidrome-statistic) (`linux/amd64`, `linux/arm64`). The example pins the current stable release, [v0.9.6](https://github.com/StepaniaH/navidrome-stat/releases/tag/v0.9.6); `latest` follows stable releases.
+Image: [`stepaniah/navidrome-statistic`](https://hub.docker.com/r/stepaniah/navidrome-statistic) (`linux/amd64`, `linux/arm64`). The `latest` tag follows stable releases; pin a [release tag](https://github.com/StepaniaH/navidrome-stat/releases) or image digest for reproducible deployments.
 
 Create `.env` with your Navidrome account and a long random administrator token:
 
@@ -62,7 +62,7 @@ Save `compose.yaml` in the same directory:
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.6
+    image: stepaniah/navidrome-statistic:latest
     container_name: navidrome-stat
     restart: unless-stopped
     ports:

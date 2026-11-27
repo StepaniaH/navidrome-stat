@@ -44,12 +44,12 @@ PAUSE_GRACE_SEC=30
 
 ## 3. 创建 `compose.yaml`
 
-示例固定使用当前稳定版 `v0.9.6`；`latest` 会随稳定版更新。
+示例使用跟随稳定版更新的 `latest` 标签；如需手动控制升级版本，可固定为已发布的[版本标签](https://github.com/StepaniaH/navidrome-stat/releases)或镜像摘要。
 
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.6
+    image: stepaniah/navidrome-statistic:latest
     container_name: navidrome-stat
     user: "1000:1000"
     ports:

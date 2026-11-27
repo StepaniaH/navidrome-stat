@@ -21,14 +21,12 @@ docker compose logs -f --tail=100 navidrome-stat
 
 ## 更新
 
-更新固定版本时，先在 `compose.yaml` 中把镜像标签改为目标版本，再执行下面的命令。保持 `v0.9.6` 不变会继续运行 v0.9.6；`latest` 则跟随最新稳定版。
+更新前请备份数据卷并阅读[变更记录](../CHANGELOG.md)。使用 `latest` 时，`docker compose pull` 会拉取最新稳定版；如果固定了版本标签，请先在 `compose.yaml` 中将镜像标签改为目标版本，再执行：
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
-
-更新固定版本前，请备份数据卷并阅读变更记录。
 
 ## 备份与恢复
 
@@ -65,7 +63,7 @@ docker compose run --rm --no-deps \
   python -c "import sqlite3; db = sqlite3.connect('file:/restore/navidrome_stats.db?mode=ro', uri=True); result = db.execute('PRAGMA integrity_check').fetchone()[0]; assert result == 'ok', result; print(result)"
 ```
 
-恢复生产环境时，应停止服务、保留当前数据卷、把已验证的归档解压到空的替代卷，并确认 UID 和 GID `1000:1000` 可写恢复后的文件。使用原先固定的应用版本启动，验证 `/health/ready` 并测试已保存的连接。若归档中没有 `secret.key`，需要在设置页重新输入密码。不要把归档合并到正在使用或已有内容的数据卷中。
+恢复生产环境时，应停止服务、保留当前数据卷、把已验证的归档解压到空的替代卷，并确认 UID 和 GID `1000:1000` 可写恢复后的文件。使用与备份匹配的应用版本启动，验证 `/health/ready` 并测试已保存的连接。若归档中没有 `secret.key`，需要在设置页重新输入密码。不要把归档合并到正在使用或已有内容的数据卷中。
 
 ## 补齐艺人名单
 

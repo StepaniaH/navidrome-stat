@@ -46,7 +46,7 @@
 
 ## 快速开始
 
-镜像：[`stepaniah/navidrome-statistic`](https://hub.docker.com/r/stepaniah/navidrome-statistic)（`linux/amd64`、`linux/arm64`）。示例固定使用当前稳定版 [v0.9.6](https://github.com/StepaniaH/navidrome-stat/releases/tag/v0.9.6)；`latest` 跟随稳定版更新。
+镜像：[`stepaniah/navidrome-statistic`](https://hub.docker.com/r/stepaniah/navidrome-statistic)（`linux/amd64`、`linux/arm64`）。`latest` 标签跟随稳定版更新；如需固定版本，可改为已发布的[版本标签](https://github.com/StepaniaH/navidrome-stat/releases)或镜像摘要。
 
 在新建目录中创建 `.env`，填入 Navidrome 账号与足够长的随机管理员 token：
 
@@ -62,7 +62,7 @@ STATS_API_TOKEN=replace-with-a-long-random-token
 ```yaml
 services:
   navidrome-stat:
-    image: stepaniah/navidrome-statistic:v0.9.6
+    image: stepaniah/navidrome-statistic:latest
     container_name: navidrome-stat
     restart: unless-stopped
     ports:
